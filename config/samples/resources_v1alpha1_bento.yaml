@@ -1,0 +1,6 @@
+apiVersion: resources.yatai.ai/v1alpha1
+kind: Bento
+metadata:
+  name: bento-sample
+spec:
+  # TODO(user): Add fields here

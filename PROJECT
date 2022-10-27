@@ -1,0 +1,19 @@
+domain: yatai.ai
+layout:
+- go.kubebuilder.io/v3
+plugins:
+  manifests.sdk.operatorframework.io/v2: {}
+  scorecard.sdk.operatorframework.io/v2: {}
+multigroup: true
+projectName: yatai-image-builder
+repo: github.com/bentoml/yatai-image-builder
+resources:
+- api:
+    crdVersion: v1
+  controller: true
+  domain: yatai.ai
+  group: resources
+  kind: Bento
+  path: github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1
+  version: v1alpha1
+version: "3"
