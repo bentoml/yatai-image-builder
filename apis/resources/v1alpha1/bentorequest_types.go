@@ -17,51 +17,27 @@ limitations under the License.
 package v1alpha1
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-type BentoRegcred struct {
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
-}
-
-type BentoContext struct {
-	BentomlVersion string `json:"bentomlVersion,omitempty"`
-}
-
-type BentoModel struct {
-	// +kubebuilder:validation:Required
-	Tag string `json:"tag"`
-	DownloadURL string `json:"downloadURL,omitempty"`
-}
-
-type BentoRunner struct {
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
-	Type string `json:"type,omitempty"`
-	ModelTags []string `json:"modelTags,omitempty"`
-}
-
-// BentoSpec defines the desired state of Bento
-type BentoSpec struct {
+// BentoRequestSpec defines the desired state of BentoRequest
+type BentoRequestSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// +kubebuilder:validation:Required
-	Image string `json:"image"`
+	Tag string `json:"tag"`
+	DownloadURL string `json:"downloadURL,omitempty"`
 	Context BentoContext `json:"context,omitempty"`
 	Runners []BentoRunner `json:"runners,omitempty"`
 	Models []BentoModel `json:"models,omitempty"`
-
-	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 }
 
-// BentoStatus defines the observed state of Bento
-type BentoStatus struct {
+// BentoRequestStatus defines the observed state of BentoRequest
+type BentoRequestStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	Ready bool `json:"ready"`
@@ -70,24 +46,24 @@ type BentoStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// Bento is the Schema for the bentoes API
-type Bento struct {
+// BentoRequest is the Schema for the bentorequests API
+type BentoRequest struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   BentoSpec   `json:"spec,omitempty"`
-	Status BentoStatus `json:"status,omitempty"`
+	Spec   BentoRequestSpec   `json:"spec,omitempty"`
+	Status BentoRequestStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// BentoList contains a list of Bento
-type BentoList struct {
+// BentoRequestList contains a list of BentoRequest
+type BentoRequestList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Bento `json:"items"`
+	Items           []BentoRequest `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&Bento{}, &BentoList{})
+	SchemeBuilder.Register(&BentoRequest{}, &BentoRequestList{})
 }

@@ -1,0 +1,24 @@
+# permissions for end users to edit bentorequests.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: bentorequest-editor-role
+rules:
+- apiGroups:
+  - resources.yatai.ai
+  resources:
+  - bentorequests
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - resources.yatai.ai
+  resources:
+  - bentorequests/status
+  verbs:
+  - get

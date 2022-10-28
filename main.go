@@ -33,6 +33,7 @@ import (
 
 	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
 	"github.com/bentoml/yatai-image-builder/controllers"
+	resourcescontrollers "github.com/bentoml/yatai-image-builder/controllers/resources"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -94,6 +95,13 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Bento")
+		os.Exit(1)
+	}
+	if err = (&resourcescontrollers.BentoRequestReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "BentoRequest")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
