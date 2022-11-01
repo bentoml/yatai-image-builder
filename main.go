@@ -32,7 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
-	"github.com/bentoml/yatai-image-builder/controllers"
 	resourcescontrollers "github.com/bentoml/yatai-image-builder/controllers/resources"
 	//+kubebuilder:scaffold:imports
 )

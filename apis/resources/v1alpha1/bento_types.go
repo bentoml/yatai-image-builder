@@ -42,7 +42,7 @@ type BentoModel struct {
 type BentoRunner struct {
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
-	Type string `json:"type,omitempty"`
+	RunnableType string `json:"runnableType,omitempty"`
 	ModelTags []string `json:"modelTags,omitempty"`
 }
 

@@ -69,6 +69,13 @@ func (c *YataiClient) GetBento(ctx context.Context, bentoRepositoryName, bentoVe
 	return
 }
 
+func (c *YataiClient) GetModel(ctx context.Context, modelRepositoryName, modelVersion string) (model *schemasv1.ModelFullSchema, err error) {
+	url_ := utils.UrlJoin(c.endpoint, fmt.Sprintf("/api/v1/model_repositories/%s/models/%s", modelRepositoryName, modelVersion))
+	model = &schemasv1.ModelFullSchema{}
+	_, err = c.getJsonReqBuilder().Method("GET").Url(url_).Result(model).Do(ctx)
+	return
+}
+
 func (c *YataiClient) GetBentoRepository(ctx context.Context, bentoRepositoryName string) (bentoRepository *schemasv1.BentoRepositorySchema, err error) {
 	url_ := utils.UrlJoin(c.endpoint, fmt.Sprintf("/api/v1/bento_repositories/%s", bentoRepositoryName))
 	bentoRepository = &schemasv1.BentoRepositorySchema{}
@@ -143,5 +150,19 @@ func (c *YataiClient) RegisterYataiComponent(ctx context.Context, clusterName st
 	url_ := utils.UrlJoin(c.endpoint, fmt.Sprintf("/api/v1/clusters/%s/yatai_components", clusterName))
 	yataiComponent = &schemasv1.YataiComponentSchema{}
 	_, err = c.getJsonReqBuilder().Method("POST").Url(url_).Payload(schema).Result(yataiComponent).Do(ctx)
+	return
+}
+
+func (c *YataiClient) PresignBentoDownloadURL(ctx context.Context, bentoRepositoryName, bentoVersion string) (bento *schemasv1.BentoSchema, err error) {
+	url_ := utils.UrlJoin(c.endpoint, fmt.Sprintf("/api/v1/bento_repositories/%s/bentos/%s/presign_download_url", bentoRepositoryName, bentoVersion))
+	bento = &schemasv1.BentoSchema{}
+	_, err = c.getJsonReqBuilder().Method("PATCH").Url(url_).Result(bento).Do(ctx)
+	return
+}
+
+func (c *YataiClient) PresignModelDownloadURL(ctx context.Context, modelRepositoryName, modelVersion string) (model *schemasv1.ModelSchema, err error) {
+	url_ := utils.UrlJoin(c.endpoint, fmt.Sprintf("/api/v1/model_repositories/%s/models/%s/presign_download_url", modelRepositoryName, modelVersion))
+	model = &schemasv1.ModelSchema{}
+	_, err = c.getJsonReqBuilder().Method("PATCH").Url(url_).Result(model).Do(ctx)
 	return
 }

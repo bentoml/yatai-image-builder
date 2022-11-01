@@ -17,11 +17,25 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+
+type ExtraPodMetadata struct {
+	Annotations map[string]string `json:"annotations,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+}
+
+type ExtraPodSpec struct {
+	SchedulerName             string                            `json:"schedulerName,omitempty"`
+	NodeSelector              map[string]string                 `json:"nodeSelector,omitempty"`
+	Affinity                  *corev1.Affinity                  `json:"affinity,omitempty"`
+	Tolerations               []corev1.Toleration               `json:"tolerations,omitempty"`
+	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+}
 
 // BentoRequestSpec defines the desired state of BentoRequest
 type BentoRequestSpec struct {
@@ -29,11 +43,24 @@ type BentoRequestSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// +kubebuilder:validation:Required
-	Tag string `json:"tag"`
+	BentoTag string `json:"bentoTag"`
 	DownloadURL string `json:"downloadURL,omitempty"`
 	Context BentoContext `json:"context,omitempty"`
 	Runners []BentoRunner `json:"runners,omitempty"`
 	Models []BentoModel `json:"models,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	ImageBuilderExtraPodMetadata ExtraPodMetadata `json:"imageBuilderExtraPodMetadata,omitempty"`
+	// +kubebuilder:validation:Optional
+	ImageBuilderExtraPodSpec ExtraPodSpec `json:"imageBuilderExtraPodSpec,omitempty"`
+	// +kubebuilder:validation:Optional
+	ImageBuilderContainerResources corev1.ResourceRequirements `json:"imageBuilderContainerResources,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	DockerConfigJsonSecretName string `json:"dockerConfigJsonSecretName,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	DownloaderContainerEnvFrom []corev1.EnvFromSource `json:"downloaderContainerEnvFrom,omitempty"`
 }
 
 // BentoRequestStatus defines the observed state of BentoRequest

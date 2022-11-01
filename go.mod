@@ -4,8 +4,7 @@ go 1.18
 
 require (
 	github.com/banzaicloud/k8s-objectmatcher v1.8.0
-	github.com/bentoml/yatai-common v0.0.0-20221101152648-19f4a46bb937
-	github.com/bentoml/yatai-deployment v1.0.0
+	github.com/bentoml/yatai-common v0.0.0-20221104100754-c3d1e34d9ba9
 	github.com/bentoml/yatai-schemas v0.0.0-20220929081535-497e588eac1f
 	github.com/huandu/xstrings v1.3.2
 	github.com/iancoleman/strcase v0.2.0
@@ -18,6 +17,14 @@ require (
 	k8s.io/client-go v0.25.0
 	k8s.io/code-generator v0.25.0
 	sigs.k8s.io/controller-runtime v0.13.0
+)
+
+require (
+	github.com/docker/distribution v2.7.1+incompatible // indirect
+	github.com/docker/libtrust v0.0.0-20150114040149-fa567046d9b1 // indirect
+	github.com/gorilla/mux v1.8.0 // indirect
+	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opencontainers/image-spec v1.0.2 // indirect
 )
 
 require (
@@ -38,7 +45,7 @@ require (
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
 	github.com/evanphx/json-patch/v5 v5.6.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
-	github.com/go-logr/logr v1.2.3 // indirect
+	github.com/go-logr/logr v1.2.3
 	github.com/go-logr/zapr v1.2.3 // indirect
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/jsonreference v0.19.6 // indirect
@@ -64,6 +71,7 @@ require (
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.33.0 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect
+	github.com/prune998/docker-registry-client v0.0.0-20200114164314-f8cd511a014c
 	github.com/spf13/pflag v1.0.5 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect

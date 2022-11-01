@@ -19,18 +19,25 @@ package resources
 import (
 	"context"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
+	"github.com/bentoml/yatai-image-builder/services"
 )
 
 // BentoRequestReconciler reconciles a BentoRequest object
 type BentoRequestReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 //+kubebuilder:rbac:groups=resources.yatai.ai,resources=bentorequests,verbs=get;list;watch;create;update;patch;delete
@@ -46,17 +53,104 @@ type BentoRequestReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.12.2/pkg/reconcile
-func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
+	logs := log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	bentoRequest := &resourcesv1alpha1.BentoRequest{}
 
-	return ctrl.Result{}, nil
+	err = r.Get(ctx, req.NamespacedName, bentoRequest)
+
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			// Object not found, return.  Created objects are automatically garbage collected.
+			// For additional cleanup logic use finalizers.
+			logs.Info("BentoRequest resource not found. Ignoring since object must be deleted.")
+			err = nil
+			return
+		}
+		// Error reading the object - requeue the request.
+		logs.Error(err, "Failed to get BentoRequest.")
+		return
+	}
+
+	logs = logs.WithValues("bentoRequest", bentoRequest.Name, "bentoRequestNamespace", bentoRequest.Namespace)
+
+	defer func() {
+		if err == nil {
+			return
+		}
+		logs.Error(err, "Failed to reconcile BentoRequest.")
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "ReconcileError", "Failed to reconcile BentoRequest: %v", err)
+	}()
+
+	pod, bento, imageName, dockerConfigJsonSecretName, err := services.ImageBuilderService.CreateImageBuilderPod(ctx, services.CreateImageBuilderPodOption{
+		BentoRequest: bentoRequest,
+		EventRecorder: r.Recorder,
+		Logger: logs,
+		RecreateIfFailed: true,
+	})
+	if err != nil {
+		return
+	}
+
+	if pod != nil {
+		err = ctrl.SetControllerReference(bentoRequest, pod, r.Scheme)
+		if err != nil {
+			return
+		}
+	}
+
+	bento_ := resourcesv1alpha1.Bento{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: bentoRequest.Name,
+			Namespace: bentoRequest.Namespace,
+		},
+		Spec: resourcesv1alpha1.BentoSpec{
+			Image: imageName,
+			Context: bentoRequest.Spec.Context,
+			Runners: bentoRequest.Spec.Runners,
+			Models: bentoRequest.Spec.Models,
+		},
+	}
+
+	if dockerConfigJsonSecretName != "" {
+		bento_.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
+			{
+				Name: dockerConfigJsonSecretName,
+			},
+		}
+	}
+
+	if bento != nil {
+		bento_.Spec.Context = resourcesv1alpha1.BentoContext{
+			BentomlVersion: bento.Manifest.BentomlVersion,
+		}
+		bento_.Spec.Runners = make([]resourcesv1alpha1.BentoRunner, 0)
+		for _, runner := range bento.Manifest.Runners {
+			bento_.Spec.Runners = append(bento_.Spec.Runners, resourcesv1alpha1.BentoRunner{
+				Name: runner.Name,
+				RunnableType: runner.RunnableType,
+				ModelTags: runner.Models,
+			})
+		}
+		bento_.Spec.Models = make([]resourcesv1alpha1.BentoModel, 0)
+		for _, modelTag := range bento.Manifest.Models {
+			bento_.Spec.Models = append(bento_.Spec.Models, resourcesv1alpha1.BentoModel{
+				Tag: modelTag,
+			})
+		}
+	}
+
+	return
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *BentoRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	pred := predicate.GenerationChangedPredicate{}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&resourcesv1alpha1.BentoRequest{}).
+		Owns(&resourcesv1alpha1.Bento{}).
+		Owns(&corev1.Pod{}).
+		WithEventFilter(pred).
 		Complete(r)
 }
