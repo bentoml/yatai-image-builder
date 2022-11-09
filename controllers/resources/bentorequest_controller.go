@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
+	resourcesclient "github.com/bentoml/yatai-image-builder/generated/resources/clientset/versioned/typed/resources/v1alpha1"
 	"github.com/bentoml/yatai-image-builder/services"
 )
 
@@ -133,6 +134,18 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				ModelTags:    runner.Models,
 			})
 		}
+	}
+
+	restConf := ctrl.GetConfigOrDie()
+	bentocli, err := resourcesclient.NewForConfig(restConf)
+	if err != nil {
+		err = errors.Wrap(err, "Failed to create Bento client.")
+		return
+	}
+
+	_, err = bentocli.Bentos(bentoRequest.Namespace).Create(ctx, &bento_, metav1.CreateOptions{})
+	if k8serrors.IsAlreadyExists(err) {
+		_, err = bentocli.Bentos(bentoRequest.Namespace).Update(ctx, &bento_, metav1.UpdateOptions{})
 	}
 
 	return

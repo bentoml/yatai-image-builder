@@ -66,6 +66,7 @@ type BentoStatus struct {
 	Ready bool `json:"ready"`
 }
 
+//+genclient
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
