@@ -1,6 +1,6 @@
 apiVersion: v2
-name: yatai-deployment
-description: The deployment component for Yatai
+name: yatai-image-builder
+description: The image-builder component for Yatai
 
 # A chart can be either an 'application' or a 'library' chart.
 #

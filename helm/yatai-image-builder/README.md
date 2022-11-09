@@ -1,1 +1,1 @@
-# yatai-deployment-chart
+# yatai-image-builder helm chart

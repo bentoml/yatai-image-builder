@@ -12,12 +12,6 @@ image:
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
 
-defaultDomainImage:
-  repository: yatai-default-domain
-  pullPolicy: IfNotPresent
-  # Overrides the image tag whose default is the chart appVersion.
-  tag: "0.0.2"
-
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
@@ -73,27 +67,6 @@ tolerations: []
 
 affinity: {}
 
-layers:
-  network:
-    ingressClass: nginx
-    ingressAnnotations: {}
-
-    # To configure DNS for Yatai BentoDeployment, take an External IP or CNAME from setting up networking, and configure it with your DNS provider as follows:
-    #   If the networking layer produced an External IP address, then configure a wildcard `A` record for the domain:
-    #       ```
-    #       # Here yatai.example.com is the domain suffix for your cluster
-    #       *.yatai.example.com == A 10.0.0.1
-    #       ```
-    #   If the networking layer produced a `CNAME`, then configure a CNAME record for the domain:
-    #       ```
-    #       # Here yatai.example.com is the domain suffix for your cluster
-    #       *.yatai.example.com == CNAME a317a278525d111e89f272a164fd35fb-1510370581.eu-central-1.elb.amazonaws.com
-    #       ```
-    #   Then set `yatai.example.com` as domainSuffix field here. If you don't set it, Yatai will automatically generate a domain suffix for your bento deployment.
-    domainSuffix: ''
-
-    automaticDomainSuffixGeneration: true
-
 yataiSystem:
   namespace: "yatai-system"
   serviceAccountName: "yatai"
@@ -116,4 +89,3 @@ dockerRegistry:
 internalImages:
   curl: quay.io/bentoml/curl:0.0.1
   kaniko: quay.io/bentoml/kaniko:1.9.1
-  metricsTransformer: quay.io/bentoml/yatai-bento-metrics-transformer:0.0.2

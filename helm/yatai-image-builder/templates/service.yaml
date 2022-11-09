@@ -1,14 +1,14 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "yatai-deployment.fullname" . }}-webhook-service
+  name: {{ include "yatai-image-builder.fullname" . }}-webhook-service
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "yatai-deployment.labels" . | nindent 4 }}
+    {{- include "yatai-image-builder.labels" . | nindent 4 }}
 spec:
   ports:
   - port: 443
     protocol: TCP
     targetPort: 9443
   selector:
-    {{- include "yatai-deployment.selectorLabels" . | nindent 4 }}
+    {{- include "yatai-image-builder.selectorLabels" . | nindent 4 }}
