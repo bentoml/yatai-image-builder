@@ -1,0 +1,119 @@
+# Default values for yatai-image-builder.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+registry: quay.io/bentoml
+
+image:
+  repository: yatai-image-builder
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+defaultDomainImage:
+  repository: yatai-default-domain
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "0.0.2"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+layers:
+  network:
+    ingressClass: nginx
+    ingressAnnotations: {}
+
+    # To configure DNS for Yatai BentoDeployment, take an External IP or CNAME from setting up networking, and configure it with your DNS provider as follows:
+    #   If the networking layer produced an External IP address, then configure a wildcard `A` record for the domain:
+    #       ```
+    #       # Here yatai.example.com is the domain suffix for your cluster
+    #       *.yatai.example.com == A 10.0.0.1
+    #       ```
+    #   If the networking layer produced a `CNAME`, then configure a CNAME record for the domain:
+    #       ```
+    #       # Here yatai.example.com is the domain suffix for your cluster
+    #       *.yatai.example.com == CNAME a317a278525d111e89f272a164fd35fb-1510370581.eu-central-1.elb.amazonaws.com
+    #       ```
+    #   Then set `yatai.example.com` as domainSuffix field here. If you don't set it, Yatai will automatically generate a domain suffix for your bento deployment.
+    domainSuffix: ''
+
+    automaticDomainSuffixGeneration: true
+
+yataiSystem:
+  namespace: "yatai-system"
+  serviceAccountName: "yatai"
+
+yatai:
+  endpoint: http://yatai.yatai-system.svc.cluster.local
+  apiToken: ''
+  clusterName: default
+
+dockerRegistry:
+  server: ''
+  inClusterServer: ''
+  username: ''
+  password: ''
+  passwordExistingSecretName: ''
+  passwordExistingSecretKey: ''
+  secure: true
+  bentoRepositoryName: yatai-bentos
+
+internalImages:
+  curl: quay.io/bentoml/curl:0.0.1
+  kaniko: quay.io/bentoml/kaniko:1.9.1
+  metricsTransformer: quay.io/bentoml/yatai-bento-metrics-transformer:0.0.2

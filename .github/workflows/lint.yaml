@@ -1,0 +1,86 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - main
+      - v1.0.0
+  pull_request:
+    branches:
+      - main
+      - v1.0.0
+
+  workflow_dispatch:
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    outputs:
+      golang: ${{ steps.filter.outputs.golang }}
+      helmcharts: ${{ steps.filter.outputs.helmcharts }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          base: 'main'
+          filters: |
+            golang:
+              - "apis/**"
+              - "config/**"
+              - "controllers/**"
+              - "generated/**"
+              - "hack/**"
+              - "services/**"
+              - "yatai-client/**"
+            helmcharts:
+              - "helm/**"
+
+  golint:
+    runs-on: ubuntu-latest
+
+    needs:
+      - diff
+
+    if: ${{ (github.event_name == 'pull_request' && needs.diff.outputs.golang == 'true') || github.event_name == 'push' }}
+
+    steps:
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '1.18' # The Go version to download (if necessary) and use.
+
+      - uses: actions/checkout@v3
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: 'v1.49.0'
+
+  helmchartslint:
+    runs-on: ubuntu-latest
+
+    needs:
+      - diff
+
+    if: ${{ (github.event_name == 'pull_request' && needs.diff.outputs.helmcharts == 'true') || github.event_name == 'push' }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Helm
+        uses: azure/setup-helm@v1
+        with:
+          version: v3.8.1
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.2.1
+
+      - name: Render Helm Template
+        working-directory: ./helm/yatai-image-builder
+        run: make template
+
+
+concurrency:
+  group: yatai-image-builder-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+

@@ -1,0 +1,11 @@
+Verify the installation
+
+Run the following command:
+
+kubectl -n {{ .Release.Namespace }} get pod -l app.kubernetes.io/name=yatai-image-builder
+
+The output should be something like this:
+
+NAME                                    READY   STATUS      RESTARTS   AGE
+yatai-image-builder-8b9fb98d7-xmtd5        1/1     Running     0          67s
+

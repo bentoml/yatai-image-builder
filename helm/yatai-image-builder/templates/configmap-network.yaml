@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: network
+  namespace: {{ .Release.Namespace }}
+  labels:
+  {{- include "yatai-image-builder.labels" . | nindent 4 }}
+data:
+  {{- if .Values.layers.network.ingressClass }}
+  ingress-class: {{ .Values.layers.network.ingressClass }}
+  {{- end }}
+  {{- if .Values.layers.network.ingressAnnotations }}
+  ingress-annotations: {{ mustToJson .Values.layers.network.ingressAnnotations | quote }}
+  {{- end }}
+  {{- if .Values.layers.network.domainSuffix }}
+  domain-suffix: {{ .Values.layers.network.domainSuffix }}
+  {{- end }}
+
