@@ -23,23 +23,23 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	commonconfig "github.com/bentoml/yatai-common/config"
 	commonconsts "github.com/bentoml/yatai-common/consts"
 	"github.com/bentoml/yatai-schemas/modelschemas"
 	"github.com/bentoml/yatai-schemas/schemasv1"
 
+	clientconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
+
 	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
 	yataiclient "github.com/bentoml/yatai-image-builder/yatai-client"
-	clientconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
 type imageBuilderService struct{}
 
 var ImageBuilderService = &imageBuilderService{}
 
-func MakeSureDockerConfigJsonSecret(ctx context.Context, kubeCli *kubernetes.Clientset, namespace string, dockerRegistryConf *commonconfig.DockerRegistryConfig) (dockerConfigJsonSecret *corev1.Secret, err error) {
+func MakeSureDockerConfigJSONSecret(ctx context.Context, kubeCli *kubernetes.Clientset, namespace string, dockerRegistryConf *commonconfig.DockerRegistryConfig) (dockerConfigJSONSecret *corev1.Secret, err error) {
 	if dockerRegistryConf.Username == "" {
 		return
 	}
@@ -62,34 +62,38 @@ func MakeSureDockerConfigJsonSecret(ctx context.Context, kubeCli *kubernetes.Cli
 
 	dockerConfigContent, err := json.Marshal(dockerConfigObj)
 	if err != nil {
+		err = errors.Wrap(err, "marshal docker config")
 		return nil, err
 	}
 
 	secretsCli := kubeCli.CoreV1().Secrets(namespace)
 
-	dockerConfigJsonSecret, err = secretsCli.Get(ctx, dockerConfigSecretName, metav1.GetOptions{})
+	dockerConfigJSONSecret, err = secretsCli.Get(ctx, dockerConfigSecretName, metav1.GetOptions{})
 	dockerConfigIsNotFound := apierrors.IsNotFound(err)
 	// nolint: gocritic
 	if err != nil && !dockerConfigIsNotFound {
+		err = errors.Wrap(err, "get docker config secret")
 		return nil, err
 	}
 	err = nil
 	if dockerConfigIsNotFound {
-		dockerConfigJsonSecret = &corev1.Secret{
-			Type: corev1.SecretTypeDockerConfigJson,
+		dockerConfigJSONSecret = &corev1.Secret{
+			Type:       corev1.SecretTypeDockerConfigJson,
 			ObjectMeta: metav1.ObjectMeta{Name: dockerConfigSecretName},
 			Data: map[string][]byte{
 				".dockerconfigjson": dockerConfigContent,
 			},
 		}
-		_, err_ := secretsCli.Create(ctx, dockerConfigJsonSecret, metav1.CreateOptions{})
+		_, err_ := secretsCli.Create(ctx, dockerConfigJSONSecret, metav1.CreateOptions{})
 		if err_ != nil {
-			dockerConfigJsonSecret, err = secretsCli.Get(ctx, dockerConfigSecretName, metav1.GetOptions{})
+			dockerConfigJSONSecret, err = secretsCli.Get(ctx, dockerConfigSecretName, metav1.GetOptions{})
 			dockerConfigIsNotFound = apierrors.IsNotFound(err)
 			if err != nil && !dockerConfigIsNotFound {
+				err = errors.Wrap(err, "get docker config secret")
 				return nil, err
 			}
 			if dockerConfigIsNotFound {
+				err_ = errors.Wrap(err_, "create docker config secret")
 				return nil, err_
 			}
 			if err != nil {
@@ -97,9 +101,10 @@ func MakeSureDockerConfigJsonSecret(ctx context.Context, kubeCli *kubernetes.Cli
 			}
 		}
 	} else {
-		dockerConfigJsonSecret.Data[".dockerconfigjson"] = dockerConfigContent
-		_, err = secretsCli.Update(ctx, dockerConfigJsonSecret, metav1.UpdateOptions{})
+		dockerConfigJSONSecret.Data[".dockerconfigjson"] = dockerConfigContent
+		_, err = secretsCli.Update(ctx, dockerConfigJSONSecret, metav1.UpdateOptions{})
 		if err != nil {
+			err = errors.Wrap(err, "update docker config secret")
 			return nil, err
 		}
 	}
@@ -214,21 +219,21 @@ func checkImageExists(dockerRegistry modelschemas.DockerRegistrySchema, imageNam
 }
 
 type CreateImageBuilderPodOption struct {
-	BentoRequest *resourcesv1alpha1.BentoRequest
-	EventRecorder   record.EventRecorder
-	Logger logr.Logger
+	BentoRequest     *resourcesv1alpha1.BentoRequest
+	EventRecorder    record.EventRecorder
+	Logger           logr.Logger
 	RecreateIfFailed bool
 }
 
-func (s *imageBuilderService) CreateImageBuilderPod(ctx context.Context, opt CreateImageBuilderPodOption) (pod *corev1.Pod, bento *schemasv1.BentoFullSchema, imageName, dockerConfigJsonSecretName string, err error) {
+func (s *imageBuilderService) CreateImageBuilderPod(ctx context.Context, opt CreateImageBuilderPodOption) (pod *corev1.Pod, bento *schemasv1.BentoFullSchema, imageName, dockerConfigJSONSecretName string, err error) {
 	bentoRepositoryName, _, bentoVersion := xstrings.Partition(opt.BentoRequest.Spec.BentoTag, ":")
 	kubeName := strcase.ToKebab(fmt.Sprintf("yatai-bento-image-builder-%s", opt.BentoRequest.Name))
 	kubeLabels := map[string]string{
-		commonconsts.KubeLabelIsBentoImageBuilder: "true",
+		commonconsts.KubeLabelIsBentoImageBuilder:  "true",
 		commonconsts.KubeLabelYataiBentoRepository: bentoRepositoryName,
 		commonconsts.KubeLabelYataiBento:           bentoVersion,
 	}
-	restConfig := config.GetConfigOrDie()
+	restConfig := clientconfig.GetConfigOrDie()
 	kubeCli, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		err = errors.Wrap(err, "create kubernetes clientset")
@@ -283,11 +288,11 @@ func (s *imageBuilderService) CreateImageBuilderPod(ctx context.Context, opt Cre
 	logs := opt.Logger.WithValues("imageName", inClusterImageName)
 	logs.Info(fmt.Sprintf("Creating image builder pod %s", kubeName))
 
-	dockerConfigJsonSecretName = opt.BentoRequest.Spec.DockerConfigJsonSecretName
+	dockerConfigJSONSecretName = opt.BentoRequest.Spec.DockerConfigJSONSecretName
 
 	dockerRegistryInsecure := opt.BentoRequest.Annotations[commonconsts.KubeAnnotationDockerRegistryInsecure] == "true"
 
-	if dockerConfigJsonSecretName == "" {
+	if dockerConfigJSONSecretName == "" {
 		var dockerRegistryConf *commonconfig.DockerRegistryConfig
 		dockerRegistryConf, err = commonconfig.GetDockerRegistryConfig(ctx, kubeCli)
 		if err != nil {
@@ -297,14 +302,14 @@ func (s *imageBuilderService) CreateImageBuilderPod(ctx context.Context, opt Cre
 		dockerRegistryInsecure = !dockerRegistryConf.Secure
 		var dockerConfigSecret *corev1.Secret
 		opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Making sure docker config secret %s in namespace %s", commonconsts.KubeSecretNameRegcred, opt.BentoRequest.Namespace)
-		dockerConfigSecret, err = MakeSureDockerConfigJsonSecret(ctx, kubeCli, opt.BentoRequest.Namespace, dockerRegistryConf)
+		dockerConfigSecret, err = MakeSureDockerConfigJSONSecret(ctx, kubeCli, opt.BentoRequest.Namespace, dockerRegistryConf)
 		if err != nil {
 			err = errors.Wrap(err, "make sure docker config secret")
 			return
 		}
 		opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Docker config secret %s in namespace %s is ready", commonconsts.KubeSecretNameRegcred, opt.BentoRequest.Namespace)
 		if dockerConfigSecret != nil {
-			dockerConfigJsonSecretName = dockerConfigSecret.Name
+			dockerConfigJSONSecretName = dockerConfigSecret.Name
 		}
 	}
 
@@ -334,12 +339,12 @@ func (s *imageBuilderService) CreateImageBuilderPod(ctx context.Context, opt Cre
 		},
 	}
 
-	if dockerConfigJsonSecretName != "" {
+	if dockerConfigJSONSecretName != "" {
 		volumes = append(volumes, corev1.Volume{
-			Name: dockerConfigJsonSecretName,
+			Name: dockerConfigJSONSecretName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: dockerConfigJsonSecretName,
+					SecretName: dockerConfigJSONSecretName,
 					Items: []corev1.KeyToPath{
 						{
 							Key:  ".dockerconfigjson",
@@ -350,12 +355,12 @@ func (s *imageBuilderService) CreateImageBuilderPod(ctx context.Context, opt Cre
 			},
 		})
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      dockerConfigJsonSecretName,
+			Name:      dockerConfigJSONSecretName,
 			MountPath: "/kaniko/.docker/",
 		})
 	}
 
-	yataiApiTokenSecretName := ""
+	yataiAPITokenSecretName := ""
 	bentoDownloadURL := opt.BentoRequest.Spec.DownloadURL
 	bentoDownloadHeader := ""
 
@@ -397,42 +402,43 @@ func (s *imageBuilderService) CreateImageBuilderPod(ctx context.Context, opt Cre
 			bentoDownloadHeader = fmt.Sprintf("%s: %s:%s:$%s", commonconsts.YataiApiTokenHeaderName, commonconsts.YataiImageBuilderComponentName, yataiConf.ClusterName, commonconsts.EnvYataiApiToken)
 		}
 
-		yataiApiTokenSecretName = "yatai-api-token"
+		// nolint: gosec
+		yataiAPITokenSecretName = "yatai-api-token"
 
-		yataiApiTokenSecret := &corev1.Secret{
+		yataiAPITokenSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: yataiApiTokenSecretName,
+				Name: yataiAPITokenSecretName,
 			},
 			StringData: map[string]string{
 				commonconsts.EnvYataiApiToken: yataiConf.ApiToken,
 			},
 		}
 
-		opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Getting secret %s in namespace %s", yataiApiTokenSecretName, opt.BentoRequest.Namespace)
-		_, err = kubeCli.CoreV1().Secrets(opt.BentoRequest.Namespace).Get(ctx, yataiApiTokenSecretName, metav1.GetOptions{})
+		opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Getting secret %s in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
+		_, err = kubeCli.CoreV1().Secrets(opt.BentoRequest.Namespace).Get(ctx, yataiAPITokenSecretName, metav1.GetOptions{})
 		isNotFound := apierrors.IsNotFound(err)
 		if err != nil && !isNotFound {
-			err = errors.Wrapf(err, "failed to get secret %s", yataiApiTokenSecretName)
+			err = errors.Wrapf(err, "failed to get secret %s", yataiAPITokenSecretName)
 			return
 		}
 
 		if isNotFound {
-			opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Secret %s is not found, so creating it in namespace %s", yataiApiTokenSecretName, opt.BentoRequest.Namespace)
-			_, err = kubeCli.CoreV1().Secrets(opt.BentoRequest.Namespace).Create(ctx, yataiApiTokenSecret, metav1.CreateOptions{})
+			opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Secret %s is not found, so creating it in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
+			_, err = kubeCli.CoreV1().Secrets(opt.BentoRequest.Namespace).Create(ctx, yataiAPITokenSecret, metav1.CreateOptions{})
 			isExists := apierrors.IsAlreadyExists(err)
 			if err != nil && !isExists {
-				err = errors.Wrapf(err, "failed to create secret %s", yataiApiTokenSecretName)
+				err = errors.Wrapf(err, "failed to create secret %s", yataiAPITokenSecretName)
 				return
 			}
-			opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Secret %s is created in namespace %s", yataiApiTokenSecretName, opt.BentoRequest.Namespace)
+			opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Secret %s is created in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
 		} else {
-			opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Secret %s is found in namespace %s, so updating it", yataiApiTokenSecretName, opt.BentoRequest.Namespace)
-			_, err = kubeCli.CoreV1().Secrets(opt.BentoRequest.Namespace).Update(ctx, yataiApiTokenSecret, metav1.UpdateOptions{})
+			opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Secret %s is found in namespace %s, so updating it", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
+			_, err = kubeCli.CoreV1().Secrets(opt.BentoRequest.Namespace).Update(ctx, yataiAPITokenSecret, metav1.UpdateOptions{})
 			if err != nil {
-				err = errors.Wrapf(err, "failed to update secret %s", yataiApiTokenSecretName)
+				err = errors.Wrapf(err, "failed to update secret %s", yataiAPITokenSecretName)
 				return
 			}
-			opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Secret %s is updated in namespace %s", yataiApiTokenSecretName, opt.BentoRequest.Namespace)
+			opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Secret %s is updated in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
 		}
 	}
 
@@ -487,13 +493,13 @@ echo "Done"
 
 	downloaderContainerEnvFrom := opt.BentoRequest.Spec.DownloaderContainerEnvFrom
 
-	if yataiApiTokenSecretName != "" {
+	if yataiAPITokenSecretName != "" {
 		downloaderContainerEnvFrom = append(downloaderContainerEnvFrom, corev1.EnvFromSource{
-				SecretRef: &corev1.SecretEnvSource{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: yataiApiTokenSecretName,
-					},
+			SecretRef: &corev1.SecretEnvSource{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: yataiAPITokenSecretName,
 				},
+			},
 		})
 	}
 
@@ -507,8 +513,8 @@ echo "Done"
 				bentoDownloadCommand,
 			},
 			VolumeMounts: volumeMounts,
-			Resources: downloaderContainerResources,
-			EnvFrom: downloaderContainerEnvFrom,
+			Resources:    downloaderContainerResources,
+			EnvFrom:      downloaderContainerEnvFrom,
 		},
 	}
 
@@ -550,7 +556,7 @@ echo "Done"
 				err = errors.New("yatai endpoint is empty")
 				return
 			}
-			
+
 			var model_ *schemasv1.ModelFullSchema
 			opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Getting model %s from yatai service", model.Tag)
 			model_, err = yataiClient.GetModel(ctx, modelRepositoryName, modelVersion)
@@ -561,15 +567,15 @@ echo "Done"
 			opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Model %s is got from yatai service", model.Tag)
 
 			if model_.TransmissionStrategy == modelschemas.TransmissionStrategyPresignedURL {
-				var model__ *schemasv1.ModelSchema
+				var model0 *schemasv1.ModelSchema
 				opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Getting presigned url for model %s from yatai service", model.Tag)
-				model__, err = yataiClient.PresignModelDownloadURL(ctx, modelRepositoryName, modelVersion)
+				model0, err = yataiClient.PresignModelDownloadURL(ctx, modelRepositoryName, modelVersion)
 				if err != nil {
 					err = errors.Wrap(err, "presign model download url")
 					return
 				}
 				opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Presigned url for model %s is got from yatai service", model.Tag)
-				modelDownloadURL = model__.PresignedDownloadUrl
+				modelDownloadURL = model0.PresignedDownloadUrl
 			} else {
 				modelDownloadURL = fmt.Sprintf("%s/api/v1/model_repositories/%s/models/%s/download", yataiConf.Endpoint, modelRepositoryName, modelVersion)
 				modelDownloadHeader = fmt.Sprintf("%s: %s:%s:$%s", commonconsts.YataiApiTokenHeaderName, commonconsts.YataiImageBuilderComponentName, yataiConf.ClusterName, commonconsts.EnvYataiApiToken)
@@ -614,8 +620,8 @@ echo "Done"
 				modelDownloadCommand,
 			},
 			VolumeMounts: volumeMounts,
-			Resources: downloaderContainerResources,
-			EnvFrom: downloaderContainerEnvFrom,
+			Resources:    downloaderContainerResources,
+			EnvFrom:      downloaderContainerEnvFrom,
 		})
 	}
 
@@ -817,7 +823,7 @@ echo "Done"
 					Env:             envs,
 					TTY:             true,
 					Stdin:           true,
-					Resources: opt.BentoRequest.Spec.ImageBuilderContainerResources,
+					Resources:       opt.BentoRequest.Spec.ImageBuilderContainerResources,
 				},
 			},
 		},

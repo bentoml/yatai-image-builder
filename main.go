@@ -89,13 +89,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.BentoReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Bento")
-		os.Exit(1)
-	}
 	if err = (&resourcescontrollers.BentoRequestReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),

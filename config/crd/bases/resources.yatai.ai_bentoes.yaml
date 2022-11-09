@@ -13,7 +13,7 @@ spec:
     listKind: BentoList
     plural: bentoes
     singular: bento
-  scope: Cluster
+  scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
@@ -35,13 +35,53 @@ spec:
           spec:
             description: BentoSpec defines the desired state of Bento
             properties:
-              foo:
-                description: Foo is an example field of Bento. Edit bento_types.go
-                  to remove/update
+              context:
+                properties:
+                  bentomlVersion:
+                    type: string
+                type: object
+              image:
                 type: string
+              imagePullSecrets:
+                items:
+                  description: LocalObjectReference contains enough information to
+                    let you locate the referenced object inside the same namespace.
+                  properties:
+                    name:
+                      description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        TODO: Add other useful fields. apiVersion, kind, uid?'
+                      type: string
+                  type: object
+                  x-kubernetes-map-type: atomic
+                type: array
+              runners:
+                items:
+                  properties:
+                    modelTags:
+                      items:
+                        type: string
+                      type: array
+                    name:
+                      type: string
+                    runnableType:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+            required:
+            - image
             type: object
           status:
             description: BentoStatus defines the observed state of Bento
+            properties:
+              ready:
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file'
+                type: boolean
+            required:
+            - ready
             type: object
         type: object
     served: true

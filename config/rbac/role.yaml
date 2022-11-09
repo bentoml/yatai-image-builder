@@ -8,7 +8,7 @@ rules:
 - apiGroups:
   - resources.yatai.ai
   resources:
-  - bentoes
+  - bentorequests
   verbs:
   - create
   - delete
@@ -20,13 +20,13 @@ rules:
 - apiGroups:
   - resources.yatai.ai
   resources:
-  - bentoes/finalizers
+  - bentorequests/finalizers
   verbs:
   - update
 - apiGroups:
   - resources.yatai.ai
   resources:
-  - bentoes/status
+  - bentorequests/status
   verbs:
   - get
   - patch

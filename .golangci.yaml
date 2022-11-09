@@ -45,15 +45,24 @@ linters:
   presets:
     - bugs
     - unused
+    - performance
   disable:
-    - logrlint
-  enable:
+    - maligned
+    - deadcode
     - scopelint
+    - structcheck
+    - varcheck
+    - rowserrcheck
+    - sqlclosecheck
+  enable:
+    - tagliatelle
+    - stylecheck
+    - wrapcheck
+    - nilnil
+    - unused
     - bodyclose
     - ineffassign
     - exportloopref
-    - sqlclosecheck
-    - unused
     - typecheck
     - gofmt
     - unconvert
@@ -67,4 +76,3 @@ linters:
     - dogsled
     - whitespace
     - misspell
-    - rowserrcheck

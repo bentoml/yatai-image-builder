@@ -35,15 +35,15 @@ type BentoContext struct {
 
 type BentoModel struct {
 	// +kubebuilder:validation:Required
-	Tag string `json:"tag"`
-	DownloadURL string `json:"downloadURL,omitempty"`
+	Tag         string `json:"tag"`
+	DownloadURL string `json:"downloadUrl,omitempty"`
 }
 
 type BentoRunner struct {
 	// +kubebuilder:validation:Required
-	Name string `json:"name"`
-	RunnableType string `json:"runnableType,omitempty"`
-	ModelTags []string `json:"modelTags,omitempty"`
+	Name         string   `json:"name"`
+	RunnableType string   `json:"runnableType,omitempty"`
+	ModelTags    []string `json:"modelTags,omitempty"`
 }
 
 // BentoSpec defines the desired state of Bento
@@ -52,10 +52,9 @@ type BentoSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// +kubebuilder:validation:Required
-	Image string `json:"image"`
-	Context BentoContext `json:"context,omitempty"`
+	Image   string        `json:"image"`
+	Context BentoContext  `json:"context,omitempty"`
 	Runners []BentoRunner `json:"runners,omitempty"`
-	Models []BentoModel `json:"models,omitempty"`
 
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 }

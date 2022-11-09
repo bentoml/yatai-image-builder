@@ -43,11 +43,11 @@ type BentoRequestSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// +kubebuilder:validation:Required
-	BentoTag string `json:"bentoTag"`
-	DownloadURL string `json:"downloadURL,omitempty"`
-	Context BentoContext `json:"context,omitempty"`
-	Runners []BentoRunner `json:"runners,omitempty"`
-	Models []BentoModel `json:"models,omitempty"`
+	BentoTag    string        `json:"bentoTag"`
+	DownloadURL string        `json:"downloadUrl,omitempty"`
+	Context     BentoContext  `json:"context,omitempty"`
+	Runners     []BentoRunner `json:"runners,omitempty"`
+	Models      []BentoModel  `json:"models,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	ImageBuilderExtraPodMetadata ExtraPodMetadata `json:"imageBuilderExtraPodMetadata,omitempty"`
@@ -57,7 +57,7 @@ type BentoRequestSpec struct {
 	ImageBuilderContainerResources corev1.ResourceRequirements `json:"imageBuilderContainerResources,omitempty"`
 
 	// +kubebuilder:validation:Optional
-	DockerConfigJsonSecretName string `json:"dockerConfigJsonSecretName,omitempty"`
+	DockerConfigJSONSecretName string `json:"dockerConfigJsonSecretName,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	DownloaderContainerEnvFrom []corev1.EnvFromSource `json:"downloaderContainerEnvFrom,omitempty"`

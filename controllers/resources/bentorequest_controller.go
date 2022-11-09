@@ -19,9 +19,10 @@ package resources
 import (
 	"context"
 
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -36,7 +37,7 @@ import (
 // BentoRequestReconciler reconciles a BentoRequest object
 type BentoRequestReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
 }
 
@@ -83,10 +84,10 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "ReconcileError", "Failed to reconcile BentoRequest: %v", err)
 	}()
 
-	pod, bento, imageName, dockerConfigJsonSecretName, err := services.ImageBuilderService.CreateImageBuilderPod(ctx, services.CreateImageBuilderPodOption{
-		BentoRequest: bentoRequest,
-		EventRecorder: r.Recorder,
-		Logger: logs,
+	pod, bento, imageName, dockerConfigJSONSecretName, err := services.ImageBuilderService.CreateImageBuilderPod(ctx, services.CreateImageBuilderPodOption{
+		BentoRequest:     bentoRequest,
+		EventRecorder:    r.Recorder,
+		Logger:           logs,
 		RecreateIfFailed: true,
 	})
 	if err != nil {
@@ -102,21 +103,20 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	bento_ := resourcesv1alpha1.Bento{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: bentoRequest.Name,
+			Name:      bentoRequest.Name,
 			Namespace: bentoRequest.Namespace,
 		},
 		Spec: resourcesv1alpha1.BentoSpec{
-			Image: imageName,
+			Image:   imageName,
 			Context: bentoRequest.Spec.Context,
 			Runners: bentoRequest.Spec.Runners,
-			Models: bentoRequest.Spec.Models,
 		},
 	}
 
-	if dockerConfigJsonSecretName != "" {
+	if dockerConfigJSONSecretName != "" {
 		bento_.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
 			{
-				Name: dockerConfigJsonSecretName,
+				Name: dockerConfigJSONSecretName,
 			},
 		}
 	}
@@ -128,15 +128,9 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		bento_.Spec.Runners = make([]resourcesv1alpha1.BentoRunner, 0)
 		for _, runner := range bento.Manifest.Runners {
 			bento_.Spec.Runners = append(bento_.Spec.Runners, resourcesv1alpha1.BentoRunner{
-				Name: runner.Name,
+				Name:         runner.Name,
 				RunnableType: runner.RunnableType,
-				ModelTags: runner.Models,
-			})
-		}
-		bento_.Spec.Models = make([]resourcesv1alpha1.BentoModel, 0)
-		for _, modelTag := range bento.Manifest.Models {
-			bento_.Spec.Models = append(bento_.Spec.Models, resourcesv1alpha1.BentoModel{
-				Tag: modelTag,
+				ModelTags:    runner.Models,
 			})
 		}
 	}
@@ -147,10 +141,11 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 // SetupWithManager sets up the controller with the Manager.
 func (r *BentoRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	pred := predicate.GenerationChangedPredicate{}
-	return ctrl.NewControllerManagedBy(mgr).
+	err := ctrl.NewControllerManagedBy(mgr).
 		For(&resourcesv1alpha1.BentoRequest{}).
 		Owns(&resourcesv1alpha1.Bento{}).
 		Owns(&corev1.Pod{}).
 		WithEventFilter(pred).
 		Complete(r)
+	return errors.Wrap(err, "failed to setup BentoRequest controller")
 }
