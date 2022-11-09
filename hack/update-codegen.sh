@@ -12,7 +12,7 @@ MODULE=github.com/bentoml/yatai-deployment
 # api package
 APIS_PKG=apis
 # generated output package
-OUTPUT_PKG=generated/serving
+OUTPUT_PKG=generated/resources
 # group-version such as foo:v1alpha1
 GROUP=resources
 GROUP_VERSIONS="${GROUP}:v1alpha1"
