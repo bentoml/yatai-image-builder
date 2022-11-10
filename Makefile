@@ -3,7 +3,14 @@
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 0.0.1
+GIT_COMMIT := $(shell git describe --match=NeVeRmAtCh --tags --always --dirty | cut -c 1-7)
+BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+ifndef VERSION
+	VERSION := $(shell git describe --tags `git rev-list --tags --max-count=1` | sed 's/v\(\)/\1/')
+endif
+
+PKG := github.com/bentoml/yatai-image-builder
+VERSION_BUILDFLAGS := -X '$(PKG)/version.GitCommit=$(GIT_COMMIT)' -X '$(PKG)/version.Version=$(VERSION)' -X '$(PKG)/version.BuildDate=$(BUILD_DATE)'
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
@@ -109,15 +116,15 @@ test: manifests generate fmt vet envtest ## Run tests.
 
 .PHONY: build
 build: generate fmt vet ## Build manager binary.
-	go build -o bin/manager main.go
+	go build -ldflags "$(VERSION_BUILDFLAGS)" -o bin/manager main.go
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./main.go
+	go run -ldflags "$(VERSION_BUILDFLAGS)" ./main.go
 
 .PHONY: docker-build
 docker-build: test ## Build docker image with the manager.
-	docker build -t ${IMG} .
+	docker build --build-arg VERSION_BUILDFLAGS="$(VERSION_BUILDFLAGS)" -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.

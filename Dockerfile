@@ -11,11 +11,18 @@ RUN go mod download
 
 # Copy the go source
 COPY main.go main.go
-COPY api/ api/
+COPY apis/ apis/
 COPY controllers/ controllers/
+COPY services/ services/
+COPY version/ version/
+COPY yatai-client/ yatai-client/
+COPY generated/ generated/
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager main.go
+ARG VERSION_BUILDFLAGS
+
+RUN echo "Building with flags: "${VERSION_BUILDFLAGS}" ..."
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "${VERSION_BUILDFLAGS}" -a -o manager main.go
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
