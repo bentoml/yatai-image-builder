@@ -120,7 +120,8 @@ func getYataiClient(ctx context.Context) (yataiClient *yataiclient.YataiClient, 
 		return
 	}
 
-	yataiConf, err = commonconfig.GetYataiConfig(ctx, clientset, commonconsts.KubeSecretNameYataiImageBuilderSharedEnv, false)
+	yataiImageBuilderSharedEnvSecretName := commonconfig.GetYataiDeploymentSharedEnvSecretNameFromEnv()
+	yataiConf, err = commonconfig.GetYataiConfig(ctx, clientset, yataiImageBuilderSharedEnvSecretName, false)
 	if err != nil {
 		err = errors.Wrap(err, "get yatai config")
 		return

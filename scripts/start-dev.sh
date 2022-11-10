@@ -58,5 +58,5 @@ function trap_handler() {
 trap trap_handler EXIT
 
 echo "⌛ starting yatai-image-builder..."
-env $(kubectl -n yatai-image-builder get secret env -o jsonpath='{.data}' | $jq 'to_entries|map("\(.key)=\(.value|@base64d)")|.[]' | xargs) SYSTEM_NAMESPACE=yatai-image-builder DISABLE_WEBHOOKS=true make run
+env $(kubectl -n yatai-image-builder get secret yatai-image-builder-env -o jsonpath='{.data}' | $jq 'to_entries|map("\(.key)=\(.value|@base64d)")|.[]' | xargs) SYSTEM_NAMESPACE=yatai-image-builder DISABLE_WEBHOOKS=true make run
 
