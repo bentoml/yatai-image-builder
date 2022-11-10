@@ -123,7 +123,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 	go run -ldflags "$(VERSION_BUILDFLAGS)" ./main.go
 
 .PHONY: docker-build
-docker-build: test ## Build docker image with the manager.
+docker-build: ## Build docker image with the manager.
 	docker build --build-arg VERSION_BUILDFLAGS="$(VERSION_BUILDFLAGS)" -t ${IMG} .
 
 .PHONY: docker-push
