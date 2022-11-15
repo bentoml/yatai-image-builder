@@ -229,12 +229,12 @@ helm repo add ${helm_repo_name} ${helm_repo_url}
 helm repo update ${helm_repo_name}
 echo "🤖 installing yatai-image-builder..."
 helm upgrade --install yatai-image-builder ${helm_repo_name}/yatai-image-builder -n ${namespace} \
-  --set dockerRegistry.server=$DOCKER_REGISTRY_SERVER \
-  --set dockerRegistry.inClusterServer=$DOCKER_REGISTRY_IN_CLUSTER_SERVER \
-  --set dockerRegistry.username=$DOCKER_REGISTRY_USERNAME \
-  --set dockerRegistry.password=$DOCKER_REGISTRY_PASSWORD \
-  --set dockerRegistry.secure=$DOCKER_REGISTRY_SECURE \
-  --set dockerRegistry.bentoRepositoryName=$DOCKER_REGISTRY_BENTO_REPOSITORY_NAME \
+  --set dockerRegistry.server=${DOCKER_REGISTRY_SERVER} \
+  --set dockerRegistry.inClusterServer=${DOCKER_REGISTRY_IN_CLUSTER_SERVER} \
+  --set dockerRegistry.username=${DOCKER_REGISTRY_USERNAME} \
+  --set dockerRegistry.password=${DOCKER_REGISTRY_PASSWORD} \
+  --set dockerRegistry.secure=${DOCKER_REGISTRY_SECURE} \
+  --set dockerRegistry.bentoRepositoryName=${DOCKER_REGISTRY_BENTO_REPOSITORY_NAME} \
   --skip-crds=${UPGRADE_CRDS} \
   --devel=${DEVEL}
 
