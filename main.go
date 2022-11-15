@@ -90,8 +90,9 @@ func main() {
 	}
 
 	if err = (&resourcescontrollers.BentoRequestReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("yatai-image-builder"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "BentoRequest")
 		os.Exit(1)
