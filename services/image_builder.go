@@ -10,7 +10,6 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/banzaicloud/k8s-objectmatcher/patch"
 	"github.com/go-logr/logr"
 	"github.com/huandu/xstrings"
 	"github.com/iancoleman/strcase"
@@ -904,14 +903,7 @@ echo "Done"
 		}
 		err = nil
 	} else {
-		var patchResult *patch.PatchResult
-		patchResult, err = patch.DefaultPatchMaker.Calculate(oldPod, pod)
-		if err != nil {
-			err = errors.Wrapf(err, "failed to calculate patch for pod %s", kubeName)
-			return
-		}
-
-		if !patchResult.IsEmpty() || (oldPod.Status.Phase == corev1.PodFailed && opt.RecreateIfFailed) {
+		if oldPod.Status.Phase == corev1.PodFailed && opt.RecreateIfFailed {
 			err = podsCli.Delete(ctx, kubeName, metav1.DeleteOptions{})
 			if err != nil {
 				err = errors.Wrapf(err, "failed to delete pod %s", kubeName)
