@@ -215,10 +215,13 @@ UPGRADE_CRDS=${UPGRADE_CRDS:-false}
 
 if [ "${UPGRADE_CRDS}" = "true" ]; then
   echo "🤖 installing yatai-image-builder CRDs..."
-  kubectl apply -f https://raw.githubusercontent.com/bentoml/yatai-image-builder/main/helm/yatai-image-builder/crds/bentodeployment.yaml
-  echo "⏳ waiting for yatai-image-builder CRDs to be established..."
-  kubectl wait --for condition=established --timeout=120s crd/bentodeployments.serving.yatai.ai
-  echo "✅ yatai-image-builder CRDs are established"
+  kubectl apply -f https://raw.githubusercontent.com/bentoml/yatai-image-builder/main/helm/yatai-image-builder/crds/bentorequest.yaml
+  echo "⏳ waiting for BentoRequest CRD to be established..."
+  kubectl wait --for condition=established --timeout=120s crd/bentorequests.resources.yatai.ai
+  echo "✅ BentoRequest CRD are established"
+  echo "⏳ waiting for Bento CRD to be established..."
+  kubectl wait --for condition=established --timeout=120s crd/bentos.resources.yatai.ai
+  echo "✅ Bento CRD are established"
 fi
 
 helm repo remove ${helm_repo_name} 2> /dev/null || true
