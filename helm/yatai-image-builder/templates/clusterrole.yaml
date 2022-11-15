@@ -1,29 +1,12 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   name: {{ include "yatai-image-builder.serviceAccountName" . }}
-  namespace: {{ .Release.Namespace }}
 rules:
 - apiGroups:
-  - ""
+  - resources.yatai.ai
   resources:
-  - secrets
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - events
+  - bentorequests
   verbs:
   - create
   - delete
@@ -33,9 +16,15 @@ rules:
   - update
   - watch
 - apiGroups:
-  - events.k8s.io
+  - resources.yatai.ai
   resources:
-  - events
+  - bentorequests/status
+  verbs:
+  - update
+- apiGroups:
+  - resources.yatai.ai
+  resources:
+  - bentoes
   verbs:
   - create
   - delete
@@ -45,14 +34,20 @@ rules:
   - update
   - watch
 - apiGroups:
-  - coordination.k8s.io
+  - resources.yatai.ai
   resources:
-  - leases
+  - bentoes/status
+  verbs:
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - pods
   verbs:
   - create
   - delete
+  - update
+  - patch
   - get
   - list
-  - patch
-  - update
   - watch
