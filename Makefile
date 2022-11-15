@@ -244,3 +244,9 @@ catalog-push: ## Push a catalog image.
 update-codegen:
 	chmod +x ./hack/update-codegen.sh
 	./hack/update-codegen.sh
+
+start-dev:
+	./scripts/start-dev.sh
+
+stop-dev:
+	kubectl -n yatai-image-builder patch deploy/yatai-image-builder -p '{"spec":{"replicas":1}}'
