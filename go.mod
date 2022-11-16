@@ -3,8 +3,7 @@ module github.com/bentoml/yatai-image-builder
 go 1.18
 
 require (
-	github.com/banzaicloud/k8s-objectmatcher v1.8.0
-	github.com/bentoml/yatai-common v0.0.0-20221110045501-b8f304ef3ac2
+	github.com/bentoml/yatai-common v0.0.0-20221115112706-487d02768241
 	github.com/bentoml/yatai-schemas v0.0.0-20220929081535-497e588eac1f
 	github.com/huandu/xstrings v1.3.2
 	github.com/iancoleman/strcase v0.2.0
@@ -29,7 +28,6 @@ require (
 
 require (
 	cloud.google.com/go v0.97.0 // indirect
-	emperror.dev/errors v0.8.1 // indirect
 	github.com/Azure/go-autorest v14.2.0+incompatible // indirect
 	github.com/Azure/go-autorest/autorest v0.11.27 // indirect
 	github.com/Azure/go-autorest/autorest/adal v0.9.20 // indirect
