@@ -102,7 +102,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	bento_ := resourcesv1alpha1.Bento{
+	bentoCR := resourcesv1alpha1.Bento{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      bentoRequest.Name,
 			Namespace: bentoRequest.Namespace,
@@ -115,7 +115,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if dockerConfigJSONSecretName != "" {
-		bento_.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
+		bentoCR.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
 			{
 				Name: dockerConfigJSONSecretName,
 			},
@@ -123,12 +123,12 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if bento != nil {
-		bento_.Spec.Context = resourcesv1alpha1.BentoContext{
+		bentoCR.Spec.Context = resourcesv1alpha1.BentoContext{
 			BentomlVersion: bento.Manifest.BentomlVersion,
 		}
-		bento_.Spec.Runners = make([]resourcesv1alpha1.BentoRunner, 0)
+		bentoCR.Spec.Runners = make([]resourcesv1alpha1.BentoRunner, 0)
 		for _, runner := range bento.Manifest.Runners {
-			bento_.Spec.Runners = append(bento_.Spec.Runners, resourcesv1alpha1.BentoRunner{
+			bentoCR.Spec.Runners = append(bentoCR.Spec.Runners, resourcesv1alpha1.BentoRunner{
 				Name:         runner.Name,
 				RunnableType: runner.RunnableType,
 				ModelTags:    runner.Models,
@@ -139,13 +139,15 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	restConf := ctrl.GetConfigOrDie()
 	bentocli, err := resourcesclient.NewForConfig(restConf)
 	if err != nil {
-		err = errors.Wrap(err, "Failed to create Bento client.")
+		err = errors.Wrap(err, "create Bento client")
 		return
 	}
 
-	_, err = bentocli.Bentos(bentoRequest.Namespace).Create(ctx, &bento_, metav1.CreateOptions{})
+	_, err = bentocli.Bentos(bentoRequest.Namespace).Create(ctx, &bentoCR, metav1.CreateOptions{})
+	err = errors.Wrap(err, "create Bento resource")
 	if k8serrors.IsAlreadyExists(err) {
-		_, err = bentocli.Bentos(bentoRequest.Namespace).Update(ctx, &bento_, metav1.UpdateOptions{})
+		_, err = bentocli.Bentos(bentoRequest.Namespace).Update(ctx, &bentoCR, metav1.UpdateOptions{})
+		err = errors.Wrap(err, "update Bento resource")
 	}
 
 	return
