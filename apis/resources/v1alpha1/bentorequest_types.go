@@ -67,12 +67,16 @@ type BentoRequestSpec struct {
 type BentoRequestStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Ready bool `json:"ready"`
+	Ready        bool   `json:"ready"`
+	ErrorMessage string `json:"errorMessage,omitempty"`
 }
 
 //+genclient
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:printcolumn:name="BENTO-Tag",type="string",JSONPath=".spec.bentoTag",description="Bento Tag"
+//+kubebuilder:printcolumn:name="DOWNLOAD-URL",type="string",JSONPath=".spec.downloadUrl",description="Download URL"
+//+kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.ready",description="Ready"
 
 // BentoRequest is the Schema for the bentorequests API
 type BentoRequest struct {

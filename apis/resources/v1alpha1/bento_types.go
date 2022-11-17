@@ -69,6 +69,7 @@ type BentoStatus struct {
 //+genclient
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:printcolumn:name="Image",type="string",JSONPath=".spec.image",description="Image"
 
 // Bento is the Schema for the bentoes API
 type Bento struct {
