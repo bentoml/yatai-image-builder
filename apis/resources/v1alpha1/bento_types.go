@@ -52,6 +52,8 @@ type BentoSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// +kubebuilder:validation:Required
+	Tag string `json:"tag"`
+	// +kubebuilder:validation:Required
 	Image   string        `json:"image"`
 	Context BentoContext  `json:"context,omitempty"`
 	Runners []BentoRunner `json:"runners,omitempty"`
@@ -69,6 +71,7 @@ type BentoStatus struct {
 //+genclient
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:printcolumn:name="Tag",type="string",JSONPath=".spec.tag",description="Tag"
 //+kubebuilder:printcolumn:name="Image",type="string",JSONPath=".spec.image",description="Image"
 //+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 

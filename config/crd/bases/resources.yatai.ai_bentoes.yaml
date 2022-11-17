@@ -16,6 +16,10 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - description: Tag
+      jsonPath: .spec.tag
+      name: Tag
+      type: string
     - description: Image
       jsonPath: .spec.image
       name: Image
@@ -77,8 +81,11 @@ spec:
                   - name
                   type: object
                 type: array
+              tag:
+                type: string
             required:
             - image
+            - tag
             type: object
           status:
             description: BentoStatus defines the observed state of Bento
