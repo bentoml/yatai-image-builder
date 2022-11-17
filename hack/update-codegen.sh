@@ -32,12 +32,18 @@ echo "Generating clientset, informers, listers for ${GROUP_VERSIONS}..."
 #                  k8s.io/kubernetes. The output-base is needed for the generators to output into the vendor dir
 #                  instead of the $GOPATH directly. For normal projects this can be dropped.
 #bash "${CODEGEN_PKG}"/generate-groups.sh "client,informer,lister" \
-bash "${CODEGEN_PKG}"/generate-groups.sh all \
+bash "${CODEGEN_PKG}"/generate-groups.sh deepcopy \
   ${MODULE}/${OUTPUT_PKG} ${MODULE}/${APIS_PKG} \
   "${GROUP_VERSIONS}" \
   --go-header-file "${SCRIPT_ROOT}"/hack/boilerplate.go.txt \
   --output-base "${SCRIPT_ROOT}"
-#  --output-base "${SCRIPT_ROOT}/../../.."
+
+bash "${CODEGEN_PKG}"/generate-groups.sh "client,lister,informer" \
+  ${MODULE}/${OUTPUT_PKG} ${MODULE}/${APIS_PKG} \
+  "${GROUP_VERSIONS}" \
+  --go-header-file "${SCRIPT_ROOT}"/hack/boilerplate.go.txt \
+  --output-base "${SCRIPT_ROOT}" \
+  --plural-exceptions="Bento:Bentoes"
 
 echo "Generating clientset, informers, listers for ${GROUP_VERSIONS} done."
 

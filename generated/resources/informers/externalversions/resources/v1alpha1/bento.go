@@ -33,7 +33,7 @@ import (
 )
 
 // BentoInformer provides access to a shared informer and lister for
-// Bentos.
+// Bentoes.
 type BentoInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() v1alpha1.BentoLister
@@ -62,13 +62,13 @@ func NewFilteredBentoInformer(client versioned.Interface, namespace string, resy
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.ResourcesV1alpha1().Bentos(namespace).List(context.TODO(), options)
+				return client.ResourcesV1alpha1().Bentoes(namespace).List(context.TODO(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.ResourcesV1alpha1().Bentos(namespace).Watch(context.TODO(), options)
+				return client.ResourcesV1alpha1().Bentoes(namespace).Watch(context.TODO(), options)
 			},
 		},
 		&resourcesv1alpha1.Bento{},

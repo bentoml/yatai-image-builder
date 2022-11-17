@@ -30,20 +30,20 @@ import (
 	v1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
 )
 
-// FakeBentos implements BentoInterface
-type FakeBentos struct {
+// FakeBentoes implements BentoInterface
+type FakeBentoes struct {
 	Fake *FakeResourcesV1alpha1
 	ns   string
 }
 
-var bentosResource = schema.GroupVersionResource{Group: "resources.yatai.ai", Version: "v1alpha1", Resource: "bentos"}
+var bentoesResource = schema.GroupVersionResource{Group: "resources.yatai.ai", Version: "v1alpha1", Resource: "bentoes"}
 
-var bentosKind = schema.GroupVersionKind{Group: "resources.yatai.ai", Version: "v1alpha1", Kind: "Bento"}
+var bentoesKind = schema.GroupVersionKind{Group: "resources.yatai.ai", Version: "v1alpha1", Kind: "Bento"}
 
 // Get takes name of the bento, and returns the corresponding bento object, and an error if there is any.
-func (c *FakeBentos) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Bento, err error) {
+func (c *FakeBentoes) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Bento, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(bentosResource, c.ns, name), &v1alpha1.Bento{})
+		Invokes(testing.NewGetAction(bentoesResource, c.ns, name), &v1alpha1.Bento{})
 
 	if obj == nil {
 		return nil, err
@@ -51,10 +51,10 @@ func (c *FakeBentos) Get(ctx context.Context, name string, options v1.GetOptions
 	return obj.(*v1alpha1.Bento), err
 }
 
-// List takes label and field selectors, and returns the list of Bentos that match those selectors.
-func (c *FakeBentos) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.BentoList, err error) {
+// List takes label and field selectors, and returns the list of Bentoes that match those selectors.
+func (c *FakeBentoes) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.BentoList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewListAction(bentosResource, bentosKind, c.ns, opts), &v1alpha1.BentoList{})
+		Invokes(testing.NewListAction(bentoesResource, bentoesKind, c.ns, opts), &v1alpha1.BentoList{})
 
 	if obj == nil {
 		return nil, err
@@ -73,17 +73,17 @@ func (c *FakeBentos) List(ctx context.Context, opts v1.ListOptions) (result *v1a
 	return list, err
 }
 
-// Watch returns a watch.Interface that watches the requested bentos.
-func (c *FakeBentos) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+// Watch returns a watch.Interface that watches the requested bentoes.
+func (c *FakeBentoes) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewWatchAction(bentosResource, c.ns, opts))
+		InvokesWatch(testing.NewWatchAction(bentoesResource, c.ns, opts))
 
 }
 
 // Create takes the representation of a bento and creates it.  Returns the server's representation of the bento, and an error, if there is any.
-func (c *FakeBentos) Create(ctx context.Context, bento *v1alpha1.Bento, opts v1.CreateOptions) (result *v1alpha1.Bento, err error) {
+func (c *FakeBentoes) Create(ctx context.Context, bento *v1alpha1.Bento, opts v1.CreateOptions) (result *v1alpha1.Bento, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(bentosResource, c.ns, bento), &v1alpha1.Bento{})
+		Invokes(testing.NewCreateAction(bentoesResource, c.ns, bento), &v1alpha1.Bento{})
 
 	if obj == nil {
 		return nil, err
@@ -92,9 +92,9 @@ func (c *FakeBentos) Create(ctx context.Context, bento *v1alpha1.Bento, opts v1.
 }
 
 // Update takes the representation of a bento and updates it. Returns the server's representation of the bento, and an error, if there is any.
-func (c *FakeBentos) Update(ctx context.Context, bento *v1alpha1.Bento, opts v1.UpdateOptions) (result *v1alpha1.Bento, err error) {
+func (c *FakeBentoes) Update(ctx context.Context, bento *v1alpha1.Bento, opts v1.UpdateOptions) (result *v1alpha1.Bento, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(bentosResource, c.ns, bento), &v1alpha1.Bento{})
+		Invokes(testing.NewUpdateAction(bentoesResource, c.ns, bento), &v1alpha1.Bento{})
 
 	if obj == nil {
 		return nil, err
@@ -104,9 +104,9 @@ func (c *FakeBentos) Update(ctx context.Context, bento *v1alpha1.Bento, opts v1.
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeBentos) UpdateStatus(ctx context.Context, bento *v1alpha1.Bento, opts v1.UpdateOptions) (*v1alpha1.Bento, error) {
+func (c *FakeBentoes) UpdateStatus(ctx context.Context, bento *v1alpha1.Bento, opts v1.UpdateOptions) (*v1alpha1.Bento, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateSubresourceAction(bentosResource, "status", c.ns, bento), &v1alpha1.Bento{})
+		Invokes(testing.NewUpdateSubresourceAction(bentoesResource, "status", c.ns, bento), &v1alpha1.Bento{})
 
 	if obj == nil {
 		return nil, err
@@ -115,25 +115,25 @@ func (c *FakeBentos) UpdateStatus(ctx context.Context, bento *v1alpha1.Bento, op
 }
 
 // Delete takes name of the bento and deletes it. Returns an error if one occurs.
-func (c *FakeBentos) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+func (c *FakeBentoes) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(bentosResource, c.ns, name, opts), &v1alpha1.Bento{})
+		Invokes(testing.NewDeleteActionWithOptions(bentoesResource, c.ns, name, opts), &v1alpha1.Bento{})
 
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeBentos) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewDeleteCollectionAction(bentosResource, c.ns, listOpts)
+func (c *FakeBentoes) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+	action := testing.NewDeleteCollectionAction(bentoesResource, c.ns, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1alpha1.BentoList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched bento.
-func (c *FakeBentos) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Bento, err error) {
+func (c *FakeBentoes) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Bento, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(bentosResource, c.ns, name, pt, data, subresources...), &v1alpha1.Bento{})
+		Invokes(testing.NewPatchSubresourceAction(bentoesResource, c.ns, name, pt, data, subresources...), &v1alpha1.Bento{})
 
 	if obj == nil {
 		return nil, err

@@ -143,10 +143,10 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return
 	}
 
-	_, err = bentocli.Bentos(bentoRequest.Namespace).Create(ctx, &bentoCR, metav1.CreateOptions{})
+	_, err = bentocli.Bentoes(bentoRequest.Namespace).Create(ctx, &bentoCR, metav1.CreateOptions{})
 	err = errors.Wrap(err, "create Bento resource")
 	if k8serrors.IsAlreadyExists(err) {
-		_, err = bentocli.Bentos(bentoRequest.Namespace).Update(ctx, &bentoCR, metav1.UpdateOptions{})
+		_, err = bentocli.Bentoes(bentoRequest.Namespace).Update(ctx, &bentoCR, metav1.UpdateOptions{})
 		err = errors.Wrap(err, "update Bento resource")
 	}
 

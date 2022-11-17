@@ -30,10 +30,10 @@ import (
 	scheme "github.com/bentoml/yatai-image-builder/generated/resources/clientset/versioned/scheme"
 )
 
-// BentosGetter has a method to return a BentoInterface.
+// BentoesGetter has a method to return a BentoInterface.
 // A group's client should implement this interface.
-type BentosGetter interface {
-	Bentos(namespace string) BentoInterface
+type BentoesGetter interface {
+	Bentoes(namespace string) BentoInterface
 }
 
 // BentoInterface has methods to work with Bento resources.
@@ -50,26 +50,26 @@ type BentoInterface interface {
 	BentoExpansion
 }
 
-// bentos implements BentoInterface
-type bentos struct {
+// bentoes implements BentoInterface
+type bentoes struct {
 	client rest.Interface
 	ns     string
 }
 
-// newBentos returns a Bentos
-func newBentos(c *ResourcesV1alpha1Client, namespace string) *bentos {
-	return &bentos{
+// newBentoes returns a Bentoes
+func newBentoes(c *ResourcesV1alpha1Client, namespace string) *bentoes {
+	return &bentoes{
 		client: c.RESTClient(),
 		ns:     namespace,
 	}
 }
 
 // Get takes name of the bento, and returns the corresponding bento object, and an error if there is any.
-func (c *bentos) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Bento, err error) {
+func (c *bentoes) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Bento, err error) {
 	result = &v1alpha1.Bento{}
 	err = c.client.Get().
 		Namespace(c.ns).
-		Resource("bentos").
+		Resource("bentoes").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
 		Do(ctx).
@@ -77,8 +77,8 @@ func (c *bentos) Get(ctx context.Context, name string, options v1.GetOptions) (r
 	return
 }
 
-// List takes label and field selectors, and returns the list of Bentos that match those selectors.
-func (c *bentos) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.BentoList, err error) {
+// List takes label and field selectors, and returns the list of Bentoes that match those selectors.
+func (c *bentoes) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.BentoList, err error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -86,7 +86,7 @@ func (c *bentos) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha
 	result = &v1alpha1.BentoList{}
 	err = c.client.Get().
 		Namespace(c.ns).
-		Resource("bentos").
+		Resource("bentoes").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
 		Do(ctx).
@@ -94,8 +94,8 @@ func (c *bentos) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha
 	return
 }
 
-// Watch returns a watch.Interface that watches the requested bentos.
-func (c *bentos) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+// Watch returns a watch.Interface that watches the requested bentoes.
+func (c *bentoes) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	var timeout time.Duration
 	if opts.TimeoutSeconds != nil {
 		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
@@ -103,18 +103,18 @@ func (c *bentos) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interfac
 	opts.Watch = true
 	return c.client.Get().
 		Namespace(c.ns).
-		Resource("bentos").
+		Resource("bentoes").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
 		Watch(ctx)
 }
 
 // Create takes the representation of a bento and creates it.  Returns the server's representation of the bento, and an error, if there is any.
-func (c *bentos) Create(ctx context.Context, bento *v1alpha1.Bento, opts v1.CreateOptions) (result *v1alpha1.Bento, err error) {
+func (c *bentoes) Create(ctx context.Context, bento *v1alpha1.Bento, opts v1.CreateOptions) (result *v1alpha1.Bento, err error) {
 	result = &v1alpha1.Bento{}
 	err = c.client.Post().
 		Namespace(c.ns).
-		Resource("bentos").
+		Resource("bentoes").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(bento).
 		Do(ctx).
@@ -123,11 +123,11 @@ func (c *bentos) Create(ctx context.Context, bento *v1alpha1.Bento, opts v1.Crea
 }
 
 // Update takes the representation of a bento and updates it. Returns the server's representation of the bento, and an error, if there is any.
-func (c *bentos) Update(ctx context.Context, bento *v1alpha1.Bento, opts v1.UpdateOptions) (result *v1alpha1.Bento, err error) {
+func (c *bentoes) Update(ctx context.Context, bento *v1alpha1.Bento, opts v1.UpdateOptions) (result *v1alpha1.Bento, err error) {
 	result = &v1alpha1.Bento{}
 	err = c.client.Put().
 		Namespace(c.ns).
-		Resource("bentos").
+		Resource("bentoes").
 		Name(bento.Name).
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(bento).
@@ -138,11 +138,11 @@ func (c *bentos) Update(ctx context.Context, bento *v1alpha1.Bento, opts v1.Upda
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *bentos) UpdateStatus(ctx context.Context, bento *v1alpha1.Bento, opts v1.UpdateOptions) (result *v1alpha1.Bento, err error) {
+func (c *bentoes) UpdateStatus(ctx context.Context, bento *v1alpha1.Bento, opts v1.UpdateOptions) (result *v1alpha1.Bento, err error) {
 	result = &v1alpha1.Bento{}
 	err = c.client.Put().
 		Namespace(c.ns).
-		Resource("bentos").
+		Resource("bentoes").
 		Name(bento.Name).
 		SubResource("status").
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -153,10 +153,10 @@ func (c *bentos) UpdateStatus(ctx context.Context, bento *v1alpha1.Bento, opts v
 }
 
 // Delete takes name of the bento and deletes it. Returns an error if one occurs.
-func (c *bentos) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+func (c *bentoes) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	return c.client.Delete().
 		Namespace(c.ns).
-		Resource("bentos").
+		Resource("bentoes").
 		Name(name).
 		Body(&opts).
 		Do(ctx).
@@ -164,14 +164,14 @@ func (c *bentos) Delete(ctx context.Context, name string, opts v1.DeleteOptions)
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *bentos) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+func (c *bentoes) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
 	var timeout time.Duration
 	if listOpts.TimeoutSeconds != nil {
 		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
 		Namespace(c.ns).
-		Resource("bentos").
+		Resource("bentoes").
 		VersionedParams(&listOpts, scheme.ParameterCodec).
 		Timeout(timeout).
 		Body(&opts).
@@ -180,11 +180,11 @@ func (c *bentos) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, li
 }
 
 // Patch applies the patch and returns the patched bento.
-func (c *bentos) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Bento, err error) {
+func (c *bentoes) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Bento, err error) {
 	result = &v1alpha1.Bento{}
 	err = c.client.Patch(pt).
 		Namespace(c.ns).
-		Resource("bentos").
+		Resource("bentoes").
 		Name(name).
 		SubResource(subresources...).
 		VersionedParams(&opts, scheme.ParameterCodec).

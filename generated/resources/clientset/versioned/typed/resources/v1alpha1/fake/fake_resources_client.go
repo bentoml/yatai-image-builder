@@ -28,8 +28,8 @@ type FakeResourcesV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeResourcesV1alpha1) Bentos(namespace string) v1alpha1.BentoInterface {
-	return &FakeBentos{c, namespace}
+func (c *FakeResourcesV1alpha1) Bentoes(namespace string) v1alpha1.BentoInterface {
+	return &FakeBentoes{c, namespace}
 }
 
 func (c *FakeResourcesV1alpha1) BentoRequests(namespace string) v1alpha1.BentoRequestInterface {
