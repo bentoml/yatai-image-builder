@@ -96,6 +96,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		EventRecorder:    r.Recorder,
 		Logger:           logs,
 		RecreateIfFailed: true,
+		Client:           r.Client,
 	})
 	if err != nil {
 		return
@@ -106,6 +107,21 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if err != nil {
 			return
 		}
+	}
+
+	r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoImageBuilder", "Building image %s..., the image builder pod is %s in namespace %s", imageName, pod.Name, pod.Namespace)
+
+	if pod.Status.Phase == corev1.PodSucceeded {
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoImageBuilder", "Image %s built successfully", imageName)
+	}
+	if pod.Status.Phase == corev1.PodFailed {
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "BentoImageBuilder", "Image %s build failed", imageName)
+	}
+	if pod.Status.Phase == corev1.PodUnknown {
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "BentoImageBuilder", "Image %s build status unknown", imageName)
+	}
+	if pod.Status.Phase == corev1.PodRunning {
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoImageBuilder", "Image %s build is running", imageName)
 	}
 
 	bentoCR := resourcesv1alpha1.Bento{
@@ -166,11 +182,9 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	status := resourcesv1alpha1.BentoRequestStatus{
-		Ready: err == nil,
-	}
-
-	if err != nil {
-		status.ErrorMessage = err.Error()
+		PodPhase: pod.Status.Phase,
+		Message:  pod.Status.Message,
+		Reason:   pod.Status.Reason,
 	}
 
 	if !reflect.DeepEqual(status, bentoRequest.Status) {

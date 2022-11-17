@@ -20,6 +20,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/bentoml/yatai-schemas/modelschemas"
 	"github.com/bentoml/yatai-schemas/schemasv1"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	clientconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
@@ -222,6 +224,7 @@ type CreateImageBuilderPodOption struct {
 	EventRecorder    record.EventRecorder
 	Logger           logr.Logger
 	RecreateIfFailed bool
+	Client           client.Client
 }
 
 func (s *imageBuilderService) CreateImageBuilderPod(ctx context.Context, opt CreateImageBuilderPodOption) (pod *corev1.Pod, bento *schemasv1.BentoFullSchema, imageName, dockerConfigJSONSecretName string, err error) {
@@ -799,8 +802,6 @@ echo "Done"
 
 	builderImage := internalImages.Kaniko
 
-	podsCli := kubeCli.CoreV1().Pods(opt.BentoRequest.Namespace)
-
 	pod = &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      kubeName,
@@ -888,27 +889,28 @@ echo "Done"
 	}
 
 	opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Creating image builder pod %s", kubeName)
-	oldPod, err := podsCli.Get(ctx, kubeName, metav1.GetOptions{})
-	isNotFound := apierrors.IsNotFound(err)
-	if !isNotFound && err != nil {
+	err = opt.Client.Create(ctx, pod)
+	isAlreadyExists := apierrors.IsAlreadyExists(err)
+	if err != nil && !isAlreadyExists {
+		err = errors.Wrapf(err, "failed to create pod %s", kubeName)
 		return
 	}
-	if isNotFound {
-		_, err = podsCli.Create(ctx, pod, metav1.CreateOptions{})
-		isExists := apierrors.IsAlreadyExists(err)
-		if err != nil && !isExists {
-			err = errors.Wrapf(err, "failed to create pod %s", kubeName)
+	if isAlreadyExists {
+		opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreateImageBuilderPod", "Image builder pod %s already exists", kubeName)
+		oldPod := &corev1.Pod{}
+		err = opt.Client.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, oldPod)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to get pod %s in namespace %s", pod.Name, pod.Namespace)
 			return
 		}
-		err = nil
-	} else {
+
 		if oldPod.Status.Phase == corev1.PodFailed && opt.RecreateIfFailed {
-			err = podsCli.Delete(ctx, kubeName, metav1.DeleteOptions{})
+			err = opt.Client.Delete(ctx, pod)
 			if err != nil {
 				err = errors.Wrapf(err, "failed to delete pod %s", kubeName)
 				return
 			}
-			_, err = podsCli.Create(ctx, pod, metav1.CreateOptions{})
+			err = opt.Client.Create(ctx, pod)
 			isExists := apierrors.IsAlreadyExists(err)
 			if err != nil && !isExists {
 				err = errors.Wrapf(err, "failed to create pod %s", kubeName)
@@ -919,6 +921,7 @@ echo "Done"
 			pod = oldPod
 		}
 	}
+
 	opt.EventRecorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreatedImageBuilderPod", "Created image builder pod %s", kubeName)
 
 	return
