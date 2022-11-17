@@ -25,14 +25,14 @@ import (
 	v1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
 )
 
-// BentoLister helps list Bentos.
+// BentoLister helps list Bentoes.
 // All objects returned here must be treated as read-only.
 type BentoLister interface {
-	// List lists all Bentos in the indexer.
+	// List lists all Bentoes in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.Bento, err error)
-	// Bentos returns an object that can list and get Bentos.
-	Bentos(namespace string) BentoNamespaceLister
+	// Bentoes returns an object that can list and get Bentoes.
+	Bentoes(namespace string) BentoNamespaceLister
 	BentoListerExpansion
 }
 
@@ -46,7 +46,7 @@ func NewBentoLister(indexer cache.Indexer) BentoLister {
 	return &bentoLister{indexer: indexer}
 }
 
-// List lists all Bentos in the indexer.
+// List lists all Bentoes in the indexer.
 func (s *bentoLister) List(selector labels.Selector) (ret []*v1alpha1.Bento, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1alpha1.Bento))
@@ -54,15 +54,15 @@ func (s *bentoLister) List(selector labels.Selector) (ret []*v1alpha1.Bento, err
 	return ret, err
 }
 
-// Bentos returns an object that can list and get Bentos.
-func (s *bentoLister) Bentos(namespace string) BentoNamespaceLister {
+// Bentoes returns an object that can list and get Bentoes.
+func (s *bentoLister) Bentoes(namespace string) BentoNamespaceLister {
 	return bentoNamespaceLister{indexer: s.indexer, namespace: namespace}
 }
 
-// BentoNamespaceLister helps list and get Bentos.
+// BentoNamespaceLister helps list and get Bentoes.
 // All objects returned here must be treated as read-only.
 type BentoNamespaceLister interface {
-	// List lists all Bentos in the indexer for a given namespace.
+	// List lists all Bentoes in the indexer for a given namespace.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.Bento, err error)
 	// Get retrieves the Bento from the indexer for a given namespace and name.
@@ -78,7 +78,7 @@ type bentoNamespaceLister struct {
 	namespace string
 }
 
-// List lists all Bentos in the indexer for a given namespace.
+// List lists all Bentoes in the indexer for a given namespace.
 func (s bentoNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.Bento, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1alpha1.Bento))

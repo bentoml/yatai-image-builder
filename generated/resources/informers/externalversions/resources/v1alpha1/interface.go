@@ -23,8 +23,8 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// Bentos returns a BentoInformer.
-	Bentos() BentoInformer
+	// Bentoes returns a BentoInformer.
+	Bentoes() BentoInformer
 	// BentoRequests returns a BentoRequestInformer.
 	BentoRequests() BentoRequestInformer
 }
@@ -40,8 +40,8 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// Bentos returns a BentoInformer.
-func (v *version) Bentos() BentoInformer {
+// Bentoes returns a BentoInformer.
+func (v *version) Bentoes() BentoInformer {
 	return &bentoInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 

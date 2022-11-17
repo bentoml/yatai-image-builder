@@ -28,7 +28,7 @@ import (
 
 type ResourcesV1alpha1Interface interface {
 	RESTClient() rest.Interface
-	BentosGetter
+	BentoesGetter
 	BentoRequestsGetter
 }
 
@@ -37,8 +37,8 @@ type ResourcesV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *ResourcesV1alpha1Client) Bentos(namespace string) BentoInterface {
-	return newBentos(c, namespace)
+func (c *ResourcesV1alpha1Client) Bentoes(namespace string) BentoInterface {
+	return newBentoes(c, namespace)
 }
 
 func (c *ResourcesV1alpha1Client) BentoRequests(namespace string) BentoRequestInterface {

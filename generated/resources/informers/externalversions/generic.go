@@ -53,8 +53,8 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=resources.yatai.ai, Version=v1alpha1
-	case v1alpha1.SchemeGroupVersion.WithResource("bentos"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Resources().V1alpha1().Bentos().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("bentoes"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Resources().V1alpha1().Bentoes().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("bentorequests"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Resources().V1alpha1().BentoRequests().Informer()}, nil
 
