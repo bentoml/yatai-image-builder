@@ -22,6 +22,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	timex "time"
+
 	v1 "k8s.io/api/core/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
@@ -204,6 +206,11 @@ func (in *BentoRequestSpec) DeepCopyInto(out *BentoRequestSpec) {
 		in, out := &in.Models, &out.Models
 		*out = make([]BentoModel, len(*in))
 		copy(*out, *in)
+	}
+	if in.ImageBuildTimeout != nil {
+		in, out := &in.ImageBuildTimeout, &out.ImageBuildTimeout
+		*out = new(timex.Duration)
+		**out = **in
 	}
 	in.ImageBuilderExtraPodMetadata.DeepCopyInto(&out.ImageBuilderExtraPodMetadata)
 	in.ImageBuilderExtraPodSpec.DeepCopyInto(&out.ImageBuilderExtraPodSpec)

@@ -19,20 +19,24 @@ package resources
 import (
 	"context"
 	"reflect"
+	"time"
 
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
+	"github.com/bentoml/yatai-schemas/modelschemas"
+
 	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
-	resourcesclient "github.com/bentoml/yatai-image-builder/generated/resources/clientset/versioned/typed/resources/v1alpha1"
 	"github.com/bentoml/yatai-image-builder/services"
 )
 
@@ -91,88 +95,142 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "ReconcileError", "Failed to reconcile BentoRequest: %v", err)
 	}()
 
+	err = r.Get(ctx, req.NamespacedName, bentoRequest)
+	if err != nil {
+		return
+	}
+	bentoRequest.Status.BentoGenerated = false
+	bentoRequest.Status.Reconciled = false
+	err = r.Status().Update(ctx, bentoRequest)
+	if err != nil {
+		err = errors.Wrap(err, "update BentoRequest status")
+		return
+	}
+
 	pod, bento, imageName, dockerConfigJSONSecretName, err := services.ImageBuilderService.CreateImageBuilderPod(ctx, services.CreateImageBuilderPodOption{
 		BentoRequest:     bentoRequest,
 		EventRecorder:    r.Recorder,
 		Logger:           logs,
 		RecreateIfFailed: true,
+		Client:           r.Client,
+		Scheme:           r.Scheme,
 	})
 	if err != nil {
 		return
 	}
 
-	if pod != nil {
-		err = ctrl.SetControllerReference(bentoRequest, pod, r.Scheme)
-		if err != nil {
-			return
-		}
-	}
+	imageBuildStatus := modelschemas.ImageBuildStatusPending
+	errorMessage := ""
 
-	bentoCR := resourcesv1alpha1.Bento{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      bentoRequest.Name,
-			Namespace: bentoRequest.Namespace,
-		},
-		Spec: resourcesv1alpha1.BentoSpec{
-			Image:   imageName,
-			Context: bentoRequest.Spec.Context,
-			Runners: bentoRequest.Spec.Runners,
-		},
-	}
-
-	if dockerConfigJSONSecretName != "" {
-		bentoCR.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
-			{
-				Name: dockerConfigJSONSecretName,
-			},
-		}
-	}
-
-	if bento != nil {
-		bentoCR.Spec.Context = resourcesv1alpha1.BentoContext{
-			BentomlVersion: bento.Manifest.BentomlVersion,
-		}
-		bentoCR.Spec.Runners = make([]resourcesv1alpha1.BentoRunner, 0)
-		for _, runner := range bento.Manifest.Runners {
-			bentoCR.Spec.Runners = append(bentoCR.Spec.Runners, resourcesv1alpha1.BentoRunner{
-				Name:         runner.Name,
-				RunnableType: runner.RunnableType,
-				ModelTags:    runner.Models,
-			})
-		}
-	}
-
-	restConf := ctrl.GetConfigOrDie()
-	bentocli, err := resourcesclient.NewForConfig(restConf)
+	err = r.Get(ctx, req.NamespacedName, bentoRequest)
 	if err != nil {
-		err = errors.Wrap(err, "create Bento client")
+		return
+	}
+	bentoRequest.Status.ImageBuildStatus = imageBuildStatus
+	bentoRequest.Status.ErrorMessage = errorMessage
+	err = r.Status().Update(ctx, bentoRequest)
+	if err != nil {
+		err = errors.Wrap(err, "update BentoRequest status")
 		return
 	}
 
-	_, err = bentocli.Bentoes(bentoRequest.Namespace).Create(ctx, &bentoCR, metav1.CreateOptions{})
-	err = errors.Wrap(err, "create Bento resource")
-	if k8serrors.IsAlreadyExists(err) {
-		var oldBentoCR *resourcesv1alpha1.Bento
-		oldBentoCR, err = bentocli.Bentoes(bentoRequest.Namespace).Get(ctx, bentoRequest.Name, metav1.GetOptions{})
+	if pod != nil {
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoImageBuilder", "Building image %s..., the image builder pod is %s in namespace %s", imageName, pod.Name, pod.Namespace)
+
+		imageBuildStatus, err = r.waitImageBuilderPodComplete(ctx, bentoRequest, pod.Namespace, pod.Name)
+
 		if err != nil {
-			err = errors.Wrap(err, "get Bento resource")
+			r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "BentoImageBuilder", "Failed to build image %s, the image builder pod is %s in namespace %s has an error: %s", imageName, pod.Name, pod.Namespace, err.Error())
+			err = errors.Wrapf(err, "failed to build image %s for bento %s", imageName, bentoRequest.Spec.BentoTag)
+			errorMessage = err.Error()
+			err = nil
+		}
+
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoImageBuilder", "Image %s has been built successfully", imageName)
+	}
+
+	bentoGenerated := false
+	if pod == nil || imageBuildStatus == modelschemas.ImageBuildStatusSuccess {
+		imageBuildStatus = modelschemas.ImageBuildStatusSuccess
+		bentoGenerated = true
+		bentoCR := &resourcesv1alpha1.Bento{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      bentoRequest.Name,
+				Namespace: bentoRequest.Namespace,
+			},
+			Spec: resourcesv1alpha1.BentoSpec{
+				Image:   imageName,
+				Context: bentoRequest.Spec.Context,
+				Runners: bentoRequest.Spec.Runners,
+			},
+		}
+
+		err = ctrl.SetControllerReference(bentoRequest, bentoCR, r.Scheme)
+		if err != nil {
+			err = errors.Wrap(err, "set controller reference")
 			return
 		}
-		if !reflect.DeepEqual(oldBentoCR.Spec, bentoCR.Spec) {
-			oldBentoCR.Spec = bentoCR.Spec
-			_, err = bentocli.Bentoes(bentoRequest.Namespace).Update(ctx, oldBentoCR, metav1.UpdateOptions{})
-			err = errors.Wrap(err, "update Bento resource")
+
+		if dockerConfigJSONSecretName != "" {
+			bentoCR.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
+				{
+					Name: dockerConfigJSONSecretName,
+				},
+			}
+		}
+
+		if bento != nil {
+			bentoCR.Spec.Context = resourcesv1alpha1.BentoContext{
+				BentomlVersion: bento.Manifest.BentomlVersion,
+			}
+			bentoCR.Spec.Runners = make([]resourcesv1alpha1.BentoRunner, 0)
+			for _, runner := range bento.Manifest.Runners {
+				bentoCR.Spec.Runners = append(bentoCR.Spec.Runners, resourcesv1alpha1.BentoRunner{
+					Name:         runner.Name,
+					RunnableType: runner.RunnableType,
+					ModelTags:    runner.Models,
+				})
+			}
+		}
+
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoImageBuilder", "Creating Bento CR %s in namespace %s", bentoCR.Name, bentoCR.Namespace)
+		err = r.Create(ctx, bentoCR)
+		isAlreadyExists := k8serrors.IsAlreadyExists(err)
+		if err != nil && !isAlreadyExists {
+			err = errors.Wrap(err, "create Bento resource")
+			return
+		}
+		if isAlreadyExists {
+			oldBentoCR := &resourcesv1alpha1.Bento{}
+			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoImageBuilder", "Updating Bento CR %s in namespace %s", bentoCR.Name, bentoCR.Namespace)
+			err = r.Get(ctx, types.NamespacedName{Name: bentoCR.Name, Namespace: bentoCR.Namespace}, oldBentoCR)
+			if err != nil {
+				err = errors.Wrap(err, "get Bento resource")
+				return
+			}
+			if !reflect.DeepEqual(oldBentoCR.Spec, bentoCR.Spec) {
+				oldBentoCR.OwnerReferences = bentoCR.OwnerReferences
+				oldBentoCR.Spec = bentoCR.Spec
+				err = r.Update(ctx, oldBentoCR)
+				if err != nil {
+					err = errors.Wrap(err, "update Bento resource")
+					return
+				}
+			}
 		}
 	}
 
 	status := resourcesv1alpha1.BentoRequestStatus{
-		Ready: err == nil,
+		BentoGenerated:   bentoGenerated,
+		Reconciled:       true,
+		ErrorMessage:     errorMessage,
+		ImageBuildStatus: imageBuildStatus,
 	}
 
+	err = r.Get(ctx, req.NamespacedName, bentoRequest)
 	if err != nil {
-		status.ErrorMessage = err.Error()
+		return
 	}
-
 	if !reflect.DeepEqual(status, bentoRequest.Status) {
 		bentoRequest.Status = status
 		err = r.Status().Update(ctx, bentoRequest)
@@ -183,6 +241,53 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	return
+}
+
+func (r *BentoRequestReconciler) waitImageBuilderPodComplete(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest, namespace, podName string) (modelschemas.ImageBuildStatus, error) {
+	logs := log.Log.WithValues("func", "waitImageBuilderPodComplete", "namespace", namespace, "pod", podName)
+
+	// Interval to poll for objects.
+	pollInterval := 3 * time.Second
+
+	// How long to wait for objects.
+	waitTimeout := 60 * time.Minute
+
+	if bentoRequest.Spec.ImageBuildTimeout != nil {
+		waitTimeout = *bentoRequest.Spec.ImageBuildTimeout
+	}
+
+	imageBuildStatus := modelschemas.ImageBuildStatusPending
+
+	// Wait for the image builder pod to be Complete.
+	if err := wait.PollImmediate(pollInterval, waitTimeout, func() (done bool, err error) {
+		pod := &corev1.Pod{}
+		err_ := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: podName}, pod)
+		if err_ != nil {
+			logs.Error(err_, "failed to get pod")
+			err_ = errors.Wrap(err_, "failed to get pod")
+			return true, err_
+		}
+		if pod.Status.Phase == corev1.PodSucceeded {
+			imageBuildStatus = modelschemas.ImageBuildStatusSuccess
+			return true, nil
+		}
+		if pod.Status.Phase == corev1.PodFailed {
+			imageBuildStatus = modelschemas.ImageBuildStatusFailed
+			return true, errors.Errorf("pod %s in namespace %s failed", pod.Name, pod.Namespace)
+		}
+		if pod.Status.Phase == corev1.PodUnknown {
+			imageBuildStatus = modelschemas.ImageBuildStatusFailed
+			return true, errors.Errorf("pod %s in namespace %s is in unknown state", pod.Name, pod.Namespace)
+		}
+		if pod.Status.Phase == corev1.PodRunning {
+			imageBuildStatus = modelschemas.ImageBuildStatusBuilding
+		}
+		return false, nil
+	}); err != nil {
+		err = errors.Wrapf(err, "failed to wait for pod %s in namespace %s to be ready", podName, namespace)
+		return imageBuildStatus, err
+	}
+	return imageBuildStatus, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
