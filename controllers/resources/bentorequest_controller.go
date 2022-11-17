@@ -84,6 +84,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	defer func() {
 		if err == nil {
+			logs.Info("Reconcile success")
 			return
 		}
 		logs.Error(err, "Failed to reconcile BentoRequest.")
@@ -151,8 +152,17 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	_, err = bentocli.Bentoes(bentoRequest.Namespace).Create(ctx, &bentoCR, metav1.CreateOptions{})
 	err = errors.Wrap(err, "create Bento resource")
 	if k8serrors.IsAlreadyExists(err) {
-		_, err = bentocli.Bentoes(bentoRequest.Namespace).Update(ctx, &bentoCR, metav1.UpdateOptions{})
-		err = errors.Wrap(err, "update Bento resource")
+		var oldBentoCR *resourcesv1alpha1.Bento
+		oldBentoCR, err = bentocli.Bentoes(bentoRequest.Namespace).Get(ctx, bentoRequest.Name, metav1.GetOptions{})
+		if err != nil {
+			err = errors.Wrap(err, "get Bento resource")
+			return
+		}
+		if !reflect.DeepEqual(oldBentoCR.Spec, bentoCR.Spec) {
+			oldBentoCR.Spec = bentoCR.Spec
+			_, err = bentocli.Bentoes(bentoRequest.Namespace).Update(ctx, oldBentoCR, metav1.UpdateOptions{})
+			err = errors.Wrap(err, "update Bento resource")
+		}
 	}
 
 	status := resourcesv1alpha1.BentoRequestStatus{
