@@ -112,16 +112,20 @@ spec:
   - additionalPrinterColumns:
     - description: Bento Tag
       jsonPath: .spec.bentoTag
-      name: BENTO-Tag
+      name: Bento-Tag
       type: string
     - description: Download URL
       jsonPath: .spec.downloadUrl
-      name: DOWNLOAD-URL
+      name: Download-Url
       type: string
-    - description: Ready
-      jsonPath: .status.ready
-      name: Ready
+    - description: Pod Phase
+      jsonPath: .status.podPhase
+      name: Pod-Phase
       type: string
+    - description: Bento Generated
+      jsonPath: .status.bentoGenerated
+      name: Bento-Generated
+      type: boolean
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -1346,15 +1350,17 @@ spec:
           status:
             description: BentoRequestStatus defines the observed state of BentoRequest
             properties:
-              errorMessage:
+              bentoGenerated:
+                type: boolean
+              message:
                 type: string
-              ready:
+              podPhase:
                 description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
                   of cluster Important: Run "make" to regenerate code after modifying
                   this file'
-                type: boolean
-            required:
-            - ready
+                type: string
+              reason:
+                type: string
             type: object
         type: object
     served: true

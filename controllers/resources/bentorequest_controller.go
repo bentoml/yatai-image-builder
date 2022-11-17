@@ -96,81 +96,99 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		EventRecorder:    r.Recorder,
 		Logger:           logs,
 		RecreateIfFailed: true,
+		Client:           r.Client,
 	})
 	if err != nil {
 		return
 	}
 
-	if pod != nil {
-		err = ctrl.SetControllerReference(bentoRequest, pod, r.Scheme)
-		if err != nil {
-			return
-		}
-	}
-
-	bentoCR := resourcesv1alpha1.Bento{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      bentoRequest.Name,
-			Namespace: bentoRequest.Namespace,
-		},
-		Spec: resourcesv1alpha1.BentoSpec{
-			Image:   imageName,
-			Context: bentoRequest.Spec.Context,
-			Runners: bentoRequest.Spec.Runners,
-		},
-	}
-
-	if dockerConfigJSONSecretName != "" {
-		bentoCR.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
-			{
-				Name: dockerConfigJSONSecretName,
-			},
-		}
-	}
-
-	if bento != nil {
-		bentoCR.Spec.Context = resourcesv1alpha1.BentoContext{
-			BentomlVersion: bento.Manifest.BentomlVersion,
-		}
-		bentoCR.Spec.Runners = make([]resourcesv1alpha1.BentoRunner, 0)
-		for _, runner := range bento.Manifest.Runners {
-			bentoCR.Spec.Runners = append(bentoCR.Spec.Runners, resourcesv1alpha1.BentoRunner{
-				Name:         runner.Name,
-				RunnableType: runner.RunnableType,
-				ModelTags:    runner.Models,
-			})
-		}
-	}
-
-	restConf := ctrl.GetConfigOrDie()
-	bentocli, err := resourcesclient.NewForConfig(restConf)
+	err = ctrl.SetControllerReference(bentoRequest, pod, r.Scheme)
 	if err != nil {
-		err = errors.Wrap(err, "create Bento client")
 		return
 	}
 
-	_, err = bentocli.Bentoes(bentoRequest.Namespace).Create(ctx, &bentoCR, metav1.CreateOptions{})
-	err = errors.Wrap(err, "create Bento resource")
-	if k8serrors.IsAlreadyExists(err) {
-		var oldBentoCR *resourcesv1alpha1.Bento
-		oldBentoCR, err = bentocli.Bentoes(bentoRequest.Namespace).Get(ctx, bentoRequest.Name, metav1.GetOptions{})
+	r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoImageBuilder", "Building image %s..., the image builder pod is %s in namespace %s", imageName, pod.Name, pod.Namespace)
+
+	if pod.Status.Phase == corev1.PodSucceeded {
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoImageBuilder", "Image %s built successfully", imageName)
+	}
+	if pod.Status.Phase == corev1.PodFailed {
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "BentoImageBuilder", "Image %s build failed", imageName)
+	}
+	if pod.Status.Phase == corev1.PodUnknown {
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "BentoImageBuilder", "Image %s build status unknown", imageName)
+	}
+	if pod.Status.Phase == corev1.PodRunning {
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoImageBuilder", "Image %s build is running", imageName)
+	}
+
+	bentoGenerated := false
+	if pod.Status.Phase == corev1.PodSucceeded {
+		bentoGenerated = true
+		bentoCR := resourcesv1alpha1.Bento{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      bentoRequest.Name,
+				Namespace: bentoRequest.Namespace,
+			},
+			Spec: resourcesv1alpha1.BentoSpec{
+				Image:   imageName,
+				Context: bentoRequest.Spec.Context,
+				Runners: bentoRequest.Spec.Runners,
+			},
+		}
+
+		if dockerConfigJSONSecretName != "" {
+			bentoCR.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
+				{
+					Name: dockerConfigJSONSecretName,
+				},
+			}
+		}
+
+		if bento != nil {
+			bentoCR.Spec.Context = resourcesv1alpha1.BentoContext{
+				BentomlVersion: bento.Manifest.BentomlVersion,
+			}
+			bentoCR.Spec.Runners = make([]resourcesv1alpha1.BentoRunner, 0)
+			for _, runner := range bento.Manifest.Runners {
+				bentoCR.Spec.Runners = append(bentoCR.Spec.Runners, resourcesv1alpha1.BentoRunner{
+					Name:         runner.Name,
+					RunnableType: runner.RunnableType,
+					ModelTags:    runner.Models,
+				})
+			}
+		}
+
+		restConf := ctrl.GetConfigOrDie()
+		var bentocli *resourcesclient.ResourcesV1alpha1Client
+		bentocli, err = resourcesclient.NewForConfig(restConf)
 		if err != nil {
-			err = errors.Wrap(err, "get Bento resource")
+			err = errors.Wrap(err, "create Bento client")
 			return
 		}
-		if !reflect.DeepEqual(oldBentoCR.Spec, bentoCR.Spec) {
-			oldBentoCR.Spec = bentoCR.Spec
-			_, err = bentocli.Bentoes(bentoRequest.Namespace).Update(ctx, oldBentoCR, metav1.UpdateOptions{})
-			err = errors.Wrap(err, "update Bento resource")
+
+		_, err = bentocli.Bentoes(bentoRequest.Namespace).Create(ctx, &bentoCR, metav1.CreateOptions{})
+		err = errors.Wrap(err, "create Bento resource")
+		if k8serrors.IsAlreadyExists(err) {
+			var oldBentoCR *resourcesv1alpha1.Bento
+			oldBentoCR, err = bentocli.Bentoes(bentoRequest.Namespace).Get(ctx, bentoRequest.Name, metav1.GetOptions{})
+			if err != nil {
+				err = errors.Wrap(err, "get Bento resource")
+				return
+			}
+			if !reflect.DeepEqual(oldBentoCR.Spec, bentoCR.Spec) {
+				oldBentoCR.Spec = bentoCR.Spec
+				_, err = bentocli.Bentoes(bentoRequest.Namespace).Update(ctx, oldBentoCR, metav1.UpdateOptions{})
+				err = errors.Wrap(err, "update Bento resource")
+			}
 		}
 	}
 
 	status := resourcesv1alpha1.BentoRequestStatus{
-		Ready: err == nil,
-	}
-
-	if err != nil {
-		status.ErrorMessage = err.Error()
+		PodPhase:       pod.Status.Phase,
+		Message:        pod.Status.Message,
+		Reason:         pod.Status.Reason,
+		BentoGenerated: bentoGenerated,
 	}
 
 	if !reflect.DeepEqual(status, bentoRequest.Status) {
