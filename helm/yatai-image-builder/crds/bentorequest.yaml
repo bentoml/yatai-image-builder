@@ -14,7 +14,12 @@ spec:
     singular: bento
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: Image
+      jsonPath: .spec.image
+      name: Image
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Bento is the Schema for the bentoes API
@@ -104,7 +109,20 @@ spec:
     singular: bentorequest
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: Bento Tag
+      jsonPath: .spec.bentoTag
+      name: BENTO-Tag
+      type: string
+    - description: Download URL
+      jsonPath: .spec.downloadUrl
+      name: DOWNLOAD-URL
+      type: string
+    - description: Ready
+      jsonPath: .status.ready
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: BentoRequest is the Schema for the bentorequests API
@@ -1328,6 +1346,8 @@ spec:
           status:
             description: BentoRequestStatus defines the observed state of BentoRequest
             properties:
+              errorMessage:
+                type: string
               ready:
                 description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
                   of cluster Important: Run "make" to regenerate code after modifying

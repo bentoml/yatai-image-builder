@@ -18,6 +18,7 @@ package resources
 
 import (
 	"context"
+	"reflect"
 
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
@@ -45,6 +46,10 @@ type BentoRequestReconciler struct {
 //+kubebuilder:rbac:groups=resources.yatai.ai,resources=bentorequests,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=resources.yatai.ai,resources=bentorequests/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=resources.yatai.ai,resources=bentorequests/finalizers,verbs=update
+//+kubebuilder:rbac:groups=resources.yatai.ai,resources=bentoes,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=events,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -148,6 +153,23 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if k8serrors.IsAlreadyExists(err) {
 		_, err = bentocli.Bentoes(bentoRequest.Namespace).Update(ctx, &bentoCR, metav1.UpdateOptions{})
 		err = errors.Wrap(err, "update Bento resource")
+	}
+
+	status := resourcesv1alpha1.BentoRequestStatus{
+		Ready: err == nil,
+	}
+
+	if err != nil {
+		status.ErrorMessage = err.Error()
+	}
+
+	if !reflect.DeepEqual(status, bentoRequest.Status) {
+		bentoRequest.Status = status
+		err = r.Status().Update(ctx, bentoRequest)
+		if err != nil {
+			err = errors.Wrap(err, "update BentoRequest status")
+			return
+		}
 	}
 
 	return

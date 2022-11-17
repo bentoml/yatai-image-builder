@@ -15,7 +15,12 @@ spec:
     singular: bento
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: Image
+      jsonPath: .spec.image
+      name: Image
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Bento is the Schema for the bentoes API
