@@ -17,8 +17,12 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/bentoml/yatai-schemas/modelschemas"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -49,6 +53,8 @@ type BentoRequestSpec struct {
 	Runners     []BentoRunner `json:"runners,omitempty"`
 	Models      []BentoModel  `json:"models,omitempty"`
 
+	ImageBuildTimeout *time.Duration `json:"imageBuildTimeout,omitempty"`
+
 	// +kubebuilder:validation:Optional
 	ImageBuilderExtraPodMetadata ExtraPodMetadata `json:"imageBuilderExtraPodMetadata,omitempty"`
 	// +kubebuilder:validation:Optional
@@ -67,16 +73,22 @@ type BentoRequestSpec struct {
 type BentoRequestStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Ready        bool   `json:"ready"`
-	ErrorMessage string `json:"errorMessage,omitempty"`
+	ImageBuildStatus modelschemas.ImageBuildStatus `json:"imageBuildStatus,omitempty"`
+	Reconciled       bool                          `json:"reconciled,omitempty"`
+	ErrorMessage     string                        `json:"errorMessage,omitempty"`
+	BentoGenerated   bool                          `json:"bentoGenerated,omitempty"`
 }
 
 //+genclient
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:printcolumn:name="BENTO-Tag",type="string",JSONPath=".spec.bentoTag",description="Bento Tag"
-//+kubebuilder:printcolumn:name="DOWNLOAD-URL",type="string",JSONPath=".spec.downloadUrl",description="Download URL"
-//+kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.ready",description="Ready"
+//+kubebuilder:printcolumn:name="Bento-Tag",type="string",JSONPath=".spec.bentoTag",description="Bento Tag"
+//+kubebuilder:printcolumn:name="Download-Url",type="string",JSONPath=".spec.downloadUrl",description="Download URL"
+//+kubebuilder:printcolumn:name="Image-Build-Status",type="string",JSONPath=".status.imageBuildStatus",description="Image Build Status"
+//+kubebuilder:printcolumn:name="Reconciled",type="boolean",JSONPath=".status.reconciled",description="Reconciled"
+//+kubebuilder:printcolumn:name="Error-Message",type="string",JSONPath=".status.errorMessage",description="Error Message"
+//+kubebuilder:printcolumn:name="Bento-Generated",type="boolean",JSONPath=".status.bentoGenerated",description="Bento Generated"
+//+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // BentoRequest is the Schema for the bentorequests API
 type BentoRequest struct {

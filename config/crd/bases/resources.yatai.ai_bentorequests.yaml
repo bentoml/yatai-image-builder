@@ -18,16 +18,31 @@ spec:
   - additionalPrinterColumns:
     - description: Bento Tag
       jsonPath: .spec.bentoTag
-      name: BENTO-Tag
+      name: Bento-Tag
       type: string
     - description: Download URL
       jsonPath: .spec.downloadUrl
-      name: DOWNLOAD-URL
+      name: Download-Url
       type: string
-    - description: Ready
-      jsonPath: .status.ready
-      name: Ready
+    - description: Image Build Status
+      jsonPath: .status.imageBuildStatus
+      name: Image-Build-Status
       type: string
+    - description: Reconciled
+      jsonPath: .status.reconciled
+      name: Reconciled
+      type: boolean
+    - description: Error Message
+      jsonPath: .status.errorMessage
+      name: Error-Message
+      type: string
+    - description: Bento Generated
+      jsonPath: .status.bentoGenerated
+      name: Bento-Generated
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -93,6 +108,12 @@ spec:
                       x-kubernetes-map-type: atomic
                   type: object
                 type: array
+              imageBuildTimeout:
+                description: A Duration represents the elapsed time between two instants
+                  as an int64 nanosecond count. The representation limits the largest
+                  representable duration to approximately 290 years.
+                format: int64
+                type: integer
               imageBuilderContainerResources:
                 description: ResourceRequirements describes the compute resource requirements.
                 properties:
@@ -1252,15 +1273,17 @@ spec:
           status:
             description: BentoRequestStatus defines the observed state of BentoRequest
             properties:
+              bentoGenerated:
+                type: boolean
               errorMessage:
                 type: string
-              ready:
+              imageBuildStatus:
                 description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
                   of cluster Important: Run "make" to regenerate code after modifying
                   this file'
+                type: string
+              reconciled:
                 type: boolean
-            required:
-            - ready
             type: object
         type: object
     served: true
