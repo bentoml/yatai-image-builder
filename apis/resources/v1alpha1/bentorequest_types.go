@@ -21,8 +21,12 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
-	"github.com/bentoml/yatai-schemas/modelschemas"
+const (
+	BentoRequestConditionTypeImageBuilding  = "ImageBuilding"
+	BentoRequestConditionTypeImageExists    = "ImageExists"
+	BentoRequestConditionTypeBentoAvailable = "BentoAvailable"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -73,10 +77,8 @@ type BentoRequestSpec struct {
 type BentoRequestStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	ImageBuildStatus modelschemas.ImageBuildStatus `json:"imageBuildStatus,omitempty"`
-	Reconciled       bool                          `json:"reconciled,omitempty"`
-	ErrorMessage     string                        `json:"errorMessage,omitempty"`
-	BentoGenerated   bool                          `json:"bentoGenerated,omitempty"`
+	Conditions            []metav1.Condition `json:"conditions"`
+	ImageBuilderPodStatus corev1.PodStatus   `json:"imageBuilderPodStatus"`
 }
 
 //+genclient
@@ -84,10 +86,9 @@ type BentoRequestStatus struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:name="Bento-Tag",type="string",JSONPath=".spec.bentoTag",description="Bento Tag"
 //+kubebuilder:printcolumn:name="Download-Url",type="string",JSONPath=".spec.downloadUrl",description="Download URL"
-//+kubebuilder:printcolumn:name="Image-Build-Status",type="string",JSONPath=".status.imageBuildStatus",description="Image Build Status"
-//+kubebuilder:printcolumn:name="Reconciled",type="boolean",JSONPath=".status.reconciled",description="Reconciled"
-//+kubebuilder:printcolumn:name="Error-Message",type="string",JSONPath=".status.errorMessage",description="Error Message"
-//+kubebuilder:printcolumn:name="Bento-Generated",type="boolean",JSONPath=".status.bentoGenerated",description="Bento Generated"
+//+kubebuilder:printcolumn:name="Image-Exists",type="string",JSONPath=".status.conditions[?(@.type=='ImageExists')].status",description="Image Exists"
+//+kubebuilder:printcolumn:name="Bento-Available",type="string",JSONPath=".status.conditions[?(@.type=='BentoAvailable')].status",description="Bento Available"
+//+kubebuilder:printcolumn:name="Image-Builder-Pod-Phase",type="string",JSONPath=".status.imageBuilderPodStatus.phase",description="Image Builder Pod Phase"
 //+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // BentoRequest is the Schema for the bentorequests API
