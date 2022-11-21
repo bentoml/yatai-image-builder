@@ -24,11 +24,11 @@ If release name contains chart name it will be used as a full name.
 {{- end }}
 
 {{- define "yatai-image-builder.envname" -}}
-{{- printf "%s-env" (include "yatai-image-builder.fullname" .) | trunc 63 | trimSuffix "-" }}
+yatai-image-builder-env
 {{- end }}
 
 {{- define "yatai-image-builder.shared-envname" -}}
-{{- printf "%s-shared-env" (include "yatai-image-builder.fullname" .) | trunc 63 | trimSuffix "-" }}
+yatai-image-builder-shared-env
 {{- end }}
 
 {{- define "yatai-image-builder.yatai-common-envname" -}}
