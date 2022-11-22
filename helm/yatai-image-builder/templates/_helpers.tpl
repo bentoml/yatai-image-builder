@@ -35,7 +35,7 @@ yatai-image-builder-shared-env
 yatai-common-env
 {{- end }}
 
-{{- define "yatai-image-builder.yatai-rolename-in-yatai-system" -}}
+{{- define "yatai-image-builder.yatai-rolename-in-yatai-system-namespace" -}}
 yatai-common-env
 {{- end }}
 
