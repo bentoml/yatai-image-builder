@@ -105,31 +105,21 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if bentoRequest.Status.Conditions == nil || len(bentoRequest.Status.Conditions) == 0 {
-		err = r.Get(ctx, req.NamespacedName, bentoRequest)
+		bentoRequest, err = r.setStatusConditions(ctx, req,
+			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Reconciling",
+				Message: "Starting to reconcile BentoRequest",
+			},
+			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Reconciling",
+				Message: "Starting to reconcile BentoRequest",
+			},
+		)
 		if err != nil {
-			logs.Error(err, "Failed to re-fetch BentoRequest")
-			return
-		}
-		meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
-			Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
-			Status:  metav1.ConditionUnknown,
-			Reason:  "Reconciling",
-			Message: "Starting to reconcile BentoRequest",
-		})
-		meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
-			Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
-			Status:  metav1.ConditionUnknown,
-			Reason:  "Reconciling",
-			Message: "Starting to reconcile BentoRequest",
-		})
-		err = r.Status().Update(ctx, bentoRequest)
-		if err != nil {
-			logs.Error(err, "Failed to update BentoRequest status")
-			return
-		}
-		err = r.Get(ctx, req.NamespacedName, bentoRequest)
-		if err != nil {
-			logs.Error(err, "Failed to re-fetch BentoRequest")
 			return
 		}
 	}
@@ -143,18 +133,14 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 		logs.Error(err, "Failed to reconcile BentoRequest.")
 		r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "ReconcileError", "Failed to reconcile BentoRequest: %v", err)
-		err_ := r.Get(ctx, req.NamespacedName, bentoRequest)
-		if err_ != nil {
-			logs.Error(err_, "Failed to re-fetch BentoRequest")
-			return
-		}
-		meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
-			Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
-			Status:  metav1.ConditionFalse,
-			Reason:  "Reconciling",
-			Message: err.Error(),
-		})
-		err_ = r.Status().Update(ctx, bentoRequest)
+		_, err_ := r.setStatusConditions(ctx, req,
+			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
+				Status:  metav1.ConditionFalse,
+				Reason:  "Reconciling",
+				Message: err.Error(),
+			},
+		)
 		if err_ != nil {
 			logs.Error(err_, "Failed to update BentoRequest status")
 			return
@@ -188,38 +174,28 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 		if imageExists {
 			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImage", "Image exists: %s", imageInfo.ImageName)
-			err = r.Get(ctx, req.NamespacedName, bentoRequest)
+			bentoRequest, err = r.setStatusConditions(ctx, req,
+				metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
+					Status:  metav1.ConditionTrue,
+					Reason:  "Reconciling",
+					Message: fmt.Sprintf("Image %s is already exists", imageInfo.ImageName),
+				},
+			)
 			if err != nil {
-				logs.Error(err, "Failed to re-fetch BentoRequest")
-				return
-			}
-			meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
-				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
-				Status:  metav1.ConditionTrue,
-				Reason:  "Reconciling",
-				Message: fmt.Sprintf("Image %s is already exists", imageInfo.ImageName),
-			})
-			err = r.Status().Update(ctx, bentoRequest)
-			if err != nil {
-				logs.Error(err, "Failed to update BentoRequest status")
 				return
 			}
 		} else {
 			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImage", "Image not exists: %s", imageInfo.ImageName)
-			err = r.Get(ctx, req.NamespacedName, bentoRequest)
+			bentoRequest, err = r.setStatusConditions(ctx, req,
+				metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
+					Status:  metav1.ConditionFalse,
+					Reason:  "Reconciling",
+					Message: fmt.Sprintf("Image %s is not exists", imageInfo.ImageName),
+				},
+			)
 			if err != nil {
-				logs.Error(err, "Failed to re-fetch BentoRequest")
-				return
-			}
-			meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
-				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
-				Status:  metav1.ConditionFalse,
-				Reason:  "Reconciling",
-				Message: fmt.Sprintf("Image %s is not exists", imageInfo.ImageName),
-			})
-			err = r.Status().Update(ctx, bentoRequest)
-			if err != nil {
-				logs.Error(err, "Failed to update BentoRequest status")
 				return
 			}
 		}
@@ -232,20 +208,15 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	bentoAvailableCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable)
 	if bentoAvailableCondition == nil || bentoAvailableCondition.Status != metav1.ConditionUnknown {
-		err = r.Get(ctx, req.NamespacedName, bentoRequest)
+		bentoRequest, err = r.setStatusConditions(ctx, req,
+			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Reconciling",
+				Message: "Reconciling",
+			},
+		)
 		if err != nil {
-			logs.Error(err, "Failed to re-fetch BentoRequest")
-			return
-		}
-		meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
-			Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
-			Status:  metav1.ConditionUnknown,
-			Reason:  "Reconciling",
-			Message: "Reconciling",
-		})
-		err = r.Status().Update(ctx, bentoRequest)
-		if err != nil {
-			logs.Error(err, "Failed to update BentoRequest status")
 			return
 		}
 		result = ctrl.Result{
@@ -359,47 +330,36 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 
 		if pod.Status.Phase != corev1.PodSucceeded {
-			err = r.Get(ctx, req.NamespacedName, bentoRequest)
+			bentoRequest, err = r.setStatusConditions(ctx, req,
+				metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+					Status:  metav1.ConditionFalse,
+					Reason:  "Reconciling",
+					Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
+				},
+			)
 			if err != nil {
-				logs.Error(err, "Failed to re-fetch BentoRequest")
-				return
-			}
-			meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
-				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
-				Status:  metav1.ConditionFalse,
-				Reason:  "Reconciling",
-				Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
-			})
-			err = r.Status().Update(ctx, bentoRequest)
-			if err != nil {
-				logs.Error(err, "Failed to update BentoRequest status")
 				return
 			}
 			err = errors.Errorf("image builder pod %s status is %s", pod.Name, pod.Status.Phase)
 			return
 		}
 
-		err = r.Get(ctx, req.NamespacedName, bentoRequest)
+		bentoRequest, err = r.setStatusConditions(ctx, req,
+			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+				Status:  metav1.ConditionFalse,
+				Reason:  "Reconciling",
+				Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
+			},
+			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Reconciling",
+				Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
+			},
+		)
 		if err != nil {
-			logs.Error(err, "Failed to re-fetch BentoRequest")
-			return
-		}
-
-		meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
-			Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
-			Status:  metav1.ConditionFalse,
-			Reason:  "Reconciling",
-			Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
-		})
-		meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
-			Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
-			Status:  metav1.ConditionTrue,
-			Reason:  "Reconciling",
-			Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
-		})
-		err = r.Status().Update(ctx, bentoRequest)
-		if err != nil {
-			logs.Error(err, "Failed to update BentoRequest status")
 			return
 		}
 
@@ -494,24 +454,45 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	err = r.Get(ctx, req.NamespacedName, bentoRequest)
+	bentoRequest, err = r.setStatusConditions(ctx, req,
+		metav1.Condition{
+			Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Reconciling",
+			Message: "Bento is generated",
+		},
+	)
 	if err != nil {
-		logs.Error(err, "Failed to re-fetch BentoRequest")
 		return
 	}
 
-	meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
-		Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
-		Status:  metav1.ConditionTrue,
-		Reason:  "Reconciling",
-		Message: "Bento is generated",
-	})
-	err = r.Status().Update(ctx, bentoRequest)
+	return
+}
+
+func (r *BentoRequestReconciler) setStatusConditions(ctx context.Context, req ctrl.Request, conditions ...metav1.Condition) (bentoRequest *resourcesv1alpha1.BentoRequest, err error) {
+	bentoRequest = &resourcesv1alpha1.BentoRequest{}
+	for i := 0; i < 3; i++ {
+		if err = r.Get(ctx, req.NamespacedName, bentoRequest); err != nil {
+			err = errors.Wrap(err, "Failed to re-fetch BentoRequest")
+			return
+		}
+		for _, condition := range conditions {
+			meta.SetStatusCondition(&bentoRequest.Status.Conditions, condition)
+		}
+		if err = r.Status().Update(ctx, bentoRequest); err != nil {
+			time.Sleep(100 * time.Millisecond)
+		} else {
+			break
+		}
+	}
 	if err != nil {
-		logs.Error(err, "Failed to update BentoRequest status")
+		err = errors.Wrap(err, "Failed to update BentoRequest status")
 		return
 	}
-
+	if err = r.Get(ctx, req.NamespacedName, bentoRequest); err != nil {
+		err = errors.Wrap(err, "Failed to re-fetch BentoRequest")
+		return
+	}
 	return
 }
 

@@ -120,7 +120,7 @@ build: generate fmt vet ## Build manager binary.
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run -ldflags "$(VERSION_BUILDFLAGS)" ./main.go
+	go run -ldflags "$(VERSION_BUILDFLAGS)" ./main.go -metrics-bind-address=":8090" -health-probe-bind-address=":8091"
 
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
