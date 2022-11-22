@@ -1,8 +1,10 @@
 # yatai-image-builder
-// TODO(user): Add simple overview of use/purpose
+
+yatai-image-builder is a yatai component dedicated to building container images for Bento
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+
+yatai-image-builder runs in k8s, it is the operator of `BentoRequest` CRD, it is responsible for reconcile `BentoRequest` CR and then build the image for Bento, after the image is built `Bento` CR is generated, [yatai-deployment](https://github.com/bentoml/yatai-deployment) component will depend on Bento CR to deploy Bento in k8s
 
 ## Getting Started
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
@@ -42,7 +44,8 @@ make undeploy
 ```
 
 ## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
+
+Contributing code or documentation to the project by submitting a Github pull request. Check out the [Development Guide](https://github.com/bentoml/yatai-image-builder/blob/main/DEVELOPMENT.md).
 
 ### How it works
 This project aims to follow the Kubernetes [Operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/)
@@ -60,10 +63,10 @@ make install
 2. Run your controller (this will run in the foreground, so switch to a new terminal if you want to leave it running):
 
 ```sh
-make run
+make start-dev
 ```
 
-**NOTE:** You can also run this in one step by running: `make install run`
+**NOTE:** The more information you should check the [Development Guide](https://github.com/bentoml/yatai-image-builder/blob/main/DEVELOPMENT.md).
 
 ### Modifying the API definitions
 If you are editing the API definitions, generate the manifests such as CRs or CRDs using:
