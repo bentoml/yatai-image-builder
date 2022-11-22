@@ -312,6 +312,19 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				})
 			}
 			bentoRequest.Status.ImageBuilderPodStatus = pod.Status
+			if bentoRequest.Spec.ImageBuildTimeout != nil {
+				if imageBuildingCondition != nil && imageBuildingCondition.LastTransitionTime.Add(*bentoRequest.Spec.ImageBuildTimeout).Before(time.Now()) {
+					meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
+						Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+						Status:  metav1.ConditionFalse,
+						Reason:  "Timeout",
+						Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
+					})
+					err = errors.New("image build timeout")
+					return
+				}
+			}
+
 			err = r.Status().Update(ctx, bentoRequest)
 			if err != nil {
 				logs.Error(err, "Failed to update BentoRequest status")
