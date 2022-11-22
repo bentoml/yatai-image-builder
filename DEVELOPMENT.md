@@ -113,11 +113,14 @@ As you know, Kubernetes has a complex network environment, so developing cloud-n
 1. Run yatai-image-builder
 
     > WARNING: The following command uses the infrastructure of the Kubernetes environment in the current kubectl context and replaces the behavior of yatai-image-builder in the current Kubernetes environment, so please proceed with caution
-    > NOTE: The following command will automatically run `telepresence connect` to conneting the k8s network
+
+    > NOTE: The following command will automatically run `telepresence connect` to connet to the k8s network
 
     ```bash
     make start-dev
     ```
+
+    If you get something wrong, you should check the [Troubleshooting](#troubleshooting)
 
 2. ✨ Enjoy it!
 
