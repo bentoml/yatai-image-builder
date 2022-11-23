@@ -17,8 +17,8 @@ limitations under the License.
 package resources
 
 import (
-	// nolint: gosec
 	"context"
+	// nolint: gosec
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
@@ -1506,6 +1506,7 @@ func (r *BentoRequestReconciler) doRegisterYataiComponent() (err error) {
 		},
 	})
 
+	err = errors.Wrap(err, "register yatai component")
 	return err
 }
 
