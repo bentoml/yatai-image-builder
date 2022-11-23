@@ -130,21 +130,6 @@ fi
 kubectl delete -f /tmp/cert-manager-test-resources.yaml
 echo "✅ cert-manager is working properly"
 
-if [ $(kubectl get pod -A -l k8s-app=metrics-server 2> /dev/null | wc -l) = 0 ]; then
-  echo "🤖 installing metrics-server..."
-  if [ "${is_minikube}" = "true" ]; then
-    minikube addons enable metrics-server
-  else
-    kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-  fi
-else
-  echo "😀 metrics-server is already installed"
-fi
-
-echo "⏳ waiting for metrics-server to be ready..."
-kubectl wait --for=condition=ready --timeout=600s pod -l k8s-app=metrics-server -A
-echo "✅ metrics-server is ready"
-
 helm repo add twuni https://helm.twun.io
 helm repo update twuni
 echo "🤖 installing docker-registry..."
@@ -215,7 +200,7 @@ UPGRADE_CRDS=${UPGRADE_CRDS:-false}
 
 if [ "${UPGRADE_CRDS}" = "true" ]; then
   echo "🤖 installing yatai-image-builder CRDs..."
-  kubectl apply -f https://raw.githubusercontent.com/bentoml/yatai-image-builder/main/helm/yatai-image-builder/crds/bentorequest.yaml
+  kubectl apply --server-side -f https://raw.githubusercontent.com/bentoml/yatai-image-builder/main/helm/yatai-image-builder/crds/bentorequest.yaml
   echo "⏳ waiting for BentoRequest CRD to be established..."
   kubectl wait --for condition=established --timeout=120s crd/bentorequests.resources.yatai.ai
   echo "✅ BentoRequest CRD are established"
