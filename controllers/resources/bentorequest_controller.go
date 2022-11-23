@@ -22,6 +22,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"reflect"
 	"time"
 
@@ -60,6 +61,7 @@ import (
 	clientconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
+	"github.com/bentoml/yatai-image-builder/version"
 	yataiclient "github.com/bentoml/yatai-image-builder/yatai-client"
 )
 
@@ -595,7 +597,7 @@ func MakeSureDockerConfigJSONSecret(ctx context.Context, kubeCli *kubernetes.Cli
 	return
 }
 
-func getYataiClient(ctx context.Context) (yataiClient *yataiclient.YataiClient, yataiConf *commonconfig.YataiConfig, err error) {
+func getYataiClient(ctx context.Context) (yataiClient **yataiclient.YataiClient, yataiConf **commonconfig.YataiConfig, err error) {
 	restConfig := clientconfig.GetConfigOrDie()
 	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
@@ -603,16 +605,29 @@ func getYataiClient(ctx context.Context) (yataiClient *yataiclient.YataiClient, 
 		return
 	}
 
-	yataiConf, err = commonconfig.GetYataiConfig(ctx, clientset, commonconsts.YataiImageBuilderComponentName, true)
-	if err != nil {
+	yataiConf_, err := commonconfig.GetYataiConfig(ctx, clientset, commonconsts.YataiImageBuilderComponentName, true)
+	isNotFound := k8serrors.IsNotFound(err)
+	if err != nil && !isNotFound {
 		err = errors.Wrap(err, "get yatai config")
 		return
 	}
 
-	if yataiConf.ClusterName == "" {
-		yataiConf.ClusterName = "default"
+	if isNotFound {
+		return
 	}
-	yataiClient = yataiclient.NewYataiClient(yataiConf.Endpoint, fmt.Sprintf("%s:%s:%s", commonconsts.YataiImageBuilderComponentName, yataiConf.ClusterName, yataiConf.ApiToken))
+
+	if yataiConf_.Endpoint == "" {
+		return
+	}
+
+	if yataiConf_.ClusterName == "" {
+		yataiConf_.ClusterName = "default"
+	}
+
+	yataiClient_ := yataiclient.NewYataiClient(yataiConf_.Endpoint, fmt.Sprintf("%s:%s:%s", commonconsts.YataiImageBuilderComponentName, yataiConf_.ClusterName, yataiConf_.ApiToken))
+
+	yataiClient = &yataiClient_
+	yataiConf = &yataiConf_
 	return
 }
 
@@ -760,19 +775,18 @@ func (r *BentoRequestReconciler) getImageInfo(ctx context.Context, opt GetImageI
 func (r *BentoRequestReconciler) getBento(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest) (bento *schemasv1.BentoFullSchema, err error) {
 	bentoRepositoryName, _, bentoVersion := xstrings.Partition(bentoRequest.Spec.BentoTag, ":")
 
-	var yataiClient *yataiclient.YataiClient
-	var yataiConf *commonconfig.YataiConfig
-
-	yataiClient, yataiConf, err = getYataiClient(ctx)
+	yataiClient_, _, err := getYataiClient(ctx)
 	if err != nil {
 		err = errors.Wrap(err, "get yatai client")
 		return
 	}
 
-	if yataiConf.Endpoint == "" {
-		err = errors.New("yatai endpoint is empty")
+	if yataiClient_ == nil {
+		err = errors.New("can't get yatai client, please check yatai configuration")
 		return
 	}
+
+	yataiClient := *yataiClient_
 
 	r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "FetchBento", "Getting bento %s from yatai service", bentoRequest.Spec.BentoTag)
 	bento, err = yataiClient.GetBento(ctx, bentoRepositoryName, bentoVersion)
@@ -868,19 +882,22 @@ func (r *BentoRequestReconciler) generateImageBuilderPod(ctx context.Context, op
 	bentoDownloadHeader := ""
 
 	if bentoDownloadURL == "" {
-		var yataiClient *yataiclient.YataiClient
-		var yataiConf *commonconfig.YataiConfig
+		var yataiClient_ **yataiclient.YataiClient
+		var yataiConf_ **commonconfig.YataiConfig
 
-		yataiClient, yataiConf, err = getYataiClient(ctx)
+		yataiClient_, yataiConf_, err = getYataiClient(ctx)
 		if err != nil {
 			err = errors.Wrap(err, "get yatai client")
 			return
 		}
 
-		if yataiConf.Endpoint == "" {
-			err = errors.New("yatai endpoint is empty")
+		if yataiClient_ == nil || yataiConf_ == nil {
+			err = errors.New("can't get yatai client, please check yatai configuration")
 			return
 		}
+
+		yataiClient := *yataiClient_
+		yataiConf := *yataiConf_
 
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting bento %s from yatai service", opt.BentoRequest.Spec.BentoTag)
 		bento, err = yataiClient.GetBento(ctx, bentoRepositoryName, bentoVersion)
@@ -1046,19 +1063,22 @@ echo "Done"
 				continue
 			}
 
-			var yataiClient *yataiclient.YataiClient
-			var yataiConf *commonconfig.YataiConfig
+			var yataiClient_ **yataiclient.YataiClient
+			var yataiConf_ **commonconfig.YataiConfig
 
-			yataiClient, yataiConf, err = getYataiClient(ctx)
+			yataiClient_, yataiConf_, err = getYataiClient(ctx)
 			if err != nil {
 				err = errors.Wrap(err, "get yatai client")
 				return
 			}
 
-			if yataiConf.Endpoint == "" {
-				err = errors.New("yatai endpoint is empty")
+			if yataiClient_ == nil || yataiConf_ == nil {
+				err = errors.New("can't get yatai client, please check yatai configuration")
 				return
 			}
+
+			yataiClient := *yataiClient_
+			yataiConf := *yataiConf_
 
 			var model_ *schemasv1.ModelFullSchema
 			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting model %s from yatai service", model.Tag)
@@ -1437,8 +1457,88 @@ echo "Done"
 	return
 }
 
+func (r *BentoRequestReconciler) doRegisterYataiComponent() (err error) {
+	logs := log.Log.WithValues("func", "doRegisterYataiComponent")
+
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Minute*5)
+	defer cancel()
+
+	logs.Info("getting yatai client")
+	yataiClient, yataiConf, err := getYataiClient(ctx)
+	if err != nil {
+		err = errors.Wrap(err, "get yatai client")
+		return
+	}
+
+	if yataiClient == nil || yataiConf == nil {
+		logs.Info("can't get yatai client, skip registering")
+		return
+	}
+
+	yataiClient_ := *yataiClient
+	yataiConf_ := *yataiConf
+
+	restConf := clientconfig.GetConfigOrDie()
+	cliset, err := kubernetes.NewForConfig(restConf)
+	if err != nil {
+		err = errors.Wrapf(err, "create kubernetes client for %s", restConf.Host)
+		return
+	}
+
+	namespace, err := commonconfig.GetYataiDeploymentNamespace(ctx, cliset)
+	if err != nil {
+		err = errors.Wrap(err, "get yatai deployment namespace")
+		return
+	}
+
+	_, err = yataiClient_.RegisterYataiComponent(ctx, yataiConf_.ClusterName, &schemasv1.RegisterYataiComponentSchema{
+		Name:          modelschemas.YataiComponentNameDeployment,
+		KubeNamespace: namespace,
+		Version:       version.Version,
+		SelectorLabels: map[string]string{
+			"app.kubernetes.io/name": "yatai-image-builder",
+		},
+		Manifest: &modelschemas.YataiComponentManifestSchema{
+			SelectorLabels: map[string]string{
+				"app.kubernetes.io/name": "yatai-image-builder",
+			},
+			LatestCRDVersion: "v1alpha1",
+		},
+	})
+
+	return err
+}
+
+func (r *BentoRequestReconciler) registerYataiComponent() {
+	logs := log.Log.WithValues("func", "registerYataiComponent")
+	err := r.doRegisterYataiComponent()
+	if err != nil {
+		logs.Error(err, "registerYataiComponent")
+	}
+	ticker := time.NewTicker(time.Minute * 5)
+	for range ticker.C {
+		err := r.doRegisterYataiComponent()
+		if err != nil {
+			logs.Error(err, "registerYataiComponent")
+		}
+	}
+}
+
+const (
+	trueStr = "true"
+)
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *BentoRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	logs := log.Log.WithValues("func", "SetupWithManager")
+	version.Print()
+
+	if os.Getenv("DISABLE_YATAI_COMPONENT_REGISTRATION") != trueStr {
+		go r.registerYataiComponent()
+	} else {
+		logs.Info("yatai component registration is disabled")
+	}
+
 	pred := predicate.GenerationChangedPredicate{}
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&resourcesv1alpha1.BentoRequest{}).
