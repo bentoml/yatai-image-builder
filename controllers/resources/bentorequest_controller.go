@@ -36,6 +36,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -283,15 +284,28 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return
 		}
 
-		err = r.Get(ctx, req.NamespacedName, bentoRequest)
-		if err != nil {
-			logs.Error(err, "Failed to re-fetch BentoRequest")
-			return
+		/*
+			Please don't blame me when you see this kind of code,
+			this is to avoid "the object has been modified; please apply your changes to the latest version and try again" when updating CR status,
+			don't doubt that almost all CRD operators (e.g. cert-manager) can't avoid this stupid error and can only try to avoid this by this stupid way.
+		*/
+		for i := 0; i < 3; i++ {
+			err = r.Get(ctx, req.NamespacedName, bentoRequest)
+			if err != nil {
+				logs.Error(err, "Failed to re-fetch BentoRequest")
+				return
+			}
+
+			bentoRequest.Status.ImageBuilderPodStatus = pod.Status
+
+			err = r.Status().Update(ctx, bentoRequest)
+			if err != nil {
+				time.Sleep(100 * time.Millisecond)
+			} else {
+				break
+			}
 		}
 
-		bentoRequest.Status.ImageBuilderPodStatus = pod.Status
-
-		err = r.Status().Update(ctx, bentoRequest)
 		if err != nil {
 			logs.Error(err, "Failed to update BentoRequest status")
 			return
@@ -304,36 +318,54 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				return
 			}
 			imageBuildingCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeImageBuilding)
-			if pod.Status.Phase == corev1.PodRunning {
-				meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
-					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
-					Status:  metav1.ConditionTrue,
-					Reason:  "Reconciling",
-					Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
-				})
-			} else {
-				meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
-					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
-					Status:  metav1.ConditionUnknown,
-					Reason:  "Reconciling",
-					Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
-				})
-			}
-			bentoRequest.Status.ImageBuilderPodStatus = pod.Status
-			if bentoRequest.Spec.ImageBuildTimeout != nil {
-				if imageBuildingCondition != nil && imageBuildingCondition.LastTransitionTime.Add(*bentoRequest.Spec.ImageBuildTimeout).Before(time.Now()) {
+			/*
+				Please don't blame me when you see this kind of code,
+				this is to avoid "the object has been modified; please apply your changes to the latest version and try again" when updating CR status,
+				don't doubt that almost all CRD operators (e.g. cert-manager) can't avoid this stupid error and can only try to avoid this by this stupid way.
+			*/
+			for i := 0; i < 3; i++ {
+				err = r.Get(ctx, req.NamespacedName, bentoRequest)
+				if err != nil {
+					logs.Error(err, "Failed to re-fetch BentoRequest")
+					return
+				}
+				if pod.Status.Phase == corev1.PodRunning {
 					meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
 						Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
-						Status:  metav1.ConditionFalse,
-						Reason:  "Timeout",
+						Status:  metav1.ConditionTrue,
+						Reason:  "Reconciling",
 						Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
 					})
-					err = errors.New("image build timeout")
-					return
+				} else {
+					meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
+						Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+						Status:  metav1.ConditionUnknown,
+						Reason:  "Reconciling",
+						Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
+					})
+				}
+				bentoRequest.Status.ImageBuilderPodStatus = pod.Status
+				if bentoRequest.Spec.ImageBuildTimeout != nil {
+					if imageBuildingCondition != nil && imageBuildingCondition.LastTransitionTime.Add(*bentoRequest.Spec.ImageBuildTimeout).Before(time.Now()) {
+						meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
+							Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+							Status:  metav1.ConditionFalse,
+							Reason:  "Timeout",
+							Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
+						})
+						err = errors.New("image build timeout")
+						return
+					}
+				}
+
+				err = r.Status().Update(ctx, bentoRequest)
+				if err != nil {
+					time.Sleep(100 * time.Millisecond)
+				} else {
+					break
 				}
 			}
 
-			err = r.Status().Update(ctx, bentoRequest)
 			if err != nil {
 				logs.Error(err, "Failed to update BentoRequest status")
 				return
@@ -492,6 +524,11 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 func (r *BentoRequestReconciler) setStatusConditions(ctx context.Context, req ctrl.Request, conditions ...metav1.Condition) (bentoRequest *resourcesv1alpha1.BentoRequest, err error) {
 	bentoRequest = &resourcesv1alpha1.BentoRequest{}
+	/*
+		Please don't blame me when you see this kind of code,
+		this is to avoid "the object has been modified; please apply your changes to the latest version and try again" when updating CR status,
+		don't doubt that almost all CRD operators (e.g. cert-manager) can't avoid this stupid error and can only try to avoid this by this stupid way.
+	*/
 	for i := 0; i < 3; i++ {
 		if err = r.Get(ctx, req.NamespacedName, bentoRequest); err != nil {
 			err = errors.Wrap(err, "Failed to re-fetch BentoRequest")
@@ -962,6 +999,36 @@ func (r *BentoRequestReconciler) generateImageBuilderPod(ctx context.Context, op
 		}
 	}
 
+	// nolint: gosec
+	var awsAccessKeySecretName string
+	awsAccessKeyID := os.Getenv(commonconsts.EnvAWSAccessKeyID)
+	awsSecretAccessKey := os.Getenv(commonconsts.EnvAWSSecretAccessKey)
+	if awsAccessKeyID != "" && awsSecretAccessKey != "" {
+		// nolint: gosec
+		awsAccessKeySecretName = "yatai-image-builder-aws-access-key"
+		stringData := map[string]string{
+			commonconsts.EnvAWSAccessKeyID:     awsAccessKeyID,
+			commonconsts.EnvAWSSecretAccessKey: awsSecretAccessKey,
+		}
+		awsAccessKeySecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      awsAccessKeySecretName,
+				Namespace: opt.BentoRequest.Namespace,
+			},
+			StringData: stringData,
+		}
+		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Creating or updating secret %s in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
+		_, err = controllerutil.CreateOrUpdate(ctx, r.Client, awsAccessKeySecret, func() error {
+			awsAccessKeySecret.StringData = stringData
+			return nil
+		})
+		if err != nil {
+			err = errors.Wrapf(err, "failed to create or update secret %s", awsAccessKeySecretName)
+			return
+		}
+		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is created or updated in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
+	}
+
 	internalImages := commonconfig.GetInternalImages()
 	logrus.Infof("Image builder is using the images %v", *internalImages)
 
@@ -971,7 +1038,12 @@ set -e
 mkdir -p /workspace/buildcontext
 url="{{.BentoDownloadURL}}"
 echo "Downloading bento {{.BentoRepositoryName}}:{{.BentoVersion}} tar file from ${url} to /tmp/downloaded.tar..."
-curl --fail -H "{{.BentoDownloadHeader}}" ${url} --output /tmp/downloaded.tar --progress-bar
+if [[ ${url} == s3://* ]]; then
+	echo "Downloading from s3..."
+	aws s3 cp ${url} /tmp/downloaded.tar
+else
+	curl --fail -L -H "{{.BentoDownloadHeader}}" ${url} --output /tmp/downloaded.tar --progress-bar
+fi
 cd /workspace/buildcontext
 echo "Extracting bento tar file..."
 tar -xvf /tmp/downloaded.tar
@@ -1023,12 +1095,22 @@ echo "Done"
 		})
 	}
 
+	if awsAccessKeySecretName != "" {
+		downloaderContainerEnvFrom = append(downloaderContainerEnvFrom, corev1.EnvFromSource{
+			SecretRef: &corev1.SecretEnvSource{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: awsAccessKeySecretName,
+				},
+			},
+		})
+	}
+
 	initContainers := []corev1.Container{
 		{
 			Name:  "bento-downloader",
-			Image: internalImages.Curl,
+			Image: internalImages.BentoDownloader,
 			Command: []string{
-				"sh",
+				"bash",
 				"-c",
 				bentoDownloadCommand,
 			},
@@ -1113,7 +1195,12 @@ set -e
 mkdir -p {{.ModelDirPath}}
 url="{{.ModelDownloadURL}}"
 echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} tar file from ${url} to /tmp/downloaded.tar..."
-curl --fail -H "{{.ModelDownloadHeader}}" ${url} --output /tmp/downloaded.tar --progress-bar
+if [[ ${url} == s3://* ]]; then
+	echo "Downloading from s3..."
+	aws s3 cp ${url} /tmp/downloaded.tar
+else
+	curl --fail -L -H "{{.ModelDownloadHeader}}" ${url} --output /tmp/downloaded.tar --progress-bar
+fi
 cd {{.ModelDirPath}}
 echo "Extracting model tar file..."
 tar -xvf /tmp/downloaded.tar
@@ -1136,9 +1223,9 @@ echo "Done"
 		modelDownloadCommand := modelDownloadCommandOutput.String()
 		initContainers = append(initContainers, corev1.Container{
 			Name:  fmt.Sprintf("model-downloader-%d", idx),
-			Image: internalImages.Curl,
+			Image: internalImages.BentoDownloader,
 			Command: []string{
-				"sh",
+				"bash",
 				"-c",
 				modelDownloadCommand,
 			},

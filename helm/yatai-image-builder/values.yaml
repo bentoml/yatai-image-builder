@@ -86,6 +86,12 @@ dockerRegistry:
   secure: true
   bentoRepositoryName: yatai-bentos
 
+aws:
+  accessKeyID: ''
+  secretAccessKey: ''
+  secretAccessKeyExistingSecretName: ''
+  secretAccessKeyExistingSecretKey: ''
+
 internalImages:
-  curl: quay.io/bentoml/curl:0.0.1
+  bentoDownloader: quay.io/bentoml/bento-downloader:0.0.1
   kaniko: quay.io/bentoml/kaniko:1.9.1

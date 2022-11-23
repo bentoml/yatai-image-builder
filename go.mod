@@ -3,7 +3,7 @@ module github.com/bentoml/yatai-image-builder
 go 1.18
 
 require (
-	github.com/bentoml/yatai-common v0.0.0-20221115112706-487d02768241
+	github.com/bentoml/yatai-common v0.0.0-20221123164313-873a6c0ad47a
 	github.com/bentoml/yatai-schemas v0.0.0-20221123041958-d3ff9b721451
 	github.com/huandu/xstrings v1.3.2
 	github.com/iancoleman/strcase v0.2.0
