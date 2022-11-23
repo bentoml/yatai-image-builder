@@ -17,7 +17,10 @@ limitations under the License.
 package resources
 
 import (
+	// nolint: gosec
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"reflect"
 	"time"
@@ -228,6 +231,9 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	imageExists := imageExistsCondition != nil && imageExistsCondition.Status == metav1.ConditionTrue
 	if !imageExists {
 		podName := strcase.ToKebab(fmt.Sprintf("yatai-bento-image-builder-%s", bentoRequest.Name))
+		if len(podName) > 63 {
+			podName = fmt.Sprintf("yatai-bento-image-builder-%s", hash(bentoRequest.Name))[:63]
+		}
 
 		pod := &corev1.Pod{}
 		err = r.Get(ctx, types.NamespacedName{
@@ -507,6 +513,13 @@ func (r *BentoRequestReconciler) setStatusConditions(ctx context.Context, req ct
 		return
 	}
 	return
+}
+
+func hash(text string) string {
+	// nolint: gosec
+	hasher := md5.New()
+	hasher.Write([]byte(text))
+	return hex.EncodeToString(hasher.Sum(nil))
 }
 
 func MakeSureDockerConfigJSONSecret(ctx context.Context, kubeCli *kubernetes.Clientset, namespace string, dockerRegistryConf *commonconfig.DockerRegistryConfig) (dockerConfigJSONSecret *corev1.Secret, err error) {
