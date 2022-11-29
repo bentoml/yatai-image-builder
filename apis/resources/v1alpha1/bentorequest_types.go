@@ -43,6 +43,7 @@ type ExtraPodSpec struct {
 	Affinity                  *corev1.Affinity                  `json:"affinity,omitempty"`
 	Tolerations               []corev1.Toleration               `json:"tolerations,omitempty"`
 	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+	ServiceAccountName        string                            `json:"serviceAccountName,omitempty"`
 }
 
 // BentoRequestSpec defines the desired state of BentoRequest

@@ -1466,6 +1466,7 @@ echo "Done"
 		pod.Spec.Affinity = extraPodSpec.Affinity
 		pod.Spec.Tolerations = extraPodSpec.Tolerations
 		pod.Spec.TopologySpreadConstraints = extraPodSpec.TopologySpreadConstraints
+		pod.Spec.ServiceAccountName = extraPodSpec.ServiceAccountName
 	}
 
 	if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.SchedulerName != "" {
