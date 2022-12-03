@@ -86,6 +86,9 @@ dockerRegistry:
   secure: true
   bentoRepositoryName: yatai-bentos
 
+  useAWSECRWithIAMRole: false
+  awsECRRegion: ap-northeast-3
+
 aws:
   accessKeyID: ''
   secretAccessKey: ''

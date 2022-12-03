@@ -64,6 +64,10 @@ import (
 	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
 	"github.com/bentoml/yatai-image-builder/version"
 	yataiclient "github.com/bentoml/yatai-image-builder/yatai-client"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/ecr"
 )
 
 // BentoRequestReconciler reconciles a BentoRequest object
@@ -554,6 +558,55 @@ func (r *BentoRequestReconciler) setStatusConditions(ctx context.Context, req ct
 	return
 }
 
+const (
+	EnvAWSECRWithIAMRole = "AWS_ECR_WITH_IAM_ROLE"
+	EnvAWSECRRegion      = "AWS_ECR_REGION"
+)
+
+func UsingAWSECRWithIAMRole() bool {
+	return os.Getenv(EnvAWSECRWithIAMRole) == "true"
+}
+
+func GetAWSECRRegion() string {
+	return os.Getenv(EnvAWSECRRegion)
+}
+
+func CheckECRImageExists(imageName string) (bool, error) {
+	region := GetAWSECRRegion()
+	if region == "" {
+		return false, fmt.Errorf("%s is not set", EnvAWSECRRegion)
+	}
+	sess, err := session.NewSession(&aws.Config{
+		Region: aws.String(region)},
+	)
+	if err != nil {
+		err = errors.Wrap(err, "create aws session")
+		return false, err
+	}
+
+	_, _, imageName_ := xstrings.Partition(imageName, "/")
+	repoName, _, tag := xstrings.Partition(imageName_, ":")
+
+	svc := ecr.New(sess)
+	input := &ecr.ListImagesInput{
+		RepositoryName: aws.String(repoName),
+	}
+
+	result, err := svc.ListImages(input)
+	if err != nil {
+		err = errors.Wrap(err, "list ECR images")
+		return false, err
+	}
+
+	for _, image := range result.ImageIds {
+		if image.ImageTag != nil && *image.ImageTag == tag {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func hash(text string) string {
 	// nolint: gosec
 	hasher := md5.New()
@@ -724,6 +777,10 @@ func getBentoImageName(dockerRegistry modelschemas.DockerRegistrySchema, bentoRe
 }
 
 func checkImageExists(dockerRegistry modelschemas.DockerRegistrySchema, imageName string) (bool, error) {
+	if UsingAWSECRWithIAMRole() {
+		return CheckECRImageExists(imageName)
+	}
+
 	server, _, imageName := xstrings.Partition(imageName, "/")
 	if strings.Contains(server, "docker.io") {
 		server = "index.docker.io"
@@ -1325,6 +1382,16 @@ echo "Done"
 			Name:  "IFS",
 			Value: "''",
 		},
+	}
+
+	if UsingAWSECRWithIAMRole() {
+		envs = append(envs, corev1.EnvVar{
+			Name:  "AWS_REGION",
+			Value: GetAWSECRRegion(),
+		}, corev1.EnvVar{
+			Name:  "AWS_SDK_LOAD_CONFIG",
+			Value: "true",
+		})
 	}
 
 	var command []string
