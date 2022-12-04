@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -558,23 +559,18 @@ func (r *BentoRequestReconciler) setStatusConditions(ctx context.Context, req ct
 	return
 }
 
-const (
-	EnvAWSECRWithIAMRole = "AWS_ECR_WITH_IAM_ROLE"
-	EnvAWSECRRegion      = "AWS_ECR_REGION"
-)
-
 func UsingAWSECRWithIAMRole() bool {
-	return os.Getenv(EnvAWSECRWithIAMRole) == "true"
+	return os.Getenv(commonconsts.EnvAWSECRWithIAMRole) == "true"
 }
 
 func GetAWSECRRegion() string {
-	return os.Getenv(EnvAWSECRRegion)
+	return os.Getenv(commonconsts.EnvAWSECRRegion)
 }
 
 func CheckECRImageExists(imageName string) (bool, error) {
 	region := GetAWSECRRegion()
 	if region == "" {
-		return false, fmt.Errorf("%s is not set", EnvAWSECRRegion)
+		return false, fmt.Errorf("%s is not set", commonconsts.EnvAWSECRRegion)
 	}
 	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String(region)},
@@ -1295,9 +1291,9 @@ echo "Done"
 		})
 	}
 
-	var extraPodMetadata *resourcesv1alpha1.ExtraPodMetadata
-	var extraPodSpec *resourcesv1alpha1.ExtraPodSpec
-	var extraContainerEnv []corev1.EnvVar
+	var globalExtraPodMetadata *resourcesv1alpha1.ExtraPodMetadata
+	var globalExtraPodSpec *resourcesv1alpha1.ExtraPodSpec
+	var globalExtraContainerEnv []corev1.EnvVar
 	var buildArgs []string
 	var builderArgs []string
 
@@ -1309,7 +1305,8 @@ echo "Done"
 
 	configCmName := "yatai-image-builder-config"
 	r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting configmap %s from namespace %s", configCmName, configNamespace)
-	configCm, err := kubeCli.CoreV1().ConfigMaps(configNamespace).Get(ctx, configCmName, metav1.GetOptions{})
+	configCm := &corev1.ConfigMap{}
+	err = r.Get(ctx, types.NamespacedName{Name: configCmName, Namespace: configNamespace}, configCm)
 	configCmIsNotFound := k8serrors.IsNotFound(err)
 	if err != nil && !configCmIsNotFound {
 		err = errors.Wrap(err, "failed to get configmap")
@@ -1318,32 +1315,32 @@ echo "Done"
 
 	if !configCmIsNotFound {
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Configmap %s is got from namespace %s", configCmName, configNamespace)
-		extraPodMetadata = &resourcesv1alpha1.ExtraPodMetadata{}
+		globalExtraPodMetadata = &resourcesv1alpha1.ExtraPodMetadata{}
 
 		if val, ok := configCm.Data["extra_pod_metadata"]; ok {
-			err = json.Unmarshal([]byte(val), extraPodMetadata)
+			err = yaml.Unmarshal([]byte(val), globalExtraPodMetadata)
 			if err != nil {
-				err = errors.Wrapf(err, "failed to unmarshal extra_pod_metadata, please check the configmap %s in namespace %s", configCmName, configNamespace)
+				err = errors.Wrapf(err, "failed to yaml unmarshal extra_pod_metadata, please check the configmap %s in namespace %s", configCmName, configNamespace)
 				return
 			}
 		}
 
-		extraPodSpec = &resourcesv1alpha1.ExtraPodSpec{}
+		globalExtraPodSpec = &resourcesv1alpha1.ExtraPodSpec{}
 
 		if val, ok := configCm.Data["extra_pod_spec"]; ok {
-			err = json.Unmarshal([]byte(val), extraPodSpec)
+			err = yaml.Unmarshal([]byte(val), globalExtraPodSpec)
 			if err != nil {
-				err = errors.Wrapf(err, "failed to unmarshal extra_pod_spec, please check the configmap %s in namespace %s", configCmName, configNamespace)
+				err = errors.Wrapf(err, "failed to yaml unmarshal extra_pod_spec, please check the configmap %s in namespace %s", configCmName, configNamespace)
 				return
 			}
 		}
 
-		extraContainerEnv = []corev1.EnvVar{}
+		globalExtraContainerEnv = []corev1.EnvVar{}
 
 		if val, ok := configCm.Data["extra_container_env"]; ok {
-			err = json.Unmarshal([]byte(val), &extraContainerEnv)
+			err = yaml.Unmarshal([]byte(val), &globalExtraContainerEnv)
 			if err != nil {
-				err = errors.Wrapf(err, "failed to unmarshal extra_container_env, please check the configmap %s in namespace %s", configCmName, configNamespace)
+				err = errors.Wrapf(err, "failed to yaml unmarshal extra_container_env, please check the configmap %s in namespace %s", configCmName, configNamespace)
 				return
 			}
 		}
@@ -1351,18 +1348,18 @@ echo "Done"
 		buildArgs = []string{}
 
 		if val, ok := configCm.Data["build_args"]; ok {
-			err = json.Unmarshal([]byte(val), &buildArgs)
+			err = yaml.Unmarshal([]byte(val), &buildArgs)
 			if err != nil {
-				err = errors.Wrapf(err, "failed to unmarshal build_args, please check the configmap %s in namespace %s", configCmName, configNamespace)
+				err = errors.Wrapf(err, "failed to yaml unmarshal build_args, please check the configmap %s in namespace %s", configCmName, configNamespace)
 				return
 			}
 		}
 
 		builderArgs = []string{}
 		if val, ok := configCm.Data["builder_args"]; ok {
-			err = json.Unmarshal([]byte(val), &builderArgs)
+			err = yaml.Unmarshal([]byte(val), &builderArgs)
 			if err != nil {
-				err = errors.Wrapf(err, "failed to unmarshal builder_args, please check the configmap %s in namespace %s", configCmName, configNamespace)
+				err = errors.Wrapf(err, "failed to yaml unmarshal builder_args, please check the configmap %s in namespace %s", configCmName, configNamespace)
 				return
 			}
 		}
@@ -1509,12 +1506,12 @@ echo "Done"
 		},
 	}
 
-	if extraPodMetadata != nil {
-		for k, v := range extraPodMetadata.Annotations {
+	if globalExtraPodMetadata != nil {
+		for k, v := range globalExtraPodMetadata.Annotations {
 			pod.Annotations[k] = v
 		}
 
-		for k, v := range extraPodMetadata.Labels {
+		for k, v := range globalExtraPodMetadata.Labels {
 			pod.Labels[k] = v
 		}
 	}
@@ -1527,13 +1524,13 @@ echo "Done"
 		pod.Labels[k] = v
 	}
 
-	if extraPodSpec != nil {
-		pod.Spec.SchedulerName = extraPodSpec.SchedulerName
-		pod.Spec.NodeSelector = extraPodSpec.NodeSelector
-		pod.Spec.Affinity = extraPodSpec.Affinity
-		pod.Spec.Tolerations = extraPodSpec.Tolerations
-		pod.Spec.TopologySpreadConstraints = extraPodSpec.TopologySpreadConstraints
-		pod.Spec.ServiceAccountName = extraPodSpec.ServiceAccountName
+	if globalExtraPodSpec != nil {
+		pod.Spec.SchedulerName = globalExtraPodSpec.SchedulerName
+		pod.Spec.NodeSelector = globalExtraPodSpec.NodeSelector
+		pod.Spec.Affinity = globalExtraPodSpec.Affinity
+		pod.Spec.Tolerations = globalExtraPodSpec.Tolerations
+		pod.Spec.TopologySpreadConstraints = globalExtraPodSpec.TopologySpreadConstraints
+		pod.Spec.ServiceAccountName = globalExtraPodSpec.ServiceAccountName
 	}
 
 	if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.SchedulerName != "" {
@@ -1556,17 +1553,41 @@ echo "Done"
 		pod.Spec.TopologySpreadConstraints = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.TopologySpreadConstraints
 	}
 
-	if extraContainerEnv != nil {
-		for i, c := range pod.Spec.InitContainers {
-			env := c.Env
-			env = append(env, extraContainerEnv...)
-			pod.Spec.InitContainers[i].Env = env
+	if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.ServiceAccountName != "" {
+		pod.Spec.ServiceAccountName = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.ServiceAccountName
+	}
+
+	if pod.Spec.ServiceAccountName == "" {
+		serviceAccounts := &corev1.ServiceAccountList{}
+		err = r.List(ctx, serviceAccounts, client.InNamespace(opt.BentoRequest.Namespace), client.MatchingLabels{
+			commonconsts.KubeLabelYataiImageBuilderPod: commonconsts.KubeLabelValueTrue,
+		})
+		if err != nil {
+			err = errors.Wrapf(err, "failed to list service accounts in namespace %s", opt.BentoRequest.Namespace)
+			return
 		}
-		for i, c := range pod.Spec.Containers {
-			env := c.Env
-			env = append(env, extraContainerEnv...)
-			pod.Spec.Containers[i].Env = env
+		if len(serviceAccounts.Items) > 0 {
+			pod.Spec.ServiceAccountName = serviceAccounts.Items[0].Name
+		} else {
+			pod.Spec.ServiceAccountName = "default"
 		}
+	}
+
+	for i, c := range pod.Spec.InitContainers {
+		env := c.Env
+		if globalExtraContainerEnv != nil {
+			env = append(env, globalExtraContainerEnv...)
+		}
+		env = append(env, opt.BentoRequest.Spec.ImageBuilderExtraContainerEnv...)
+		pod.Spec.InitContainers[i].Env = env
+	}
+	for i, c := range pod.Spec.Containers {
+		env := c.Env
+		if globalExtraContainerEnv != nil {
+			env = append(env, globalExtraContainerEnv...)
+		}
+		env = append(env, opt.BentoRequest.Spec.ImageBuilderExtraContainerEnv...)
+		pod.Spec.Containers[i].Env = env
 	}
 
 	err = ctrl.SetControllerReference(opt.BentoRequest, pod, r.Scheme)

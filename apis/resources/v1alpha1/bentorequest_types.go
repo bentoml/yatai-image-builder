@@ -65,6 +65,8 @@ type BentoRequestSpec struct {
 	// +kubebuilder:validation:Optional
 	ImageBuilderExtraPodSpec ExtraPodSpec `json:"imageBuilderExtraPodSpec,omitempty"`
 	// +kubebuilder:validation:Optional
+	ImageBuilderExtraContainerEnv []corev1.EnvVar `json:"imageBuilderExtraContainerEnv,omitempty"`
+	// +kubebuilder:validation:Optional
 	ImageBuilderContainerResources corev1.ResourceRequirements `json:"imageBuilderContainerResources,omitempty"`
 
 	// +kubebuilder:validation:Optional
