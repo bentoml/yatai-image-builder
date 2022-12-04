@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/aws/aws-sdk-go v1.44.152
-	github.com/bentoml/yatai-common v0.0.0-20221123164313-873a6c0ad47a
+	github.com/bentoml/yatai-common v0.0.0-20221204065908-975ef2e3714e
 	github.com/bentoml/yatai-schemas v0.0.0-20221123041958-d3ff9b721451
 	github.com/huandu/xstrings v1.3.2
 	github.com/iancoleman/strcase v0.2.0
@@ -91,7 +91,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
+	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apiextensions-apiserver v0.25.0 // indirect
 	k8s.io/component-base v0.25.0 // indirect
 	k8s.io/gengo v0.0.0-20211129171323-c02415ce4185 // indirect

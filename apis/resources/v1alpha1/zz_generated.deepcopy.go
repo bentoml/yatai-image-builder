@@ -215,6 +215,13 @@ func (in *BentoRequestSpec) DeepCopyInto(out *BentoRequestSpec) {
 	}
 	in.ImageBuilderExtraPodMetadata.DeepCopyInto(&out.ImageBuilderExtraPodMetadata)
 	in.ImageBuilderExtraPodSpec.DeepCopyInto(&out.ImageBuilderExtraPodSpec)
+	if in.ImageBuilderExtraContainerEnv != nil {
+		in, out := &in.ImageBuilderExtraContainerEnv, &out.ImageBuilderExtraContainerEnv
+		*out = make([]v1.EnvVar, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	in.ImageBuilderContainerResources.DeepCopyInto(&out.ImageBuilderContainerResources)
 	if in.DownloaderContainerEnvFrom != nil {
 		in, out := &in.DownloaderContainerEnvFrom, &out.DownloaderContainerEnvFrom
