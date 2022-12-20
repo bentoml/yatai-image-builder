@@ -78,9 +78,3 @@ jobs:
       - name: Render Helm Template
         working-directory: ./helm/yatai-image-builder
         run: make template
-
-
-concurrency:
-  group: yatai-image-builder-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: true
-

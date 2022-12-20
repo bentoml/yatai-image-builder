@@ -82,7 +82,3 @@ jobs:
           VERSION: ${{ steps.tag.outputs.tag }}
           API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
         run: make release-devel
-
-concurrency:
-  group: yatai-image-builder-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: true
