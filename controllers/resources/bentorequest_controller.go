@@ -1674,7 +1674,7 @@ func (r *BentoRequestReconciler) doRegisterYataiComponent() (err error) {
 	}
 
 	_, err = yataiClient_.RegisterYataiComponent(ctx, yataiConf_.ClusterName, &schemasv1.RegisterYataiComponentSchema{
-		Name:          modelschemas.YataiComponentNameDeployment,
+		Name:          modelschemas.YataiComponentNameImageBuilder,
 		KubeNamespace: namespace,
 		Version:       version.Version,
 		SelectorLabels: map[string]string{
