@@ -1599,43 +1599,6 @@ echo "Done"
 		return
 	}
 
-	r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Creating image builder pod %s", kubeName)
-	err = r.Create(ctx, pod)
-	isAlreadyExists := k8serrors.IsAlreadyExists(err)
-	if err != nil && !isAlreadyExists {
-		err = errors.Wrapf(err, "failed to create pod %s", kubeName)
-		return
-	}
-	if isAlreadyExists {
-		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Image builder pod %s already exists", kubeName)
-		oldPod := &corev1.Pod{}
-		err = r.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, oldPod)
-		if err != nil {
-			err = errors.Wrapf(err, "failed to get pod %s in namespace %s", pod.Name, pod.Namespace)
-			return
-		}
-
-		if len(oldPod.OwnerReferences) == 0 || oldPod.OwnerReferences[0].UID != pod.OwnerReferences[0].UID || oldPod.Labels[commonconsts.KubeLabelYataiBento] != pod.Labels[commonconsts.KubeLabelYataiBento] {
-			err = r.Delete(ctx, pod)
-			if err != nil {
-				err = errors.Wrapf(err, "failed to delete pod %s", kubeName)
-				return
-			}
-			err = r.Create(ctx, pod)
-			isAlreadyExists := k8serrors.IsAlreadyExists(err)
-			if err != nil && !isAlreadyExists {
-				err = errors.Wrapf(err, "failed to create pod %s", kubeName)
-				return
-			}
-			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Image builder pod %s recreated", kubeName)
-			err = nil
-		} else {
-			pod = oldPod
-		}
-	} else {
-		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "CreatedImageBuilderPod", "Created image builder pod %s", kubeName)
-	}
-
 	return
 }
 
