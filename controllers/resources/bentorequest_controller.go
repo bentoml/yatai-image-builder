@@ -240,7 +240,10 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if !imageExists {
 		podName := strcase.ToKebab(fmt.Sprintf("yatai-bento-image-builder-%s", bentoRequest.Name))
 		if len(podName) > 63 {
-			podName = fmt.Sprintf("yatai-bento-image-builder-%s", hash(bentoRequest.Name))[:63]
+			podName = fmt.Sprintf("yatai-bento-image-builder-%s", hash(bentoRequest.Name))
+			if len(podName) > 63 {
+				podName = podName[:63]
+			}
 		}
 
 		pod := &corev1.Pod{}
