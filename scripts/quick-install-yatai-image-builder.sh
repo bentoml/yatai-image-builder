@@ -212,7 +212,13 @@ fi
 helm repo remove ${helm_repo_name} 2> /dev/null || true
 helm repo add ${helm_repo_name} ${helm_repo_url}
 helm repo update ${helm_repo_name}
-echo "🤖 installing yatai-image-builder..."
+
+# if $VERSION is not set, use the latest version
+if [ -z "$VERSION" ]; then
+  VERSION=$(helm search repo ${helm_repo_name} --devel="$DEVEL" -l | grep "${helm_repo_name}/yatai-image-builder " | awk '{print $2}' | head -n 1)
+fi
+
+echo "🤖 installing yatai-image-builder ${VERSION} from helm repo ${helm_repo_name}..."
 helm upgrade --install yatai-image-builder ${helm_repo_name}/yatai-image-builder -n ${namespace} \
   --set dockerRegistry.server=${DOCKER_REGISTRY_SERVER} \
   --set dockerRegistry.inClusterServer=${DOCKER_REGISTRY_IN_CLUSTER_SERVER} \
@@ -221,6 +227,7 @@ helm upgrade --install yatai-image-builder ${helm_repo_name}/yatai-image-builder
   --set dockerRegistry.secure=${DOCKER_REGISTRY_SECURE} \
   --set dockerRegistry.bentoRepositoryName=${DOCKER_REGISTRY_BENTO_REPOSITORY_NAME} \
   --skip-crds=${UPGRADE_CRDS} \
+  --version=${VERSION} \
   --devel=${DEVEL}
 
 kubectl -n ${namespace} rollout restart deploy/yatai-image-builder
