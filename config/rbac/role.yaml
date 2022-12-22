@@ -6,6 +6,30 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - ""
   resources:
   - events
@@ -28,6 +52,26 @@ rules:
   - list
   - patch
   - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - get
+  - list
   - watch
 - apiGroups:
   - events.k8s.io
@@ -53,6 +97,14 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - resources.yatai.ai
+  resources:
+  - bentoes/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - resources.yatai.ai
   resources:

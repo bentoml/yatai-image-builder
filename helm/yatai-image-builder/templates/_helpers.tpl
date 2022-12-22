@@ -77,6 +77,10 @@ Create the name of the service account to use
 {{- end }}
 {{- end }}
 
+{{- define "yatai-image-builder.serviceAccountNameInYataiSystemNamespace" -}}
+{{- printf "%s-in-yatai-system" (include "yatai-image-builder.serviceAccountName" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
 {{/*
 Generate k8s robot token
 */}}
