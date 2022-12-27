@@ -213,6 +213,8 @@ helm repo remove ${helm_repo_name} 2> /dev/null || true
 helm repo add ${helm_repo_name} ${helm_repo_url}
 helm repo update ${helm_repo_name}
 
+YATAI_ENDPOINT=${YATAI_ENDPOINT:-http://yatai.yatai-system.svc.cluster.local}
+
 # if $VERSION is not set, use the latest version
 if [ -z "$VERSION" ]; then
   VERSION=$(helm search repo ${helm_repo_name} --devel="$DEVEL" -l | grep "${helm_repo_name}/yatai-image-builder " | awk '{print $2}' | head -n 1)
@@ -226,6 +228,7 @@ helm upgrade --install yatai-image-builder ${helm_repo_name}/yatai-image-builder
   --set dockerRegistry.password=${DOCKER_REGISTRY_PASSWORD} \
   --set dockerRegistry.secure=${DOCKER_REGISTRY_SECURE} \
   --set dockerRegistry.bentoRepositoryName=${DOCKER_REGISTRY_BENTO_REPOSITORY_NAME} \
+  --set yatai.endpoint=${YATAI_ENDPOINT} \
   --skip-crds=${UPGRADE_CRDS} \
   --version=${VERSION} \
   --devel=${DEVEL}
