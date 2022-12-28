@@ -62,12 +62,19 @@ if ! command -v helm >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "🧪 verifying that the yatai is running"
-if ! kubectl -n yatai-system wait --for=condition=ready --timeout=10s pod -l app.kubernetes.io/name=yatai; then
-  echo "😱 yatai is not ready, please wait for it to be ready!" >&2
-  exit 1
+YATAI_ENDPOINT=${YATAI_ENDPOINT:-http://yatai.yatai-system.svc.cluster.local}
+if [ "${YATAI_ENDPOINT}" = "empty" ]; then
+    YATAI_ENDPOINT=""
 fi
-echo "✅ yatai is ready"
+
+if [ "${YATAI_ENDPOINT}" = "http://yatai.yatai-system.svc.cluster.local" ]; then
+  echo "🧪 verifying that the yatai is running"
+  if ! kubectl -n yatai-system wait --for=condition=ready --timeout=10s pod -l app.kubernetes.io/name=yatai; then
+    echo "😱 yatai is not ready, please wait for it to be ready!" >&2
+    exit 1
+  fi
+  echo "✅ yatai is ready"
+fi
 
 namespace=yatai-image-builder
 
@@ -212,8 +219,6 @@ fi
 helm repo remove ${helm_repo_name} 2> /dev/null || true
 helm repo add ${helm_repo_name} ${helm_repo_url}
 helm repo update ${helm_repo_name}
-
-YATAI_ENDPOINT=${YATAI_ENDPOINT:-http://yatai.yatai-system.svc.cluster.local}
 
 # if $VERSION is not set, use the latest version
 if [ -z "$VERSION" ]; then
