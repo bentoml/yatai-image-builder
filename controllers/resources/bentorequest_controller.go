@@ -481,7 +481,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			err = errors.Wrap(err, "get bento")
 			return
 		}
-		bentoCR.Spec.Context = resourcesv1alpha1.BentoContext{
+		bentoCR.Spec.Context = &resourcesv1alpha1.BentoContext{
 			BentomlVersion: bento.Manifest.BentomlVersion,
 		}
 		bentoCR.Spec.Runners = make([]resourcesv1alpha1.BentoRunner, 0)
@@ -1487,6 +1487,22 @@ echo "Done"
 
 	builderImage := internalImages.Kaniko
 
+	container := corev1.Container{
+		Name:            "builder",
+		Image:           builderImage,
+		ImagePullPolicy: corev1.PullAlways,
+		Command:         command,
+		Args:            args,
+		VolumeMounts:    volumeMounts,
+		Env:             envs,
+		TTY:             true,
+		Stdin:           true,
+	}
+
+	if opt.BentoRequest.Spec.ImageBuilderContainerResources != nil {
+		container.Resources = *opt.BentoRequest.Spec.ImageBuilderContainerResources
+	}
+
 	pod = &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      kubeName,
@@ -1498,18 +1514,7 @@ echo "Done"
 			Volumes:        volumes,
 			InitContainers: initContainers,
 			Containers: []corev1.Container{
-				{
-					Name:            "builder",
-					Image:           builderImage,
-					ImagePullPolicy: corev1.PullAlways,
-					Command:         command,
-					Args:            args,
-					VolumeMounts:    volumeMounts,
-					Env:             envs,
-					TTY:             true,
-					Stdin:           true,
-					Resources:       opt.BentoRequest.Spec.ImageBuilderContainerResources,
-				},
+				container,
 			},
 		},
 	}
@@ -1524,12 +1529,14 @@ echo "Done"
 		}
 	}
 
-	for k, v := range opt.BentoRequest.Spec.ImageBuilderExtraPodMetadata.Annotations {
-		pod.Annotations[k] = v
-	}
+	if opt.BentoRequest.Spec.ImageBuilderExtraPodMetadata != nil {
+		for k, v := range opt.BentoRequest.Spec.ImageBuilderExtraPodMetadata.Annotations {
+			pod.Annotations[k] = v
+		}
 
-	for k, v := range opt.BentoRequest.Spec.ImageBuilderExtraPodMetadata.Labels {
-		pod.Labels[k] = v
+		for k, v := range opt.BentoRequest.Spec.ImageBuilderExtraPodMetadata.Labels {
+			pod.Labels[k] = v
+		}
 	}
 
 	if globalExtraPodSpec != nil {
@@ -1541,28 +1548,30 @@ echo "Done"
 		pod.Spec.ServiceAccountName = globalExtraPodSpec.ServiceAccountName
 	}
 
-	if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.SchedulerName != "" {
-		pod.Spec.SchedulerName = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.SchedulerName
-	}
+	if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec != nil {
+		if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.SchedulerName != "" {
+			pod.Spec.SchedulerName = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.SchedulerName
+		}
 
-	if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.NodeSelector != nil {
-		pod.Spec.NodeSelector = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.NodeSelector
-	}
+		if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.NodeSelector != nil {
+			pod.Spec.NodeSelector = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.NodeSelector
+		}
 
-	if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.Affinity != nil {
-		pod.Spec.Affinity = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.Affinity
-	}
+		if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.Affinity != nil {
+			pod.Spec.Affinity = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.Affinity
+		}
 
-	if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.Tolerations != nil {
-		pod.Spec.Tolerations = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.Tolerations
-	}
+		if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.Tolerations != nil {
+			pod.Spec.Tolerations = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.Tolerations
+		}
 
-	if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.TopologySpreadConstraints != nil {
-		pod.Spec.TopologySpreadConstraints = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.TopologySpreadConstraints
-	}
+		if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.TopologySpreadConstraints != nil {
+			pod.Spec.TopologySpreadConstraints = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.TopologySpreadConstraints
+		}
 
-	if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.ServiceAccountName != "" {
-		pod.Spec.ServiceAccountName = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.ServiceAccountName
+		if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.ServiceAccountName != "" {
+			pod.Spec.ServiceAccountName = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.ServiceAccountName
+		}
 	}
 
 	if pod.Spec.ServiceAccountName == "" {

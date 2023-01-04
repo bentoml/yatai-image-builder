@@ -54,20 +54,20 @@ type BentoRequestSpec struct {
 	// +kubebuilder:validation:Required
 	BentoTag    string        `json:"bentoTag"`
 	DownloadURL string        `json:"downloadUrl,omitempty"`
-	Context     BentoContext  `json:"context,omitempty"`
+	Context     *BentoContext `json:"context,omitempty"`
 	Runners     []BentoRunner `json:"runners,omitempty"`
 	Models      []BentoModel  `json:"models,omitempty"`
 
 	ImageBuildTimeout *time.Duration `json:"imageBuildTimeout,omitempty"`
 
 	// +kubebuilder:validation:Optional
-	ImageBuilderExtraPodMetadata ExtraPodMetadata `json:"imageBuilderExtraPodMetadata,omitempty"`
+	ImageBuilderExtraPodMetadata *ExtraPodMetadata `json:"imageBuilderExtraPodMetadata,omitempty"`
 	// +kubebuilder:validation:Optional
-	ImageBuilderExtraPodSpec ExtraPodSpec `json:"imageBuilderExtraPodSpec,omitempty"`
+	ImageBuilderExtraPodSpec *ExtraPodSpec `json:"imageBuilderExtraPodSpec,omitempty"`
 	// +kubebuilder:validation:Optional
 	ImageBuilderExtraContainerEnv []corev1.EnvVar `json:"imageBuilderExtraContainerEnv,omitempty"`
 	// +kubebuilder:validation:Optional
-	ImageBuilderContainerResources corev1.ResourceRequirements `json:"imageBuilderContainerResources,omitempty"`
+	ImageBuilderContainerResources *corev1.ResourceRequirements `json:"imageBuilderContainerResources,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	DockerConfigJSONSecretName string `json:"dockerConfigJsonSecretName,omitempty"`
