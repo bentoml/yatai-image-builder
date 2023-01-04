@@ -194,13 +194,9 @@ DOCKER_REGISTRY_PASSWORD=''
 DOCKER_REGISTRY_SECURE=false
 DOCKER_REGISTRY_BENTO_REPOSITORY_NAME=yatai-bentos
 
-helm_repo_name=bentoml
-helm_repo_url=https://bentoml.github.io/helm-charts
-
-# check if DEVEL_HELM_REPO is true
-if [ "${DEVEL_HELM_REPO}" = "true" ]; then
-  helm_repo_name=bentoml-devel
-  helm_repo_url=https://bentoml.github.io/helm-charts-devel
+YATAI_ENDPOINT=${YATAI_ENDPOINT:-http://yatai.yatai-system.svc.cluster.local}
+if [ "${YATAI_ENDPOINT}" = "empty" ]; then
+    YATAI_ENDPOINT=""
 fi
 
 UPGRADE_CRDS=${UPGRADE_CRDS:-false}
@@ -216,27 +212,65 @@ if [ "${UPGRADE_CRDS}" = "true" ]; then
   echo "✅ Bento CRD are established"
 fi
 
-helm repo remove ${helm_repo_name} 2> /dev/null || true
-helm repo add ${helm_repo_name} ${helm_repo_url}
-helm repo update ${helm_repo_name}
+USE_LOCAL_HELM_CHART=${USE_LOCAL_HELM_CHART:-false}
 
-# if $VERSION is not set, use the latest version
-if [ -z "$VERSION" ]; then
-  VERSION=$(helm search repo ${helm_repo_name} --devel="$DEVEL" -l | grep "${helm_repo_name}/yatai-image-builder " | awk '{print $2}' | head -n 1)
+if [ "${USE_LOCAL_HELM_CHART}" = "true" ]; then
+  YATAI_IMAGE_BUILDER_IMG_REGISTRY=${YATAI_IMAGE_BUILDER_IMG_REGISTRY:-quay.io/bentoml}
+  YATAI_IMAGE_BUILDER_IMG_REPO=${YATAI_IMAGE_BUILDER_IMG_REPO:-yatai-image-builder}
+  YATAI_IMAGE_BUILDER_IMG_TAG=${YATAI_IMAGE_BUILDER_IMG_TAG:-0.0.1}
+
+  echo "🤖 installing yatai-image-builder from local helm chart..."
+  helm upgrade --install yatai-image-builder ./helm/yatai-image-builder -n ${namespace} \
+    --set registry=${YATAI_IMAGE_BUILDER_IMG_REGISTRY} \
+    --set image.repository=${YATAI_IMAGE_BUILDER_IMG_REPO} \
+    --set image.tag=${YATAI_IMAGE_BUILDER_IMG_TAG} \
+    --set yatai.endpoint=${YATAI_ENDPOINT} \
+    --set dockerRegistry.server=${DOCKER_REGISTRY_SERVER} \
+    --set dockerRegistry.inClusterServer=${DOCKER_REGISTRY_IN_CLUSTER_SERVER} \
+    --set dockerRegistry.username=${DOCKER_REGISTRY_USERNAME} \
+    --set dockerRegistry.password=${DOCKER_REGISTRY_PASSWORD} \
+    --set dockerRegistry.secure=${DOCKER_REGISTRY_SECURE} \
+    --set dockerRegistry.bentoRepositoryName=${DOCKER_REGISTRY_BENTO_REPOSITORY_NAME} \
+    --set aws.accessKeyID=${AWS_ACCESS_KEY_ID} \
+    --set aws.secretAccessKeyExistingSecretName=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_NAME} \
+    --set aws.secretAccessKeyExistingSecretKey=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_KEY} \
+    --skip-crds=${UPGRADE_CRDS}
+else
+  helm_repo_name=bentoml
+  helm_repo_url=https://bentoml.github.io/helm-charts
+
+  # check if DEVEL_HELM_REPO is true
+  if [ "${DEVEL_HELM_REPO}" = "true" ]; then
+    helm_repo_name=bentoml-devel
+    helm_repo_url=https://bentoml.github.io/helm-charts-devel
+  fi
+
+  helm repo remove ${helm_repo_name} 2> /dev/null || true
+  helm repo add ${helm_repo_name} ${helm_repo_url}
+  helm repo update ${helm_repo_name}
+
+  # if $VERSION is not set, use the latest version
+  if [ -z "$VERSION" ]; then
+    VERSION=$(helm search repo ${helm_repo_name} --devel="$DEVEL" -l | grep "${helm_repo_name}/yatai-image-builder " | awk '{print $2}' | head -n 1)
+  fi
+
+  echo "🤖 installing yatai-image-builder ${VERSION} from helm repo ${helm_repo_name}..."
+  helm upgrade --install yatai-image-builder ${helm_repo_name}/yatai-image-builder -n ${namespace} \
+    --set yatai.endpoint=${YATAI_ENDPOINT} \
+    --set dockerRegistry.server=${DOCKER_REGISTRY_SERVER} \
+    --set dockerRegistry.inClusterServer=${DOCKER_REGISTRY_IN_CLUSTER_SERVER} \
+    --set dockerRegistry.username=${DOCKER_REGISTRY_USERNAME} \
+    --set dockerRegistry.password=${DOCKER_REGISTRY_PASSWORD} \
+    --set dockerRegistry.secure=${DOCKER_REGISTRY_SECURE} \
+    --set dockerRegistry.bentoRepositoryName=${DOCKER_REGISTRY_BENTO_REPOSITORY_NAME} \
+    --set yatai.endpoint=${YATAI_ENDPOINT} \
+    --set aws.accessKeyID=${AWS_ACCESS_KEY_ID} \
+    --set aws.secretAccessKeyExistingSecretName=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_NAME} \
+    --set aws.secretAccessKeyExistingSecretKey=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_KEY} \
+    --skip-crds=${UPGRADE_CRDS} \
+    --version=${VERSION} \
+    --devel=${DEVEL}
 fi
-
-echo "🤖 installing yatai-image-builder ${VERSION} from helm repo ${helm_repo_name}..."
-helm upgrade --install yatai-image-builder ${helm_repo_name}/yatai-image-builder -n ${namespace} \
-  --set dockerRegistry.server=${DOCKER_REGISTRY_SERVER} \
-  --set dockerRegistry.inClusterServer=${DOCKER_REGISTRY_IN_CLUSTER_SERVER} \
-  --set dockerRegistry.username=${DOCKER_REGISTRY_USERNAME} \
-  --set dockerRegistry.password=${DOCKER_REGISTRY_PASSWORD} \
-  --set dockerRegistry.secure=${DOCKER_REGISTRY_SECURE} \
-  --set dockerRegistry.bentoRepositoryName=${DOCKER_REGISTRY_BENTO_REPOSITORY_NAME} \
-  --set yatai.endpoint=${YATAI_ENDPOINT} \
-  --skip-crds=${UPGRADE_CRDS} \
-  --version=${VERSION} \
-  --devel=${DEVEL}
 
 kubectl -n ${namespace} rollout restart deploy/yatai-image-builder
 

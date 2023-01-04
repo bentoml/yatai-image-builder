@@ -1,0 +1,216 @@
+name: e2e
+on:
+  issue_comment:
+    types: [created]
+
+env:
+  E2E_CHECK_NAME: e2e tests
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    name: Comment evaluate
+    outputs:
+      run-e2e: ${{ startsWith(github.event.comment.body,'/run-e2e') && steps.checkUserMember.outputs.isTeamMember == 'true' }}
+      pr_num: ${{ steps.parser.outputs.pr_num }}
+      image_tag: "pr-${{ steps.parser.outputs.pr_num }}-${{ steps.parser.outputs.commit_sha }}"
+      commit_sha: ${{ steps.parser.outputs.commit_sha }}
+      version_buildflags: ${{ steps.parser.outputs.version_buildflags }}
+      image_build_hash: ${{ steps.parser.outputs.image_build_hash }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: tspascoal/get-user-teams-membership@v2
+        id: checkUserMember
+        with:
+          username: ${{ github.actor }}
+          team: 'dev'
+          GITHUB_TOKEN: ${{ secrets.GH_CHECKING_USER_AUTH }}
+
+      - name: Update comment with the execution url
+        if: ${{ startsWith(github.event.comment.body,'/run-e2e') && steps.checkUserMember.outputs.isTeamMember == 'true' }}
+        uses: peter-evans/create-or-update-comment@v2
+        with:
+          comment-id: ${{ github.event.comment.id }}
+          body: |
+            **Update:** You can check the progress [here](https://github.com/${{github.repository}}/actions/runs/${{github.run_id}})
+          reactions: rocket
+
+      - name: Parse git info
+        if: ${{ startsWith(github.event.comment.body,'/run-e2e') && steps.checkUserMember.outputs.isTeamMember == 'true' }}
+        id: parser
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get PR number
+          PR_URL="${{ github.event.issue.pull_request.url }}"
+          PR_NUM=${PR_URL##*/}
+          echo "Checking out from PR #$PR_NUM based on URL: $PR_URL"
+          echo "::set-output name=pr_num::$PR_NUM"
+          # Get commit SHA
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          gh pr checkout $PR_NUM
+          SHA=$(git log -n 1 --pretty=format:"%H")
+          echo "::set-output name=commit_sha::$SHA"
+          GIT_COMMIT=$(git describe --match=NeVeRmAtCh --tags --always --dirty | cut -c 1-7)
+          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          VERSION=$(git describe --tags `git rev-list --tags --max-count=1` | sed 's/v\(\)/\1/')
+          PKG=github.com/bentoml/yatai-image-builder
+          VERSION_BUILDFLAGS="-X '${PKG}/version.GitCommit=${GIT_COMMIT}' -X '${PKG}/version.Version=${VERSION}' -X '${PKG}/version.BuildDate=${BUILD_DATE}'"
+          echo "::set-output name=version_buildflags::$VERSION_BUILDFLAGS"
+          echo "::set-output name=image_build_hash::${{ hashFiles('Dockerfile', 'main.go', './apis/**', './controllers/**', './utils/**', './version/**', './yatai-client/**', '**/go.sum', '**go.mod') }}"
+
+  build-test-images:
+    needs: triage
+    if: needs.triage.outputs.run-e2e == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set status in-progress
+      uses: LouisBrunner/checks-action@v1.5.0
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        sha: ${{ needs.triage.outputs.commit_sha }}
+        name: ${{ env.E2E_CHECK_NAME }}
+        status: in_progress
+        details_url: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}
+
+    - uses: actions/checkout@v3
+
+    - name: Register workspace path
+      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+    - name: Checkout Pull Request
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      id: checkout
+      run: |
+        gh pr checkout ${{ needs.triage.outputs.pr_num }}
+
+    - name: Set up Docker Buildx
+      id: buildx
+      # Use the action from the master, as we've seen some inconsistencies with @v1
+      # Issue: https://github.com/docker/build-push-action/issues/286
+      uses: docker/setup-buildx-action@master
+      with:
+        install: true
+
+    - name: Login to Quay.io
+      uses: docker/login-action@v1
+      with:
+        registry: quay.io
+        username: ${{ secrets.QUAY_USERNAME }}
+        password: ${{ secrets.QUAY_ROBOT_TOKEN }}
+
+    - name: Cache Docker layers
+      uses: actions/cache@v2
+      with:
+        path: /tmp/.buildx-cache
+        # Key is named differently to avoid collision
+        key: ${{ runner.os }}-multi-buildx-${{ needs.triage.outputs.image_build_hash }}
+        restore-keys: |
+          ${{ runner.os }}-multi-buildx
+
+    - name: Build test image
+      uses: docker/build-push-action@v2
+      with:
+        build-args: 'VERSION_BUILDFLAGS=${{ needs.triage.outputs.version_buildflags }}'
+        context: .
+        push: true
+        tags: quay.io/bentoml/test-yatai-image-builder:${{ needs.triage.outputs.image_tag }}
+        cache-from: type=local,src=/tmp/.buildx-cache
+        # Note the mode=max here
+        # More: https://github.com/moby/buildkit#--export-cache-options
+        # And: https://github.com/docker/buildx#--cache-tonametypetypekeyvalue
+        cache-to: type=local,mode=max,dest=/tmp/.buildx-cache-new
+
+    - name: Move cache
+      run: |
+        rm -rf /tmp/.buildx-cache
+        mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+  run-test:
+    needs: [triage, build-test-images]
+    if: needs.triage.outputs.run-e2e == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set status in-progress
+      uses: LouisBrunner/checks-action@v1.5.0
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        sha: ${{ needs.triage.outputs.commit_sha }}
+        name: ${{ env.E2E_CHECK_NAME }}
+        status: in_progress
+        details_url: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}
+
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Register workspace path
+      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+    - name: Checkout Pull Request
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      id: checkout
+      run: |
+        gh pr checkout ${{ needs.triage.outputs.pr_num }}
+
+    - name: Install KinD
+      run: ./tests/gh-actions/install_kind.sh
+
+    - name: Install Helm
+      run: ./tests/gh-actions/install_helm.sh
+
+    - name: Create KinD Cluster
+      run: kind create cluster --config tests/gh-actions/kind-cluster-1-24.yaml
+
+    - uses: oNaiPs/secrets-to-env-action@v1
+      with:
+        secrets: ${{ toJSON(secrets) }}
+
+    - name: Run e2e test
+      continue-on-error: true
+      id: test
+      env:
+        YATAI_DEPLOYMENT_IMG_REPO: test-yatai-image-builder
+        YATAI_DEPLOYMENT_IMG_TAG: ${{ needs.triage.outputs.image_tag }}
+      run: |
+        ./tests/e2e/installation_test.sh
+        make test-e2e
+
+    - name: Set status success
+      uses: LouisBrunner/checks-action@v1.5.0
+      if: steps.test.outcome == 'success'
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        sha: ${{ needs.triage.outputs.commit_sha }}
+        name: ${{ env.E2E_CHECK_NAME }}
+        conclusion: success
+        details_url: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}
+
+    - name: React to comment with success
+      uses: dkershner6/reaction-action@v1
+      if: steps.test.outcome == 'success'
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commentId: ${{ github.event.comment.id }}
+        reaction: "hooray"
+
+    - name: React to comment with failure
+      uses: dkershner6/reaction-action@v1
+      if: steps.test.outcome != 'success'
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commentId: ${{ github.event.comment.id }}
+        reaction: "confused"
+
+    - name: Set status failure
+      uses: LouisBrunner/checks-action@v1.5.0
+      if: steps.test.outcome != 'success'
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        sha: ${{ needs.triage.outputs.commit_sha }}
+        name: ${{ env.E2E_CHECK_NAME }}
+        conclusion: failure
+        details_url: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}
