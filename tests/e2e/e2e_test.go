@@ -79,7 +79,7 @@ var _ = Describe("yatai-image-builder", Ordered, func() {
 				}
 				pod := pods.Items[0]
 				if pod.Status.Phase == corev1.PodFailed {
-					return fmt.Errorf("pod failed: %s", pod.Status.Message)
+					Fail(fmt.Sprintf("pod %s failed", pod.Name))
 				}
 				if pod.Status.Phase != corev1.PodSucceeded {
 					return fmt.Errorf("pod not finished yet")
