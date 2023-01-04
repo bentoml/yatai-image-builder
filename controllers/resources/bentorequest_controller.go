@@ -1644,9 +1644,9 @@ func (r *BentoRequestReconciler) doRegisterYataiComponent() (err error) {
 		return
 	}
 
-	namespace, err := commonconfig.GetYataiDeploymentNamespace(ctx, cliset)
+	namespace, err := commonconfig.GetYataiImageBuilderNamespace(ctx, cliset)
 	if err != nil {
-		err = errors.Wrap(err, "get yatai deployment namespace")
+		err = errors.Wrap(err, "get yatai image builder namespace")
 		return
 	}
 
