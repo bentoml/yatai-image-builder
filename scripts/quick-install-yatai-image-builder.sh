@@ -275,5 +275,5 @@ fi
 kubectl -n ${namespace} rollout restart deploy/yatai-image-builder
 
 echo "⏳ waiting for yatai-image-builder to be ready..."
-kubectl -n ${namespace} wait --for=condition=available --timeout=600s deploy/yatai-image-builder
+kubectl -n ${namespace} wait --for=condition=available --timeout=180s deploy/yatai-image-builder
 echo "✅ yatai-image-builder is ready"
