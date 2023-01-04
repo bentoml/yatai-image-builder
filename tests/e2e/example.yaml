@@ -1,13 +1,8 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: yatai
----
 apiVersion: resources.yatai.ai/v1alpha1
 kind: BentoRequest
 metadata:
   name: test-bento
   namespace: yatai
 spec:
-  bentoTag: iris_classifier:r4zint4b567i4usu
+  bentoTag: iris_classifier:r4zint4b567i4usu233
   downloadUrl: s3://yetone/bentos/test-bento.bento
