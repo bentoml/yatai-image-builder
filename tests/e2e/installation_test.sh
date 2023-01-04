@@ -4,6 +4,7 @@ set -xe
 
 kubectl create ns yatai-system
 kubectl create ns yatai-image-builder
+kubectl create ns yatai || true
 
 echo "🚀 Creating AWS Secret Access Key..."
 kubectl create secret generic aws-secret-access-key --from-literal=AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --namespace yatai-image-builder
