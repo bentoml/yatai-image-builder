@@ -55,7 +55,7 @@ type BentoSpec struct {
 	Tag string `json:"tag"`
 	// +kubebuilder:validation:Required
 	Image   string        `json:"image"`
-	Context BentoContext  `json:"context,omitempty"`
+	Context *BentoContext `json:"context,omitempty"`
 	Runners []BentoRunner `json:"runners,omitempty"`
 
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
