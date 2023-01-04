@@ -173,8 +173,8 @@ jobs:
       continue-on-error: true
       id: test
       env:
-        YATAI_DEPLOYMENT_IMG_REPO: test-yatai-image-builder
-        YATAI_DEPLOYMENT_IMG_TAG: ${{ needs.triage.outputs.image_tag }}
+        YATAI_IMAGE_BUILDER_IMG_REPO: test-yatai-image-builder
+        YATAI_IMAGE_BUILDER_IMG_TAG: ${{ needs.triage.outputs.image_tag }}
       run: |
         ./tests/e2e/installation_test.sh
         make test-e2e
