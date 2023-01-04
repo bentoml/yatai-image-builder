@@ -194,11 +194,6 @@ DOCKER_REGISTRY_PASSWORD=''
 DOCKER_REGISTRY_SECURE=false
 DOCKER_REGISTRY_BENTO_REPOSITORY_NAME=yatai-bentos
 
-YATAI_ENDPOINT=${YATAI_ENDPOINT:-http://yatai.yatai-system.svc.cluster.local}
-if [ "${YATAI_ENDPOINT}" = "empty" ]; then
-    YATAI_ENDPOINT=""
-fi
-
 UPGRADE_CRDS=${UPGRADE_CRDS:-false}
 
 if [ "${UPGRADE_CRDS}" = "true" ]; then
@@ -263,7 +258,6 @@ else
     --set dockerRegistry.password=${DOCKER_REGISTRY_PASSWORD} \
     --set dockerRegistry.secure=${DOCKER_REGISTRY_SECURE} \
     --set dockerRegistry.bentoRepositoryName=${DOCKER_REGISTRY_BENTO_REPOSITORY_NAME} \
-    --set yatai.endpoint=${YATAI_ENDPOINT} \
     --set aws.accessKeyID=${AWS_ACCESS_KEY_ID} \
     --set aws.secretAccessKeyExistingSecretName=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_NAME} \
     --set aws.secretAccessKeyExistingSecretKey=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_KEY} \
