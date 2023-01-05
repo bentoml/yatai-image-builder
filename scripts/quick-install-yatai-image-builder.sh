@@ -194,25 +194,22 @@ DOCKER_REGISTRY_PASSWORD=''
 DOCKER_REGISTRY_SECURE=false
 DOCKER_REGISTRY_BENTO_REPOSITORY_NAME=yatai-bentos
 
-UPGRADE_CRDS=${UPGRADE_CRDS:-false}
-
-if [ "${UPGRADE_CRDS}" = "true" ]; then
-  echo "🤖 installing yatai-image-builder CRDs..."
-  kubectl apply --server-side -f https://raw.githubusercontent.com/bentoml/yatai-image-builder/main/helm/yatai-image-builder/crds/bentorequest.yaml
-  echo "⏳ waiting for BentoRequest CRD to be established..."
-  kubectl wait --for condition=established --timeout=120s crd/bentorequests.resources.yatai.ai
-  echo "✅ BentoRequest CRD are established"
-  echo "⏳ waiting for Bento CRD to be established..."
-  kubectl wait --for condition=established --timeout=120s crd/bentos.resources.yatai.ai
-  echo "✅ Bento CRD are established"
-fi
-
 USE_LOCAL_HELM_CHART=${USE_LOCAL_HELM_CHART:-false}
 
 if [ "${USE_LOCAL_HELM_CHART}" = "true" ]; then
   YATAI_IMAGE_BUILDER_IMG_REGISTRY=${YATAI_IMAGE_BUILDER_IMG_REGISTRY:-quay.io/bentoml}
   YATAI_IMAGE_BUILDER_IMG_REPO=${YATAI_IMAGE_BUILDER_IMG_REPO:-yatai-image-builder}
   YATAI_IMAGE_BUILDER_IMG_TAG=${YATAI_IMAGE_BUILDER_IMG_TAG:-0.0.1}
+
+  echo "🤖 installing yatai-image-builder-crds from local helm chart..."
+  helm upgrade --install yatai-image-builder-crds ./helm/yatai-image-builder-crds -n ${namespace}
+
+  echo "⏳ waiting for BentoRequest CRD to be established..."
+  kubectl wait --for condition=established --timeout=120s crd/bentorequests.resources.yatai.ai
+  echo "✅ BentoRequest CRD are established"
+  echo "⏳ waiting for Bento CRD to be established..."
+  kubectl wait --for condition=established --timeout=120s crd/bentoes.resources.yatai.ai
+  echo "✅ Bento CRD are established"
 
   echo "🤖 installing yatai-image-builder from local helm chart..."
   helm upgrade --install yatai-image-builder ./helm/yatai-image-builder -n ${namespace} \
@@ -228,8 +225,7 @@ if [ "${USE_LOCAL_HELM_CHART}" = "true" ]; then
     --set dockerRegistry.bentoRepositoryName=${DOCKER_REGISTRY_BENTO_REPOSITORY_NAME} \
     --set aws.accessKeyID=${AWS_ACCESS_KEY_ID} \
     --set aws.secretAccessKeyExistingSecretName=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_NAME} \
-    --set aws.secretAccessKeyExistingSecretKey=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_KEY} \
-    --skip-crds=${UPGRADE_CRDS}
+    --set aws.secretAccessKeyExistingSecretKey=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_KEY}
 else
   helm_repo_name=bentoml
   helm_repo_url=https://bentoml.github.io/helm-charts
@@ -249,8 +245,18 @@ else
     VERSION=$(helm search repo ${helm_repo_name} --devel="$DEVEL" -l | grep "${helm_repo_name}/yatai-image-builder " | awk '{print $2}' | head -n 1)
   fi
 
-  echo "🤖 installing yatai-image-builder ${VERSION} from helm repo ${helm_repo_name}..."
-  helm upgrade --install yatai-image-builder ${helm_repo_name}/yatai-image-builder -n ${namespace} \
+  echo "🤖 installing yatai-image-builder-crds from helm repo ${helm_repo_url}..."
+  helm upgrade --install yatai-image-builder-crds yatai-image-builder-crds --repo ${helm_repo_url} -n ${namespace}
+
+  echo "⏳ waiting for BentoRequest CRD to be established..."
+  kubectl wait --for condition=established --timeout=120s crd/bentorequests.resources.yatai.ai
+  echo "✅ BentoRequest CRD are established"
+  echo "⏳ waiting for Bento CRD to be established..."
+  kubectl wait --for condition=established --timeout=120s crd/bentoes.resources.yatai.ai
+  echo "✅ Bento CRD are established"
+
+  echo "🤖 installing yatai-image-builder ${VERSION} from helm repo ${helm_repo_url}..."
+  helm upgrade --install yatai-image-builder yatai-image-builder --repo ${helm_repo_url} -n ${namespace} \
     --set yatai.endpoint=${YATAI_ENDPOINT} \
     --set dockerRegistry.server=${DOCKER_REGISTRY_SERVER} \
     --set dockerRegistry.inClusterServer=${DOCKER_REGISTRY_IN_CLUSTER_SERVER} \
@@ -261,7 +267,6 @@ else
     --set aws.accessKeyID=${AWS_ACCESS_KEY_ID} \
     --set aws.secretAccessKeyExistingSecretName=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_NAME} \
     --set aws.secretAccessKeyExistingSecretKey=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_KEY} \
-    --skip-crds=${UPGRADE_CRDS} \
     --version=${VERSION} \
     --devel=${DEVEL}
 fi
