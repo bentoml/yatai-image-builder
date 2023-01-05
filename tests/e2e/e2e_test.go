@@ -92,22 +92,24 @@ var _ = Describe("yatai-image-builder", Ordered, func() {
 			bentorequestcli, err := resourcesclient.NewForConfig(restConf)
 			Expect(err).To(BeNil(), "failed to create bentorequest clientset")
 
-			By("Sleeping for 5 seconds")
-			time.Sleep(5 * time.Second)
-
 			By("Checking the generated Bento CR")
-			ctx := context.Background()
+			EventuallyWithOffset(1, func() error {
+				ctx := context.Background()
 
-			logrus.Infof("Getting BentoRequest CR %s", "test-bento")
-			bentoRequest, err := bentorequestcli.BentoRequests("yatai").Get(ctx, "test-bento", metav1.GetOptions{})
-			Expect(err).To(BeNil(), "failed to get BentoRequest CR")
+				logrus.Infof("Getting BentoRequest CR %s", "test-bento")
+				bentoRequest, err := bentorequestcli.BentoRequests("yatai").Get(ctx, "test-bento", metav1.GetOptions{})
+				Expect(err).To(BeNil(), "failed to get BentoRequest CR")
 
-			logrus.Infof("Getting Bento CR %s", "test-bento")
-			bento, err := bentorequestcli.Bentoes("yatai").Get(ctx, "test-bento", metav1.GetOptions{})
-			Expect(err).To(BeNil(), "failed to get Bento CR")
+				logrus.Infof("Getting Bento CR %s", "test-bento")
+				bento, err := bentorequestcli.Bentoes("yatai").Get(ctx, "test-bento", metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
 
-			Expect(bentoRequest.Spec.BentoTag).To(Equal(bento.Spec.Tag), "BentoRequest and Bento tag should match")
-			Expect(bento.Spec.Image).To(Not(BeEmpty()), "Bento CR image should not be empty")
+				Expect(bentoRequest.Spec.BentoTag).To(Equal(bento.Spec.Tag), "BentoRequest and Bento tag should match")
+				Expect(bento.Spec.Image).To(Not(BeEmpty()), "Bento CR image should not be empty")
+				return nil
+			}, time.Minute, time.Second).Should(Succeed())
 		})
 	})
 })
