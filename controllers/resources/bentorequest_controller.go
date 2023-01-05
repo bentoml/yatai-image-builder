@@ -1073,6 +1073,7 @@ func (r *BentoRequestReconciler) generateImageBuilderPod(ctx context.Context, op
 		stringData := map[string]string{
 			commonconsts.EnvAWSAccessKeyID:     awsAccessKeyID,
 			commonconsts.EnvAWSSecretAccessKey: awsSecretAccessKey,
+			"AWS_EC2_METADATA_DISABLED":        "true",
 		}
 		awsAccessKeySecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
