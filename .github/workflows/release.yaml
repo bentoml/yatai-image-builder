@@ -67,7 +67,23 @@ jobs:
               echo ::set-output name=match::true
           fi
 
-      - name: Package, Index and Publish to public repo
+      - name: Package, Index and Publish yatai-image-builder-crds to public repo
+        working-directory: ./helm/yatai-image-builder-crds
+        if: steps.check-tag.outputs.match != 'true'
+        env:
+          VERSION: ${{ steps.tag.outputs.tag }}
+          API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
+        run: make release
+
+      - name: Package, Index and Publish yatai-image-builder-crds to devel repo
+        working-directory: ./helm/yatai-image-builder-crds
+        if: steps.check-tag.outputs.match == 'true'
+        env:
+          VERSION: ${{ steps.tag.outputs.tag }}
+          API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
+        run: make release-devel
+
+      - name: Package, Index and Publish yatai-image-builder to public repo
         working-directory: ./helm/yatai-image-builder
         if: steps.check-tag.outputs.match != 'true'
         env:
@@ -75,7 +91,7 @@ jobs:
           API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
         run: make release
 
-      - name: Package, Index and Publish to devel repo
+      - name: Package, Index and Publish yatai-image-builder to devel repo
         working-directory: ./helm/yatai-image-builder
         if: steps.check-tag.outputs.match == 'true'
         env:
