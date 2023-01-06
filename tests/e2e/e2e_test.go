@@ -49,9 +49,9 @@ var _ = Describe("yatai-image-builder", Ordered, func() {
 		cmd = exec.Command("kubectl", "-n", "yatai-image-builder", "logs", "--tail", "200", "-l", "app.kubernetes.io/name=yatai-image-builder")
 		logs, _ = utils.Run(cmd)
 		fmt.Println(string(logs))
-		By("Cleaning up BentoRequest resources")
-		cmd = exec.Command("kubectl", "delete", "-f", "tests/e2e/example.yaml")
-		_, _ = utils.Run(cmd)
+		// By("Cleaning up BentoRequest resources")
+		// cmd = exec.Command("kubectl", "delete", "-f", "tests/e2e/example.yaml")
+		// _, _ = utils.Run(cmd)
 	})
 
 	Context("BentoRequest Operator", func() {
