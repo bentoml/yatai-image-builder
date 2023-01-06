@@ -653,11 +653,17 @@ const (
 	BentoImageBuildEngineKaniko           BentoImageBuildEngine = "kaniko"
 	BentoImageBuildEngineBuildkit         BentoImageBuildEngine = "buildkit"
 	BentoImageBuildEngineBuildkitRootless BentoImageBuildEngine = "buildkit-rootless"
+	BentoImageBuildEngineBuildah          BentoImageBuildEngine = "buildah"
 )
 
 const (
 	EnvBentoImageBuildEngine = "BENTO_IMAGE_BUILD_ENGINE"
+	EnvRunInOpenshift        = "RUN_IN_OPENSHIFT"
 )
+
+func checkIfRunInOpenshift() bool {
+	return os.Getenv(EnvRunInOpenshift) == commonconsts.KubeLabelValueTrue
+}
 
 func getBentoImageBuildEngine() BentoImageBuildEngine {
 	engine := os.Getenv(EnvBentoImageBuildEngine)
@@ -1220,8 +1226,10 @@ func (r *BentoRequestReconciler) generateImageBuilderPod(ctx context.Context, op
 	logrus.Infof("Image builder is using the images %v", *internalImages)
 
 	buildEngine := getBentoImageBuildEngine()
+	isRunInOpenshift := checkIfRunInOpenshift()
 
-	privileged := buildEngine != BentoImageBuildEngineBuildkitRootless
+	privileged := buildEngine != BentoImageBuildEngineBuildkitRootless || isRunInOpenshift
+	unprivilegedUID := int64(1034)
 
 	bentoDownloadCommandTemplate, err := template.New("downloadCommand").Parse(`
 set -e
@@ -1242,7 +1250,7 @@ echo "Removing bento tar file..."
 rm /tmp/downloaded.tar
 {{if not .Privileged}}
 echo "Changing directory permission..."
-chown -R 1000:1000 /workspace
+chown -R {{ .UnprivilegedUID }}:{{ .UnprivilegedUID }} /workspace
 {{end}}
 echo "Done"
 	`)
@@ -1260,6 +1268,7 @@ echo "Done"
 		"BentoRepositoryName": bentoRepositoryName,
 		"BentoVersion":        bentoVersion,
 		"Privileged":          privileged,
+		"UnprivilegedUID":     unprivilegedUID,
 	})
 	if err != nil {
 		err = errors.Wrap(err, "failed to execute download command template")
@@ -1301,6 +1310,17 @@ echo "Done"
 		})
 	}
 
+	restrictedSecurityContext := &corev1.SecurityContext{
+		AllowPrivilegeEscalation: pointer.BoolPtr(false),
+		RunAsNonRoot:             pointer.BoolPtr(true),
+		SeccompProfile: &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		},
+		Capabilities: &corev1.Capabilities{
+			Drop: []corev1.Capability{"ALL"},
+		},
+	}
+
 	initContainers := []corev1.Container{
 		{
 			Name:  "bento-downloader",
@@ -1310,9 +1330,10 @@ echo "Done"
 				"-c",
 				bentoDownloadCommand,
 			},
-			VolumeMounts: volumeMounts,
-			Resources:    downloaderContainerResources,
-			EnvFrom:      downloaderContainerEnvFrom,
+			VolumeMounts:    volumeMounts,
+			Resources:       downloaderContainerResources,
+			EnvFrom:         downloaderContainerEnvFrom,
+			SecurityContext: restrictedSecurityContext,
 		},
 	}
 
@@ -1405,7 +1426,7 @@ echo "Removing model tar file..."
 rm /tmp/downloaded.tar
 {{if not .Privileged}}
 echo "Changing directory permission..."
-chown -R 1000:1000 /workspace
+chown -R {{ .UnprivilegedUID }}:{{ .UnprivilegedUID }} /workspace
 {{end}}
 echo "Done"
 `)).Execute(&modelDownloadCommandOutput, map[string]interface{}{
@@ -1416,6 +1437,7 @@ echo "Done"
 			"ModelRepositoryName":    modelRepositoryName,
 			"ModelVersion":           modelVersion,
 			"Privileged":             privileged,
+			"UnprivilegedUID":        unprivilegedUID,
 		})
 		if err != nil {
 			err = errors.Wrap(err, "failed to generate download command")
@@ -1430,9 +1452,10 @@ echo "Done"
 				"-c",
 				modelDownloadCommand,
 			},
-			VolumeMounts: volumeMounts,
-			Resources:    downloaderContainerResources,
-			EnvFrom:      downloaderContainerEnvFrom,
+			VolumeMounts:    volumeMounts,
+			Resources:       downloaderContainerResources,
+			EnvFrom:         downloaderContainerEnvFrom,
+			SecurityContext: restrictedSecurityContext,
 		})
 	}
 
@@ -1568,6 +1591,19 @@ echo "Done"
 		builderImage = internalImages.Buildkit
 	case BentoImageBuildEngineBuildkitRootless:
 		builderImage = internalImages.BuildkitRootless
+	case BentoImageBuildEngineBuildah:
+		builderImage = internalImages.Buildah
+		command = []string{"bash", "-c"}
+		args = []string{
+			fmt.Sprintf(
+				"buildah bud --format=docker --tls-verify=%v -f %s -t %s /workspace/buildcontext && buildah push --tls-verify=%v %s",
+				!dockerRegistryInsecure,
+				dockerFilePath,
+				inClusterImageName,
+				!dockerRegistryInsecure,
+				inClusterImageName,
+			),
+		}
 	default:
 		err = errors.Errorf("unknown bento image build engine %s", buildEngine)
 		return
@@ -1592,18 +1628,33 @@ echo "Done"
 
 	var builderContainerSecurityContext *corev1.SecurityContext
 
+	//nolint: gocritic
 	if buildEngine == BentoImageBuildEngineBuildkit {
 		builderContainerSecurityContext = &corev1.SecurityContext{
 			Privileged: pointer.BoolPtr(true),
 		}
 	} else if buildEngine == BentoImageBuildEngineBuildkitRootless {
 		kubeAnnotations["container.apparmor.security.beta.kubernetes.io/builder"] = "unconfined"
+		for _, container := range initContainers {
+			kubeAnnotations[fmt.Sprintf("container.apparmor.security.beta.kubernetes.io/%s", container.Name)] = "unconfined"
+		}
 		builderContainerSecurityContext = &corev1.SecurityContext{
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeUnconfined,
 			},
-			RunAsUser:  pointer.Int64Ptr(1000),
-			RunAsGroup: pointer.Int64Ptr(1000),
+			RunAsUser:  pointer.Int64Ptr(unprivilegedUID),
+			RunAsGroup: pointer.Int64Ptr(unprivilegedUID),
+		}
+	} else if buildEngine == BentoImageBuildEngineBuildah {
+		kubeAnnotations["openshift.io/scc"] = "anyuid"
+		builderContainerSecurityContext = &corev1.SecurityContext{
+			RunAsUser:  pointer.Int64Ptr(unprivilegedUID),
+			RunAsGroup: pointer.Int64Ptr(unprivilegedUID),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{
+					"KILL",
+				},
+			},
 		}
 	}
 
@@ -1723,6 +1774,12 @@ echo "Done"
 			InitContainers: initContainers,
 			Containers: []corev1.Container{
 				container,
+			},
+			SecurityContext: &corev1.PodSecurityContext{
+				RunAsNonRoot: pointer.BoolPtr(true),
+				SeccompProfile: &corev1.SeccompProfile{
+					Type: corev1.SeccompProfileTypeRuntimeDefault,
+				},
 			},
 		},
 	}
