@@ -75,6 +75,10 @@ jobs:
       - name: Set up chart-testing
         uses: helm/chart-testing-action@v2.2.1
 
-      - name: Render Helm Template
+      - name: Render yatai-image-builder-crds Helm Template
+        working-directory: ./helm/yatai-image-builder-crds
+        run: make template
+
+      - name: Render yatai-image-builder Helm Template
         working-directory: ./helm/yatai-image-builder
         run: make template
