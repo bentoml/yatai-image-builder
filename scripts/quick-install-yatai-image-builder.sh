@@ -225,7 +225,8 @@ if [ "${USE_LOCAL_HELM_CHART}" = "true" ]; then
     --set dockerRegistry.bentoRepositoryName=${DOCKER_REGISTRY_BENTO_REPOSITORY_NAME} \
     --set aws.accessKeyID=${AWS_ACCESS_KEY_ID} \
     --set aws.secretAccessKeyExistingSecretName=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_NAME} \
-    --set aws.secretAccessKeyExistingSecretKey=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_KEY}
+    --set aws.secretAccessKeyExistingSecretKey=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_KEY} \
+    --set bentoImageBuildEngine=buildkit-rootless
 else
   helm_repo_name=bentoml
   helm_repo_url=https://bentoml.github.io/helm-charts
