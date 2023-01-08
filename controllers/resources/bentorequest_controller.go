@@ -35,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -618,6 +619,26 @@ func hash(text string) string {
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
+type BentoImageBuildEngine string
+
+const (
+	BentoImageBuildEngineKaniko           BentoImageBuildEngine = "kaniko"
+	BentoImageBuildEngineBuildkit         BentoImageBuildEngine = "buildkit"
+	BentoImageBuildEngineBuildkitRootless BentoImageBuildEngine = "buildkit-rootless"
+)
+
+const (
+	EnvBentoImageBuildEngine = "BENTO_IMAGE_BUILD_ENGINE"
+)
+
+func getBentoImageBuildEngine() BentoImageBuildEngine {
+	engine := os.Getenv(EnvBentoImageBuildEngine)
+	if engine == "" {
+		return BentoImageBuildEngineKaniko
+	}
+	return BentoImageBuildEngine(engine)
+}
+
 func MakeSureDockerConfigJSONSecret(ctx context.Context, kubeCli *kubernetes.Clientset, namespace string, dockerRegistryConf *commonconfig.DockerRegistryConfig) (dockerConfigJSONSecret *corev1.Secret, err error) {
 	if dockerRegistryConf.Username == "" {
 		return
@@ -1097,6 +1118,10 @@ func (r *BentoRequestReconciler) generateImageBuilderPod(ctx context.Context, op
 	internalImages := commonconfig.GetInternalImages()
 	logrus.Infof("Image builder is using the images %v", *internalImages)
 
+	buildEngine := getBentoImageBuildEngine()
+
+	privileged := buildEngine != BentoImageBuildEngineBuildkitRootless
+
 	bentoDownloadCommandTemplate, err := template.New("downloadCommand").Parse(`
 set -e
 
@@ -1114,6 +1139,10 @@ echo "Extracting bento tar file..."
 tar -xvf /tmp/downloaded.tar
 echo "Removing bento tar file..."
 rm /tmp/downloaded.tar
+{{if not .Privileged}}
+echo "Changing directory permission..."
+chown -R 1000:1000 /workspace
+{{end}}
 echo "Done"
 	`)
 
@@ -1129,6 +1158,7 @@ echo "Done"
 		"BentoDownloadHeader": bentoDownloadHeader,
 		"BentoRepositoryName": bentoRepositoryName,
 		"BentoVersion":        bentoVersion,
+		"Privileged":          privileged,
 	})
 	if err != nil {
 		err = errors.Wrap(err, "failed to execute download command template")
@@ -1272,6 +1302,10 @@ tar -xvf /tmp/downloaded.tar
 echo -n '{{.ModelVersion}}' > {{.ModelRepositoryDirPath}}/latest
 echo "Removing model tar file..."
 rm /tmp/downloaded.tar
+{{if not .Privileged}}
+echo "Changing directory permission..."
+chown -R 1000:1000 /workspace
+{{end}}
 echo "Done"
 `)).Execute(&modelDownloadCommandOutput, map[string]interface{}{
 			"ModelDirPath":           modelDirPath,
@@ -1280,6 +1314,7 @@ echo "Done"
 			"ModelRepositoryDirPath": modelRepositoryDirPath,
 			"ModelRepositoryName":    modelRepositoryName,
 			"ModelVersion":           modelVersion,
+			"Privileged":             privileged,
 		})
 		if err != nil {
 			err = errors.Wrap(err, "failed to generate download command")
@@ -1400,6 +1435,14 @@ echo "Done"
 		})
 	}
 
+	if !privileged {
+		envs = append(envs, corev1.EnvVar{
+			Name:  "BUILDKITD_FLAGS",
+			Value: "--oci-worker-no-process-sandbox",
+		})
+	}
+
+	kubeAnnotations := make(map[string]string)
 	var command []string
 	args := []string{
 		"--context=/workspace/buildcontext",
@@ -1408,10 +1451,60 @@ echo "Done"
 		fmt.Sprintf("--insecure=%v", dockerRegistryInsecure),
 		fmt.Sprintf("--destination=%s", inClusterImageName),
 	}
+	var builderImage string
+	switch buildEngine {
+	case BentoImageBuildEngineKaniko:
+		builderImage = internalImages.Kaniko
+	case BentoImageBuildEngineBuildkit:
+		builderImage = internalImages.Buildkit
+	case BentoImageBuildEngineBuildkitRootless:
+		builderImage = internalImages.BuildkitRootless
+	default:
+		err = errors.Errorf("unknown bento image build engine %s", buildEngine)
+		return
+	}
+
+	isBuildkit := buildEngine == BentoImageBuildEngineBuildkit || buildEngine == BentoImageBuildEngineBuildkitRootless
+
+	if isBuildkit {
+		command = []string{"buildctl-daemonless.sh"}
+		args = []string{
+			"build",
+			"--frontend",
+			"dockerfile.v0",
+			"--local",
+			"context=/workspace/buildcontext",
+			"--local",
+			fmt.Sprintf("dockerfile=%s", filepath.Dir(dockerFilePath)),
+			"--output",
+			fmt.Sprintf("type=image,name=%s,push=true,registry.insecure=%v", inClusterImageName, dockerRegistryInsecure),
+		}
+	}
+
+	var builderContainerSecurityContext *corev1.SecurityContext
+
+	if buildEngine == BentoImageBuildEngineBuildkit {
+		builderContainerSecurityContext = &corev1.SecurityContext{
+			Privileged: pointer.BoolPtr(true),
+		}
+	} else if buildEngine == BentoImageBuildEngineBuildkitRootless {
+		kubeAnnotations["container.apparmor.security.beta.kubernetes.io/builder"] = "unconfined"
+		builderContainerSecurityContext = &corev1.SecurityContext{
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeUnconfined,
+			},
+			RunAsUser:  pointer.Int64Ptr(1000),
+			RunAsGroup: pointer.Int64Ptr(1000),
+		}
+	}
 
 	// add build args to pass via --build-arg
 	for _, buildArg := range buildArgs {
-		args = append(args, fmt.Sprintf("--build-arg=%s", buildArg))
+		if isBuildkit {
+			args = append(args, "--opt", fmt.Sprintf("build-arg:%s", buildArg))
+		} else {
+			args = append(args, fmt.Sprintf("--build-arg=%s", buildArg))
+		}
 	}
 	// add other arguments to builder
 	args = append(args, builderArgs...)
@@ -1480,13 +1573,15 @@ echo "Done"
 				},
 			})
 
-			args = append(args, fmt.Sprintf("--build-arg=%s=$(%s)", key, envName))
+			if isBuildkit {
+				args = append(args, "--opt", fmt.Sprintf("build-arg:%s=$(%s)", key, envName))
+			} else {
+				args = append(args, fmt.Sprintf("--build-arg=%s=$(%s)", key, envName))
+			}
 		}
 	} else {
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is not found in namespace %s", buildArgsSecretName, configNamespace)
 	}
-
-	builderImage := internalImages.Kaniko
 
 	container := corev1.Container{
 		Name:            "builder",
@@ -1498,6 +1593,7 @@ echo "Done"
 		Env:             envs,
 		TTY:             true,
 		Stdin:           true,
+		SecurityContext: builderContainerSecurityContext,
 	}
 
 	if opt.BentoRequest.Spec.ImageBuilderContainerResources != nil {
@@ -1506,9 +1602,10 @@ echo "Done"
 
 	pod = &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      kubeName,
-			Namespace: opt.BentoRequest.Namespace,
-			Labels:    kubeLabels,
+			Name:        kubeName,
+			Namespace:   opt.BentoRequest.Namespace,
+			Labels:      kubeLabels,
+			Annotations: kubeAnnotations,
 		},
 		Spec: corev1.PodSpec{
 			RestartPolicy:  corev1.RestartPolicyNever,
