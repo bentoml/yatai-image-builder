@@ -77,8 +77,8 @@ github.com/aws/aws-sdk-go v1.44.152 h1:L9aaepO8wHB67gwuGD8VgIYH/cmQDxieCt7FeLa0+
 github.com/aws/aws-sdk-go v1.44.152/go.mod h1:aVsgQcEevwlmQ7qHE9I3h+dtQgpqhFB+i8Phjh7fkwI=
 github.com/benbjohnson/clock v1.1.0 h1:Q92kusRqC1XV2MjkWETPvjJVqKetz1OzxZB7mHJLju8=
 github.com/benbjohnson/clock v1.1.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZxNJlLklBHA=
-github.com/bentoml/yatai-common v0.0.0-20230108151027-0a54d02e79b1 h1:VgN2DLopHoMaEVOiD8J4bZO0L1BGXLRSmNSs7GkfbHo=
-github.com/bentoml/yatai-common v0.0.0-20230108151027-0a54d02e79b1/go.mod h1:pox0XYk/bVUwKkadn0XwWHEbJmxSEeN3+HwGA4a8uOQ=
+github.com/bentoml/yatai-common v0.0.0-20230109041943-798ca210a16d h1:r+iumKOD+Ri4u2NggQYudjQurIYN2Rs0nOW48faSt9E=
+github.com/bentoml/yatai-common v0.0.0-20230109041943-798ca210a16d/go.mod h1:pox0XYk/bVUwKkadn0XwWHEbJmxSEeN3+HwGA4a8uOQ=
 github.com/bentoml/yatai-schemas v0.0.0-20221123041958-d3ff9b721451 h1:FNxCbN61Ev8ea6BXzlfmRUT5CYNmqlOv8zDRGs8ufVE=
 github.com/bentoml/yatai-schemas v0.0.0-20221123041958-d3ff9b721451/go.mod h1:q7tt064G8YIiAwQabKyVaKEdSIHYDQA9Oyt+kyCsflU=
 github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24TaqPxmxbtue+5NUziq4I4S80YR8gNf3Q=

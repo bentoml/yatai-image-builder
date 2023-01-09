@@ -11,3 +11,13 @@ RUN curl https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud
     && tar -xf google-cloud-cli-410.tar.gz \
     && ./google-cloud-sdk/install.sh \
     && rm google-cloud-cli-410.tar.gz
+
+ARG USERNAME=yetone
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+# Create the user
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME
+
+USER $USER_UID:$USER_GID
