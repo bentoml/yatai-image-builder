@@ -100,7 +100,7 @@ internalImages:
   kaniko: quay.io/bentoml/kaniko:1.9.1
   buildkit: quay.io/bentoml/buildkit:master
   buildkitRootless: quay.io/bentoml/buildkit:master-rootless
-  buildah: quay.io/bentoml/bentoml-buildah:0.0.1
+  buildah: quay.io/bentoml/bentoml-buildah:0.0.2
 
 bentoImageBuildEngine: kaniko # options: kaniko, buildkit, buildkit-rootless
 runInOpenshift: false

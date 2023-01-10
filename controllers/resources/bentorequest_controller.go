@@ -1604,6 +1604,10 @@ echo "Done"
 				inClusterImageName,
 			),
 		}
+		envs = append(envs, corev1.EnvVar{
+			Name:  "BUILDAH_ISOLATION",
+			Value: "chroot",
+		})
 	default:
 		err = errors.Errorf("unknown bento image build engine %s", buildEngine)
 		return
