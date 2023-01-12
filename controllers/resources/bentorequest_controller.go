@@ -18,6 +18,8 @@ package resources
 
 import (
 	"context"
+	"strconv"
+
 	// nolint: gosec
 	"crypto/md5"
 	"encoding/hex"
@@ -26,6 +28,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/mitchellh/hashstructure/v2"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
@@ -70,6 +73,10 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ecr"
+)
+
+const (
+	KubeAnnotationBentoRequestHash = "yatai.ai/bento-request-hash"
 )
 
 // BentoRequestReconciler reconciles a BentoRequest object
@@ -264,6 +271,28 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return
 		}
 
+		if !podIsNotFound {
+			oldHash := pod.Annotations[KubeAnnotationBentoRequestHash]
+			var hash uint64
+			hash, err = hashstructure.Hash(bentoRequest.Spec, hashstructure.FormatV2, nil)
+			if err != nil {
+				err = errors.Wrap(err, "get bentoRequest CR spec hash")
+				return
+			}
+			hashStr := strconv.FormatUint(hash, 10)
+			if oldHash != hashStr {
+				err = r.Delete(ctx, pod)
+				if err != nil {
+					err = errors.Wrapf(err, "delete pod %s", podName)
+					return
+				}
+				result = ctrl.Result{
+					Requeue: true,
+				}
+				return
+			}
+		}
+
 		if podIsNotFound {
 			var imageInfo ImageInfo
 			imageInfo, err = r.getImageInfo(ctx, GetImageInfoOption{
@@ -276,10 +305,9 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Generating image builder pod: %s", podName)
 			pod, err = r.generateImageBuilderPod(ctx, GenerateImageBuilderPodOption{
-				PodName:          podName,
-				ImageInfo:        imageInfo,
-				BentoRequest:     bentoRequest,
-				RecreateIfFailed: true,
+				PodName:      podName,
+				ImageInfo:    imageInfo,
+				BentoRequest: bentoRequest,
 			})
 			if err != nil {
 				err = errors.Wrap(err, "create image builder pod")
@@ -921,10 +949,9 @@ func (r *BentoRequestReconciler) getBento(ctx context.Context, bentoRequest *res
 }
 
 type GenerateImageBuilderPodOption struct {
-	ImageInfo        ImageInfo
-	PodName          string
-	BentoRequest     *resourcesv1alpha1.BentoRequest
-	RecreateIfFailed bool
+	ImageInfo    ImageInfo
+	PodName      string
+	BentoRequest *resourcesv1alpha1.BentoRequest
 }
 
 func (r *BentoRequestReconciler) generateImageBuilderPod(ctx context.Context, opt GenerateImageBuilderPodOption) (pod *corev1.Pod, err error) {
@@ -1443,6 +1470,14 @@ echo "Done"
 	}
 
 	kubeAnnotations := make(map[string]string)
+	var hash uint64
+	hash, err = hashstructure.Hash(opt.BentoRequest.Spec, hashstructure.FormatV2, nil)
+	if err != nil {
+		err = errors.Wrap(err, "get bentoRequest CR spec hash")
+		return
+	}
+	hashStr := strconv.FormatUint(hash, 10)
+	kubeAnnotations[KubeAnnotationBentoRequestHash] = hashStr
 	var command []string
 	args := []string{
 		"--context=/workspace/buildcontext",
