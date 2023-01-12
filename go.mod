@@ -8,6 +8,7 @@ require (
 	github.com/bentoml/yatai-schemas v0.0.0-20221123041958-d3ff9b721451
 	github.com/huandu/xstrings v1.3.2
 	github.com/iancoleman/strcase v0.2.0
+	github.com/mitchellh/hashstructure/v2 v2.0.2
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/ginkgo/v2 v2.1.4
 	github.com/onsi/gomega v1.19.0
