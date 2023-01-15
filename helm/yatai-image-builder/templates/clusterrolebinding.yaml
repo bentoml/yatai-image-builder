@@ -10,4 +10,3 @@ subjects:
 - kind: ServiceAccount
   name: {{ include "yatai-image-builder.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }}
-
