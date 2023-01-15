@@ -8,6 +8,9 @@ rules:
   - ""
   resources:
   - secrets
+  resourceNames:
+  - {{ include "yatai-image-builder.yatai-common-envname" . }}
+  - {{ include "yatai-image-builder.shared-envname" . }}
   verbs:
   - get
   - list
