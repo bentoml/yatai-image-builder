@@ -102,3 +102,5 @@ internalImages:
   buildkitRootless: quay.io/bentoml/buildkit:master-rootless
 
 bentoImageBuildEngine: kaniko # options: kaniko, buildkit, buildkit-rootless
+
+createClusterRoleForPods: true
