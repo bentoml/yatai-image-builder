@@ -1551,7 +1551,8 @@ echo "Done"
 	// nolint: gosec
 	buildArgsSecretName := "yatai-image-builder-build-args"
 	r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting secret %s from namespace %s", buildArgsSecretName, configNamespace)
-	buildArgsSecret, err := kubeCli.CoreV1().Secrets(configNamespace).Get(ctx, buildArgsSecretName, metav1.GetOptions{})
+	buildArgsSecret := &corev1.Secret{}
+	err = r.Get(ctx, types.NamespacedName{Name: buildArgsSecretName, Namespace: configNamespace}, buildArgsSecret)
 	buildArgsSecretIsNotFound := k8serrors.IsNotFound(err)
 	if err != nil && !buildArgsSecretIsNotFound {
 		err = errors.Wrap(err, "failed to get secret")

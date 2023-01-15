@@ -8,6 +8,8 @@ rules:
   - ""
   resources:
   - secrets
+  resourceNames:
+  - yatai-image-builder-build-args
   verbs:
   - get
   - list
@@ -16,6 +18,8 @@ rules:
   - ""
   resources:
   - configmaps
+  resourceNames:
+  - yatai-image-builder-config
   verbs:
   - get
   - list
