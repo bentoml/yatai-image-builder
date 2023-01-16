@@ -247,7 +247,7 @@ else
   fi
 
   echo "🤖 installing yatai-image-builder-crds from helm repo ${helm_repo_url}..."
-  helm upgrade --install yatai-image-builder-crds yatai-image-builder-crds --repo ${helm_repo_url} -n ${namespace}
+  helm upgrade --install yatai-image-builder-crds yatai-image-builder-crds --repo ${helm_repo_url} -n ${namespace} --devel=${DEVEL}
 
   echo "⏳ waiting for BentoRequest CRD to be established..."
   kubectl wait --for condition=established --timeout=120s crd/bentorequests.resources.yatai.ai
