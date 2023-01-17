@@ -58,6 +58,9 @@ type BentoRequestSpec struct {
 	Runners     []BentoRunner `json:"runners,omitempty"`
 	Models      []BentoModel  `json:"models,omitempty"`
 
+	// +kubebuilder:validation:Optional
+	Image *string `json:"image,omitempty"`
+
 	ImageBuildTimeout *time.Duration `json:"imageBuildTimeout,omitempty"`
 
 	// +kubebuilder:validation:Optional

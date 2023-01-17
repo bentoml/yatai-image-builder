@@ -819,7 +819,10 @@ func getDockerRegistry(ctx context.Context, cliset *kubernetes.Clientset) (docke
 	return
 }
 
-func getBentoImageName(dockerRegistry modelschemas.DockerRegistrySchema, bentoRepositoryName, bentoVersion string, inCluster bool) string {
+func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegistry modelschemas.DockerRegistrySchema, bentoRepositoryName, bentoVersion string, inCluster bool) string {
+	if bentoRequest != nil && bentoRequest.Spec.Image != nil && *bentoRequest.Spec.Image != "" {
+		return *bentoRequest.Spec.Image
+	}
 	var imageName string
 	if inCluster {
 		imageName = fmt.Sprintf("%s:yatai.%s.%s", dockerRegistry.BentosRepositoryURIInCluster, bentoRepositoryName, bentoVersion)
@@ -892,8 +895,8 @@ func (r *BentoRequestReconciler) getImageInfo(ctx context.Context, opt GetImageI
 		return
 	}
 	imageInfo.DockerRegistry = dockerRegistry
-	imageInfo.ImageName = getBentoImageName(dockerRegistry, bentoRepositoryName, bentoVersion, false)
-	imageInfo.InClusterImageName = getBentoImageName(dockerRegistry, bentoRepositoryName, bentoVersion, true)
+	imageInfo.ImageName = getBentoImageName(opt.BentoRequest, dockerRegistry, bentoRepositoryName, bentoVersion, false)
+	imageInfo.InClusterImageName = getBentoImageName(opt.BentoRequest, dockerRegistry, bentoRepositoryName, bentoVersion, true)
 
 	imageInfo.DockerConfigJSONSecretName = opt.BentoRequest.Spec.DockerConfigJSONSecretName
 
