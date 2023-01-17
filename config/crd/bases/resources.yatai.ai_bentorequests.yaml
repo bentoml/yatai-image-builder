@@ -104,6 +104,8 @@ spec:
                       x-kubernetes-map-type: atomic
                   type: object
                 type: array
+              image:
+                type: string
               imageBuildTimeout:
                 description: A Duration represents the elapsed time between two instants
                   as an int64 nanosecond count. The representation limits the largest
