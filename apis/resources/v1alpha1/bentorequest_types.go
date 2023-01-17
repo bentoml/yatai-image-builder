@@ -59,7 +59,7 @@ type BentoRequestSpec struct {
 	Models      []BentoModel  `json:"models,omitempty"`
 
 	// +kubebuilder:validation:Optional
-	Image *string `json:"image,omitempty"`
+	Image string `json:"image,omitempty"`
 
 	ImageBuildTimeout *time.Duration `json:"imageBuildTimeout,omitempty"`
 
@@ -74,6 +74,9 @@ type BentoRequestSpec struct {
 
 	// +kubebuilder:validation:Optional
 	DockerConfigJSONSecretName string `json:"dockerConfigJsonSecretName,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	OCIRegistryInsecure *bool `json:"ociRegistryInsecure,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	DownloaderContainerEnvFrom []corev1.EnvFromSource `json:"downloaderContainerEnvFrom,omitempty"`
@@ -92,6 +95,7 @@ type BentoRequestStatus struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:name="Bento-Tag",type="string",JSONPath=".spec.bentoTag",description="Bento Tag"
 //+kubebuilder:printcolumn:name="Download-Url",type="string",JSONPath=".spec.downloadUrl",description="Download URL"
+//+kubebuilder:printcolumn:name="Image",type="string",JSONPath=".spec.image",description="Image"
 //+kubebuilder:printcolumn:name="Image-Exists",type="string",JSONPath=".status.conditions[?(@.type=='ImageExists')].status",description="Image Exists"
 //+kubebuilder:printcolumn:name="Bento-Available",type="string",JSONPath=".status.conditions[?(@.type=='BentoAvailable')].status",description="Bento Available"
 //+kubebuilder:printcolumn:name="Image-Builder-Pod-Phase",type="string",JSONPath=".status.imageBuilderPodStatus.phase",description="Image Builder Pod Phase"

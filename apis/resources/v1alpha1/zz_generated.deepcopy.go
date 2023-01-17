@@ -212,11 +212,6 @@ func (in *BentoRequestSpec) DeepCopyInto(out *BentoRequestSpec) {
 		*out = make([]BentoModel, len(*in))
 		copy(*out, *in)
 	}
-	if in.Image != nil {
-		in, out := &in.Image, &out.Image
-		*out = new(string)
-		**out = **in
-	}
 	if in.ImageBuildTimeout != nil {
 		in, out := &in.ImageBuildTimeout, &out.ImageBuildTimeout
 		*out = new(timex.Duration)
@@ -243,6 +238,11 @@ func (in *BentoRequestSpec) DeepCopyInto(out *BentoRequestSpec) {
 		in, out := &in.ImageBuilderContainerResources, &out.ImageBuilderContainerResources
 		*out = new(v1.ResourceRequirements)
 		(*in).DeepCopyInto(*out)
+	}
+	if in.OCIRegistryInsecure != nil {
+		in, out := &in.OCIRegistryInsecure, &out.OCIRegistryInsecure
+		*out = new(bool)
+		**out = **in
 	}
 	if in.DownloaderContainerEnvFrom != nil {
 		in, out := &in.DownloaderContainerEnvFrom, &out.DownloaderContainerEnvFrom
