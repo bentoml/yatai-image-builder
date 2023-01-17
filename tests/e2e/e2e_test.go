@@ -76,8 +76,8 @@ var _ = Describe("yatai-image-builder", Ordered, func() {
 				if err != nil {
 					return err
 				}
-				if len(pods.Items) != 1 {
-					return fmt.Errorf("expected 1 pod, got %d", len(pods.Items))
+				if len(pods.Items) != 2 {
+					return fmt.Errorf("expected 2 pod, got %d", len(pods.Items))
 				}
 				pod := pods.Items[0]
 				if pod.Status.Phase == corev1.PodFailed {
@@ -98,7 +98,7 @@ var _ = Describe("yatai-image-builder", Ordered, func() {
 
 				logrus.Infof("Getting BentoRequest CR %s", "test-bento")
 				bentoRequest, err := bentorequestcli.BentoRequests("yatai").Get(ctx, "test-bento", metav1.GetOptions{})
-				Expect(err).To(BeNil(), "failed to get BentoRequest CR")
+				Expect(err).To(BeNil(), "failed to get BentoRequest CR test-bento")
 
 				logrus.Infof("Getting Bento CR %s", "test-bento")
 				bento, err := bentorequestcli.Bentoes("yatai").Get(ctx, "test-bento", metav1.GetOptions{})
@@ -106,8 +106,23 @@ var _ = Describe("yatai-image-builder", Ordered, func() {
 					return err
 				}
 
-				Expect(bentoRequest.Spec.BentoTag).To(Equal(bento.Spec.Tag), "BentoRequest and Bento tag should match")
-				Expect(bento.Spec.Image).To(Not(BeEmpty()), "Bento CR image should not be empty")
+				Expect(bentoRequest.Spec.BentoTag).To(Equal(bento.Spec.Tag), "bentoRequest and bento tag should match")
+				Expect(bento.Spec.Image).To(Not(BeEmpty()), "bento CR image should not be empty")
+
+				logrus.Infof("Getting BentoRequest CR %s", "test-bento1")
+
+				bentoRequest1, err := bentorequestcli.BentoRequests("yatai").Get(ctx, "test-bento1", metav1.GetOptions{})
+				Expect(err).To(BeNil(), "failed to get BentoRequest CR test-bento1")
+
+				logrus.Infof("Getting Bento CR %s", "test-bento1")
+				bento1, err := bentorequestcli.Bentoes("yatai").Get(ctx, "test-bento1", metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
+
+				Expect(bentoRequest1.Spec.BentoTag).To(Equal(bento1.Spec.Tag), "bentoRequest1 and bento1 tag should match")
+				Expect(bento1.Spec.Image).To(Not(BeEmpty()), "bento1 CR image should not be empty")
+				Expect(bentoRequest1.Spec.Image).To(Equal(bento1.Spec.Image), "bentoRequest1 and bento1 image should match")
 				return nil
 			}, time.Minute, time.Second).Should(Succeed())
 		})
