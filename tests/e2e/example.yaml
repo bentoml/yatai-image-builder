@@ -6,3 +6,15 @@ metadata:
 spec:
   bentoTag: iris_classifier:r4zint4b567i4usu234
   downloadUrl: s3://yetone/bentos/test-bento.bento
+---
+apiVersion: resources.yatai.ai/v1alpha1
+kind: BentoRequest
+metadata:
+  name: test-bento1
+  namespace: yatai
+spec:
+  image: docker-registry-1.yatai-image-builder.svc.cluster.local:5000/test-custom-image:v1
+  ociRegistryInsecure: true
+  dockerConfigJsonSecretName: regcred
+  bentoTag: iris_classifier:r4zint4b567i4usu234
+  downloadUrl: s3://yetone/bentos/test-bento.bento

@@ -774,7 +774,75 @@ func getYataiClient(ctx context.Context) (yataiClient **yataiclient.YataiClient,
 	return
 }
 
-func getDockerRegistry(ctx context.Context, cliset *kubernetes.Clientset) (dockerRegistry modelschemas.DockerRegistrySchema, err error) {
+func getDockerRegistry(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest, cliset *kubernetes.Clientset) (dockerRegistry modelschemas.DockerRegistrySchema, err error) {
+	if bentoRequest != nil && bentoRequest.Spec.DockerConfigJSONSecretName != "" {
+		var secret *corev1.Secret
+		secret, err = cliset.CoreV1().Secrets(bentoRequest.Namespace).Get(ctx, bentoRequest.Spec.DockerConfigJSONSecretName, metav1.GetOptions{})
+		if err != nil {
+			err = errors.Wrapf(err, "get docker config json secret %s", bentoRequest.Spec.DockerConfigJSONSecretName)
+			return
+		}
+		configJSON, ok := secret.Data[".dockerconfigjson"]
+		if !ok {
+			err = errors.Errorf("docker config json secret %s does not have .dockerconfigjson key", bentoRequest.Spec.DockerConfigJSONSecretName)
+			return
+		}
+		var configObj struct {
+			Auths map[string]struct {
+				Auth string `json:"auth"`
+			} `json:"auths"`
+		}
+		err = json.Unmarshal(configJSON, &configObj)
+		if err != nil {
+			err = errors.Wrapf(err, "unmarshal docker config json secret %s", bentoRequest.Spec.DockerConfigJSONSecretName)
+			return
+		}
+		imageRegistryURI, _, _ := xstrings.Partition(bentoRequest.Spec.Image, "/")
+		var server string
+		var auth string
+		if imageRegistryURI != "" {
+			for k, v := range configObj.Auths {
+				if k == imageRegistryURI {
+					server = k
+					auth = v.Auth
+					break
+				}
+			}
+			if server == "" {
+				for k, v := range configObj.Auths {
+					if strings.Contains(k, imageRegistryURI) {
+						server = k
+						auth = v.Auth
+						break
+					}
+				}
+			}
+		}
+		if server == "" {
+			for k, v := range configObj.Auths {
+				server = k
+				auth = v.Auth
+				break
+			}
+		}
+		if server == "" {
+			err = errors.Errorf("no auth in docker config json secret %s", bentoRequest.Spec.DockerConfigJSONSecretName)
+			return
+		}
+		dockerRegistry.Server = server
+		var credentials []byte
+		credentials, err = base64.StdEncoding.DecodeString(auth)
+		if err != nil {
+			err = errors.Wrapf(err, "cannot base64 decode auth in docker config json secret %s", bentoRequest.Spec.DockerConfigJSONSecretName)
+			return
+		}
+		dockerRegistry.Username, _, dockerRegistry.Password = xstrings.Partition(string(credentials), ":")
+		if bentoRequest.Spec.OCIRegistryInsecure != nil {
+			dockerRegistry.Secure = !*bentoRequest.Spec.OCIRegistryInsecure
+		}
+		return
+	}
+
 	dockerRegistryConfig, err := commonconfig.GetDockerRegistryConfig(ctx, cliset)
 	if err != nil {
 		err = errors.Wrap(err, "get docker registry")
@@ -820,8 +888,8 @@ func getDockerRegistry(ctx context.Context, cliset *kubernetes.Clientset) (docke
 }
 
 func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegistry modelschemas.DockerRegistrySchema, bentoRepositoryName, bentoVersion string, inCluster bool) string {
-	if bentoRequest != nil && bentoRequest.Spec.Image != nil && *bentoRequest.Spec.Image != "" {
-		return *bentoRequest.Spec.Image
+	if bentoRequest != nil && bentoRequest.Spec.Image != "" {
+		return bentoRequest.Spec.Image
 	}
 	var imageName string
 	if inCluster {
@@ -889,7 +957,7 @@ func (r *BentoRequestReconciler) getImageInfo(ctx context.Context, opt GetImageI
 		err = errors.Wrap(err, "create kubernetes clientset")
 		return
 	}
-	dockerRegistry, err := getDockerRegistry(ctx, kubeCli)
+	dockerRegistry, err := getDockerRegistry(ctx, opt.BentoRequest, kubeCli)
 	if err != nil {
 		err = errors.Wrap(err, "get docker registry")
 		return
@@ -901,6 +969,9 @@ func (r *BentoRequestReconciler) getImageInfo(ctx context.Context, opt GetImageI
 	imageInfo.DockerConfigJSONSecretName = opt.BentoRequest.Spec.DockerConfigJSONSecretName
 
 	imageInfo.DockerRegistryInsecure = opt.BentoRequest.Annotations[commonconsts.KubeAnnotationDockerRegistryInsecure] == "true"
+	if opt.BentoRequest.Spec.OCIRegistryInsecure != nil {
+		imageInfo.DockerRegistryInsecure = *opt.BentoRequest.Spec.OCIRegistryInsecure
+	}
 
 	if imageInfo.DockerConfigJSONSecretName == "" {
 		var dockerRegistryConf *commonconfig.DockerRegistryConfig
