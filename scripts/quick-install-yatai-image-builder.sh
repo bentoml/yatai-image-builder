@@ -95,6 +95,8 @@ else
   echo "😀 cert-manager is already installed"
 fi
 
+echo "😴 sleep 5s to make cert-manager pod created 🤷"
+
 echo "⏳ waiting for cert-manager to be ready..."
 kubectl wait --for=condition=ready --timeout=600s pod -l app.kubernetes.io/instance=cert-manager -A
 echo "✅ cert-manager is ready"
