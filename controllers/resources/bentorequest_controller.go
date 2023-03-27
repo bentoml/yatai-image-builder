@@ -203,7 +203,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
 					Status:  metav1.ConditionTrue,
 					Reason:  "Reconciling",
-					Message: fmt.Sprintf("Image %s is already exists", imageInfo.ImageName),
+					Message: imageInfo.ImageName,
 				},
 			)
 			if err != nil {
@@ -249,7 +249,16 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return
 	}
 
-	imageExists := imageExistsCondition != nil && imageExistsCondition.Status == metav1.ConditionTrue
+	var imageInfo ImageInfo
+	imageInfo, err = r.getImageInfo(ctx, GetImageInfoOption{
+		BentoRequest: bentoRequest,
+	})
+	if err != nil {
+		err = errors.Wrap(err, "get image info")
+		return
+	}
+
+	imageExists := imageExistsCondition != nil && imageExistsCondition.Status == metav1.ConditionTrue && imageExistsCondition.Message == imageInfo.ImageName
 	if !imageExists {
 		podName := strcase.ToKebab(fmt.Sprintf("yatai-bento-image-builder-%s", bentoRequest.Name))
 		if len(podName) > 63 {
@@ -451,7 +460,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
 				Status:  metav1.ConditionTrue,
 				Reason:  "Reconciling",
-				Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
+				Message: imageInfo.ImageName,
 			},
 		)
 		if err != nil {
@@ -464,15 +473,6 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			Requeue: true,
 		}
 
-		return
-	}
-
-	var imageInfo ImageInfo
-	imageInfo, err = r.getImageInfo(ctx, GetImageInfoOption{
-		BentoRequest: bentoRequest,
-	})
-	if err != nil {
-		err = errors.Wrap(err, "get image info")
 		return
 	}
 
