@@ -58,5 +58,9 @@ function trap_handler() {
 trap trap_handler EXIT
 
 echo "⌛ starting yatai-image-builder..."
-env $(kubectl -n yatai-image-builder get secret yatai-image-builder-env -o jsonpath='{.data}' | $jq 'to_entries|map("\(.key)=\(.value|@base64d)")|.[]' | xargs) make run
+env $(kubectl -n yatai-image-builder get secret yatai-image-builder-env -o jsonpath='{.data}' | $jq 'to_entries|map("\(.key)=\(.value|@base64d)")|.[]' | xargs) \
+  BENTO_IMAGE_BUILD_ENGINE=buildah \
+  INTERNAL_IMAGES_BENTO_DOWNLOADER=quay.io/bentoml/bento-downloader:0.0.3 \
+  INTERNAL_IMAGES_BUILDAH=quay.io/bentoml/bentoml-buildah:0.0.2 \
+  make run
 

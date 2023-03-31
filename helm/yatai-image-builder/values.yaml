@@ -27,16 +27,16 @@ serviceAccount:
 
 podAnnotations: {}
 
-podSecurityContext: {}
-  # fsGroup: 2000
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
 
-securityContext: {}
-  # capabilities:
-  #   drop:
-  #   - ALL
-  # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-  # runAsUser: 1000
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
 
 service:
   type: ClusterIP
@@ -96,9 +96,11 @@ aws:
   secretAccessKeyExistingSecretKey: ''
 
 internalImages:
-  bentoDownloader: quay.io/bentoml/bento-downloader:0.0.1
+  bentoDownloader: quay.io/bentoml/bento-downloader:0.0.3
   kaniko: quay.io/bentoml/kaniko:1.9.1
   buildkit: quay.io/bentoml/buildkit:master
   buildkitRootless: quay.io/bentoml/buildkit:master-rootless
+  buildah: quay.io/bentoml/bentoml-buildah:0.0.2
 
 bentoImageBuildEngine: kaniko # options: kaniko, buildkit, buildkit-rootless
+runInOpenshift: false
