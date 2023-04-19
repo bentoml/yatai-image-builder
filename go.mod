@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/aws/aws-sdk-go v1.44.152
 	github.com/bentoml/yatai-common v0.0.0-20230110044251-1eb442339c38
-	github.com/bentoml/yatai-schemas v0.0.0-20230418105153-cdcd5fd806e9
+	github.com/bentoml/yatai-schemas v0.0.0-20230418023541-71c74442a90f
 	github.com/huandu/xstrings v1.3.2
 	github.com/iancoleman/strcase v0.2.0
 	github.com/mitchellh/hashstructure/v2 v2.0.2
@@ -22,7 +22,7 @@ require (
 )
 
 require (
-	github.com/bentoml/yatai-deployment v1.1.11-0.20230418104942-a261c27b7438 // indirect
+	github.com/bentoml/yatai-deployment v1.1.10 // indirect
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/libtrust v0.0.0-20150114040149-fa567046d9b1 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
