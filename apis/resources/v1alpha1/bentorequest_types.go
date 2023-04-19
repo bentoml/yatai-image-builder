@@ -33,17 +33,17 @@ const (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 type ExtraPodMetadata struct {
-	Annotations map[string]string `json:"annotations,omitempty"`
-	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 }
 
 type ExtraPodSpec struct {
-	SchedulerName             string                            `json:"schedulerName,omitempty"`
-	NodeSelector              map[string]string                 `json:"nodeSelector,omitempty"`
-	Affinity                  *corev1.Affinity                  `json:"affinity,omitempty"`
-	Tolerations               []corev1.Toleration               `json:"tolerations,omitempty"`
-	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
-	ServiceAccountName        string                            `json:"serviceAccountName,omitempty"`
+	SchedulerName             string                            `json:"schedulerName,omitempty" yaml:"schedulerName,omitempty"`
+	NodeSelector              map[string]string                 `json:"nodeSelector,omitempty" yaml:"nodeSelector,omitempty"`
+	Affinity                  *corev1.Affinity                  `json:"affinity,omitempty" yaml:"affinity,omitempty"`
+	Tolerations               []corev1.Toleration               `json:"tolerations,omitempty" yaml:"tolerations,omitempty"`
+	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty" yaml:"topologySpreadConstraints,omitempty"`
+	ServiceAccountName        string                            `json:"serviceAccountName,omitempty" yaml:"serviceAccountName,omitempty"`
 }
 
 // BentoRequestSpec defines the desired state of BentoRequest

@@ -1130,7 +1130,7 @@ func (r *BentoRequestReconciler) generateImageBuilderPod(ctx context.Context, op
 		}
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Got bento %s from yatai service", opt.BentoRequest.Spec.BentoTag)
 
-		if bento.TransmissionStrategy == modelschemas.TransmissionStrategyPresignedURL {
+		if bento.TransmissionStrategy != nil && *bento.TransmissionStrategy == modelschemas.TransmissionStrategyPresignedURL {
 			var bento_ *schemasv1.BentoSchema
 			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting presigned url for bento %s from yatai service", opt.BentoRequest.Spec.BentoTag)
 			bento_, err = yataiClient.PresignBentoDownloadURL(ctx, bentoRepositoryName, bentoVersion)
@@ -1367,7 +1367,7 @@ echo "Done"
 			}
 			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Model %s is got from yatai service", model.Tag)
 
-			if model_.TransmissionStrategy == modelschemas.TransmissionStrategyPresignedURL {
+			if model_.TransmissionStrategy != nil && *model_.TransmissionStrategy == modelschemas.TransmissionStrategyPresignedURL {
 				var model0 *schemasv1.ModelSchema
 				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting presigned url for model %s from yatai service", model.Tag)
 				model0, err = yataiClient.PresignModelDownloadURL(ctx, modelRepositoryName, modelVersion)
