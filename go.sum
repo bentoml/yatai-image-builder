@@ -79,10 +79,10 @@ github.com/benbjohnson/clock v1.1.0 h1:Q92kusRqC1XV2MjkWETPvjJVqKetz1OzxZB7mHJLj
 github.com/benbjohnson/clock v1.1.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZxNJlLklBHA=
 github.com/bentoml/yatai-common v0.0.0-20230110044251-1eb442339c38 h1:PqfM42gfwBeytS92pV9t8u8POf8czn/4WlmQ/RFGuuY=
 github.com/bentoml/yatai-common v0.0.0-20230110044251-1eb442339c38/go.mod h1:pox0XYk/bVUwKkadn0XwWHEbJmxSEeN3+HwGA4a8uOQ=
-github.com/bentoml/yatai-deployment v1.1.11-0.20230418104942-a261c27b7438 h1:e5utgRPoWjWfI7ZBe/laVXK8D/OoMv+i+cA+e40M66g=
-github.com/bentoml/yatai-deployment v1.1.11-0.20230418104942-a261c27b7438/go.mod h1:IzeFtszcLsDBBV7b7/JnKJeXE2QMBdmYzh3iUKH4y48=
-github.com/bentoml/yatai-schemas v0.0.0-20230418105153-cdcd5fd806e9 h1:yaVV2nqIs16i58/Zohkxm2o7Ylzxni4Tjf52cs1Q8iQ=
-github.com/bentoml/yatai-schemas v0.0.0-20230418105153-cdcd5fd806e9/go.mod h1:2S2EE26Yyf+a+TnE6LHpJWb93ciaCfbM2EBDWdkTOic=
+github.com/bentoml/yatai-deployment v1.1.10 h1:YADdLkwyUcH4Zsyp/O4ymJdqNoMFIu/KKQrfnhNsRd0=
+github.com/bentoml/yatai-deployment v1.1.10/go.mod h1:j73glvFeo11oP5I5J7lOxyY5gApS199qFxA1NzplX+Y=
+github.com/bentoml/yatai-schemas v0.0.0-20230418023541-71c74442a90f h1:G/yhoMaNIWrc4r9Sp3/wjAlLwAq4jWHzsNQ97pJ53KM=
+github.com/bentoml/yatai-schemas v0.0.0-20230418023541-71c74442a90f/go.mod h1:5pwTMTCo03tajWafBo3YmJf+gLmz7sxnA/g+AzueZvM=
 github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24TaqPxmxbtue+5NUziq4I4S80YR8gNf3Q=
 github.com/beorn7/perks v1.0.0/go.mod h1:KWe93zE9D1o94FZ5RNwFwVgaQK1VOXiVxmqh+CedLV8=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
