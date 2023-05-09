@@ -67,6 +67,8 @@ if [ "${YATAI_ENDPOINT}" = "empty" ]; then
     YATAI_ENDPOINT=""
 fi
 
+YATAI_SERVICE_ACCOUNT=${YATAI_SERVICE_ACCOUNT:-yatai}
+
 if [ "${YATAI_ENDPOINT}" = "http://yatai.yatai-system.svc.cluster.local" ]; then
   echo "🧪 verifying that the yatai is running"
   if ! kubectl -n yatai-system wait --for=condition=ready --timeout=10s pod -l app.kubernetes.io/name=yatai; then
@@ -270,6 +272,7 @@ else
     --set aws.accessKeyID=${AWS_ACCESS_KEY_ID} \
     --set aws.secretAccessKeyExistingSecretName=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_NAME} \
     --set aws.secretAccessKeyExistingSecretKey=${AWS_SECRET_ACCESS_KEY_EXISTING_SECRET_KEY} \
+    --set yataiSystem.serviceAccountName=$YATAI_SERVICE_ACCOUNT \
     --version=${VERSION} \
     --devel=${DEVEL}
 fi
