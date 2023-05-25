@@ -445,7 +445,6 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			if err != nil {
 				return
 			}
-			err = errors.Errorf("image builder pod %s status is %s", pod.Name, pod.Status.Phase)
 			return
 		}
 
