@@ -76,6 +76,8 @@ yatai:
   apiToken: ''
   clusterName: default
 
+disableYataiComponentRegistration: false
+
 dockerRegistry:
   server: ''
   inClusterServer: ''
