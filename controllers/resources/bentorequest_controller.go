@@ -1216,6 +1216,18 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 		}
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Got bento %s from yatai service", opt.BentoRequest.Spec.BentoTag)
 
+		if bento.UploadStatus != modelschemas.BentoUploadStatusSuccess {
+			err = errors.Errorf("bento %s is not uploaded yet, upload status is %s", opt.BentoRequest.Spec.BentoTag, bento.UploadStatus)
+			return
+		}
+
+		for _, model := range bento.Models {
+			if model.UploadStatus != modelschemas.ModelUploadStatusSuccess {
+				err = errors.Errorf("model %s:%s is not uploaded yet, upload status is %s", model.Name, model.Version, model.UploadStatus)
+				return
+			}
+		}
+
 		if bento.TransmissionStrategy != nil && *bento.TransmissionStrategy == modelschemas.TransmissionStrategyPresignedURL {
 			var bento_ *schemasv1.BentoSchema
 			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting presigned url for bento %s from yatai service", opt.BentoRequest.Spec.BentoTag)
