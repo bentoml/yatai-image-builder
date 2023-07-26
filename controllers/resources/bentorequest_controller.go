@@ -1804,8 +1804,10 @@ echo "Done"
 			return
 		}
 		if len(serviceAccounts.Items) > 0 {
+			logrus.Infof("Found service account %s for image builder pod in namespace %s", serviceAccounts.Items[0].Name, opt.BentoRequest.Namespace)
 			pod.Spec.ServiceAccountName = serviceAccounts.Items[0].Name
 		} else {
+			logrus.Infof("No service account found in namespace %s", opt.BentoRequest.Namespace)
 			pod.Spec.ServiceAccountName = "default"
 		}
 	}
