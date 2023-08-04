@@ -1776,6 +1776,7 @@ echo "Done"
 	}
 
 	if globalExtraPodSpec != nil {
+		pod.Spec.PriorityClassName = globalExtraPodSpec.PriorityClassName
 		pod.Spec.SchedulerName = globalExtraPodSpec.SchedulerName
 		pod.Spec.NodeSelector = globalExtraPodSpec.NodeSelector
 		pod.Spec.Affinity = globalExtraPodSpec.Affinity
@@ -1785,6 +1786,10 @@ echo "Done"
 	}
 
 	if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec != nil {
+		if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.PriorityClassName != "" {
+			pod.Spec.PriorityClassName = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.PriorityClassName
+		}
+
 		if opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.SchedulerName != "" {
 			pod.Spec.SchedulerName = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.SchedulerName
 		}
