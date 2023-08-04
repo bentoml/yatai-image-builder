@@ -1441,6 +1441,7 @@ echo "Done"
 	var globalExtraPodMetadata *resourcesv1alpha1.ExtraPodMetadata
 	var globalExtraPodSpec *resourcesv1alpha1.ExtraPodSpec
 	var globalExtraContainerEnv []corev1.EnvVar
+	var globalDefaultImageBuilderContainerResources *corev1.ResourceRequirements
 	var buildArgs []string
 	var builderArgs []string
 
@@ -1462,6 +1463,7 @@ echo "Done"
 
 	if !configCmIsNotFound {
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Configmap %s is got from namespace %s", configCmName, configNamespace)
+
 		globalExtraPodMetadata = &resourcesv1alpha1.ExtraPodMetadata{}
 
 		if val, ok := configCm.Data["extra_pod_metadata"]; ok {
@@ -1488,6 +1490,16 @@ echo "Done"
 			err = yaml.Unmarshal([]byte(val), &globalExtraContainerEnv)
 			if err != nil {
 				err = errors.Wrapf(err, "failed to yaml unmarshal extra_container_env, please check the configmap %s in namespace %s", configCmName, configNamespace)
+				return
+			}
+		}
+
+		globalDefaultImageBuilderContainerResources = &corev1.ResourceRequirements{}
+
+		if val, ok := configCm.Data["default_image_builder_container_resources"]; ok {
+			err = yaml.Unmarshal([]byte(val), globalDefaultImageBuilderContainerResources)
+			if err != nil {
+				err = errors.Wrapf(err, "failed to yaml unmarshal default_image_builder_container_resources, please check the configmap %s in namespace %s", configCmName, configNamespace)
 				return
 			}
 		}
@@ -1716,6 +1728,10 @@ echo "Done"
 				corev1.ResourceMemory: resource.MustParse("3Gi"),
 			},
 		},
+	}
+
+	if globalDefaultImageBuilderContainerResources != nil {
+		container.Resources = *globalDefaultImageBuilderContainerResources
 	}
 
 	if opt.BentoRequest.Spec.ImageBuilderContainerResources != nil {
