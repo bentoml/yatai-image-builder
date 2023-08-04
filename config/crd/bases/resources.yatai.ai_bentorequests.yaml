@@ -1135,6 +1135,8 @@ spec:
                     additionalProperties:
                       type: string
                     type: object
+                  priorityClassName:
+                    type: string
                   schedulerName:
                     type: string
                   serviceAccountName:

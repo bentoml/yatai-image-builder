@@ -38,6 +38,7 @@ type ExtraPodMetadata struct {
 }
 
 type ExtraPodSpec struct {
+	PriorityClassName         string                            `json:"priorityClassName,omitempty" yaml:"priorityClassName,omitempty"`
 	SchedulerName             string                            `json:"schedulerName,omitempty" yaml:"schedulerName,omitempty"`
 	NodeSelector              map[string]string                 `json:"nodeSelector,omitempty" yaml:"nodeSelector,omitempty"`
 	Affinity                  *corev1.Affinity                  `json:"affinity,omitempty" yaml:"affinity,omitempty"`
