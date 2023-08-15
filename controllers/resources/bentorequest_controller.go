@@ -258,13 +258,12 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	imageExists := imageExistsCondition != nil && imageExistsCondition.Status == metav1.ConditionTrue && imageExistsCondition.Message == imageInfo.ImageName
 	if !imageExists {
-		var hash uint64
-		hash, err = hashstructure.Hash(bentoRequest.Spec, hashstructure.FormatV2, nil)
+		var hashStr string
+		hashStr, err = r.getHashStr(bentoRequest)
 		if err != nil {
-			err = errors.Wrap(err, "get bentoRequest CR spec hash")
+			err = errors.Wrap(err, "get hash string")
 			return
 		}
-		hashStr := strconv.FormatUint(hash, 10)
 
 		podLabels := r.getImageBuilderPodLabels(bentoRequest)
 
@@ -1571,13 +1570,11 @@ echo "Done"
 	}
 
 	kubeAnnotations := make(map[string]string)
-	var hash uint64
-	hash, err = hashstructure.Hash(opt.BentoRequest.Spec, hashstructure.FormatV2, nil)
+	hashStr, err := r.getHashStr(opt.BentoRequest)
 	if err != nil {
-		err = errors.Wrap(err, "get bentoRequest CR spec hash")
+		err = errors.Wrap(err, "failed to get hash string")
 		return
 	}
-	hashStr := strconv.FormatUint(hash, 10)
 	kubeAnnotations[KubeAnnotationBentoRequestHash] = hashStr
 	var command []string
 	args := []string{
@@ -1868,6 +1865,25 @@ echo "Done"
 	}
 
 	return
+}
+
+func (r *BentoRequestReconciler) getHashStr(bentoRequest *resourcesv1alpha1.BentoRequest) (string, error) {
+	var hash uint64
+	hash, err := hashstructure.Hash(struct {
+		Spec        resourcesv1alpha1.BentoRequestSpec
+		Labels      map[string]string
+		Annotations map[string]string
+	}{
+		Spec:        bentoRequest.Spec,
+		Labels:      bentoRequest.Labels,
+		Annotations: bentoRequest.Annotations,
+	}, hashstructure.FormatV2, nil)
+	if err != nil {
+		err = errors.Wrap(err, "get bentoRequest CR spec hash")
+		return "", err
+	}
+	hashStr := strconv.FormatUint(hash, 10)
+	return hashStr, nil
 }
 
 func (r *BentoRequestReconciler) doRegisterYataiComponent() (err error) {
