@@ -1188,34 +1188,35 @@ func (r *BentoRequestReconciler) generateImageBuilderPod(ctx context.Context, op
 	}
 
 	// nolint: gosec
-	var awsAccessKeySecretName string
-	awsAccessKeyID := os.Getenv(commonconsts.EnvAWSAccessKeyID)
-	awsSecretAccessKey := os.Getenv(commonconsts.EnvAWSSecretAccessKey)
-	if awsAccessKeyID != "" && awsSecretAccessKey != "" {
-		// nolint: gosec
-		awsAccessKeySecretName = "yatai-image-builder-aws-access-key"
-		stringData := map[string]string{
-			commonconsts.EnvAWSAccessKeyID:     awsAccessKeyID,
-			commonconsts.EnvAWSSecretAccessKey: awsSecretAccessKey,
-			"AWS_EC2_METADATA_DISABLED":        "true",
+	awsAccessKeySecretName := opt.BentoRequest.Labels[commonconsts.KubeLabelAWSAccessKeySecretName]
+	if awsAccessKeySecretName == "" {
+		awsAccessKeyID := os.Getenv(commonconsts.EnvAWSAccessKeyID)
+		awsSecretAccessKey := os.Getenv(commonconsts.EnvAWSSecretAccessKey)
+		if awsAccessKeyID != "" && awsSecretAccessKey != "" {
+			// nolint: gosec
+			awsAccessKeySecretName = "yatai-image-builder-aws-access-key"
+			stringData := map[string]string{
+				commonconsts.EnvAWSAccessKeyID:     awsAccessKeyID,
+				commonconsts.EnvAWSSecretAccessKey: awsSecretAccessKey,
+			}
+			awsAccessKeySecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      awsAccessKeySecretName,
+					Namespace: opt.BentoRequest.Namespace,
+				},
+				StringData: stringData,
+			}
+			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Creating or updating secret %s in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
+			_, err = controllerutil.CreateOrUpdate(ctx, r.Client, awsAccessKeySecret, func() error {
+				awsAccessKeySecret.StringData = stringData
+				return nil
+			})
+			if err != nil {
+				err = errors.Wrapf(err, "failed to create or update secret %s", awsAccessKeySecretName)
+				return
+			}
+			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is created or updated in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
 		}
-		awsAccessKeySecret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      awsAccessKeySecretName,
-				Namespace: opt.BentoRequest.Namespace,
-			},
-			StringData: stringData,
-		}
-		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Creating or updating secret %s in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
-		_, err = controllerutil.CreateOrUpdate(ctx, r.Client, awsAccessKeySecret, func() error {
-			awsAccessKeySecret.StringData = stringData
-			return nil
-		})
-		if err != nil {
-			err = errors.Wrapf(err, "failed to create or update secret %s", awsAccessKeySecretName)
-			return
-		}
-		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is created or updated in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
 	}
 
 	internalImages := commonconfig.GetInternalImages()
@@ -1315,6 +1316,12 @@ echo "Done"
 			VolumeMounts: volumeMounts,
 			Resources:    downloaderContainerResources,
 			EnvFrom:      downloaderContainerEnvFrom,
+			Env: []corev1.EnvVar{
+				{
+					Name:  "AWS_EC2_METADATA_DISABLED",
+					Value: "true",
+				},
+			},
 		},
 	}
 
@@ -1435,6 +1442,12 @@ echo "Done"
 			VolumeMounts: volumeMounts,
 			Resources:    downloaderContainerResources,
 			EnvFrom:      downloaderContainerEnvFrom,
+			Env: []corev1.EnvVar{
+				{
+					Name:  "AWS_EC2_METADATA_DISABLED",
+					Value: "true",
+				},
+			},
 		})
 	}
 

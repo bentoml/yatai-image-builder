@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/aws/aws-sdk-go v1.44.152
-	github.com/bentoml/yatai-common v0.0.0-20230110044251-1eb442339c38
+	github.com/bentoml/yatai-common v0.0.0-20230815025021-c850105dafdd
 	github.com/bentoml/yatai-schemas v0.0.0-20230418023541-71c74442a90f
 	github.com/huandu/xstrings v1.3.2
 	github.com/iancoleman/strcase v0.2.0
@@ -13,6 +13,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.3.1
 	github.com/onsi/gomega v1.22.1
 	github.com/pkg/errors v0.9.1
+	github.com/rs/xid v1.5.0
 	github.com/sirupsen/logrus v1.8.1
 	k8s.io/api v0.25.0
 	k8s.io/apimachinery v0.25.0
@@ -29,7 +30,6 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.2 // indirect
-	github.com/rs/xid v1.5.0 // indirect
 )
 
 require (
