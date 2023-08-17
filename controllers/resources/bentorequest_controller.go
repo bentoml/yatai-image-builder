@@ -265,7 +265,9 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return
 		}
 
-		podLabels := r.getImageBuilderPodLabels(bentoRequest)
+		podLabels := map[string]string{
+			commonconsts.KubeLabelBentoRequest: bentoRequest.Name,
+		}
 
 		pods := &corev1.PodList{}
 		err = r.List(ctx, pods, client.InNamespace(req.Namespace), client.MatchingLabels(podLabels))
@@ -274,18 +276,9 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return
 		}
 
-		var pod *corev1.Pod
+		reservedPods := make([]*corev1.Pod, 0)
 		for _, pod_ := range pods.Items {
 			pod_ := pod_
-
-			if pod_.OwnerReferences == nil || len(pod_.OwnerReferences) == 0 {
-				continue
-			}
-
-			or := pod_.OwnerReferences[0]
-			if or.UID != bentoRequest.UID {
-				continue
-			}
 
 			oldHash := pod_.Annotations[KubeAnnotationBentoRequestHash]
 			if oldHash != hashStr {
@@ -299,8 +292,22 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				}
 				return
 			} else {
-				pod = &pod_
-				break
+				reservedPods = append(reservedPods, &pod_)
+			}
+		}
+
+		var pod *corev1.Pod
+		if len(reservedPods) > 0 {
+			pod = reservedPods[0]
+		}
+
+		if len(reservedPods) > 1 {
+			for _, pod_ := range reservedPods[1:] {
+				err = r.Delete(ctx, pod_)
+				if err != nil {
+					err = errors.Wrapf(err, "delete pod %s", pod_.Name)
+					return
+				}
 			}
 		}
 
@@ -1022,6 +1029,7 @@ func (r *BentoRequestReconciler) getImageBuilderPodName() string {
 func (r *BentoRequestReconciler) getImageBuilderPodLabels(bentoRequest *resourcesv1alpha1.BentoRequest) map[string]string {
 	bentoRepositoryName, _, bentoVersion := xstrings.Partition(bentoRequest.Spec.BentoTag, ":")
 	return map[string]string{
+		commonconsts.KubeLabelBentoRequest:         bentoRequest.Name,
 		commonconsts.KubeLabelIsBentoImageBuilder:  "true",
 		commonconsts.KubeLabelYataiBentoRepository: bentoRepositoryName,
 		commonconsts.KubeLabelYataiBento:           bentoVersion,
