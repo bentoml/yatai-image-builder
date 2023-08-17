@@ -1514,9 +1514,8 @@ echo "Done"
 			}
 		}
 
-		globalDefaultImageBuilderContainerResources = &corev1.ResourceRequirements{}
-
 		if val, ok := configCm.Data["default_image_builder_container_resources"]; ok {
+			globalDefaultImageBuilderContainerResources = &corev1.ResourceRequirements{}
 			err = yaml.Unmarshal([]byte(val), globalDefaultImageBuilderContainerResources)
 			if err != nil {
 				err = errors.Wrapf(err, "failed to yaml unmarshal default_image_builder_container_resources, please check the configmap %s in namespace %s", configCmName, configNamespace)
