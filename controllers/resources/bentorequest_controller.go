@@ -282,6 +282,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 			oldHash := pod_.Annotations[KubeAnnotationBentoRequestHash]
 			if oldHash != hashStr {
+				logs.Info("Because hash changed, delete old pod", "pod", pod_.Name, "oldHash", oldHash, "newHash", hashStr)
 				err = r.Delete(ctx, &pod_)
 				if err != nil {
 					err = errors.Wrapf(err, "delete pod %s", pod_.Name)
@@ -303,6 +304,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 		if len(reservedPods) > 1 {
 			for _, pod_ := range reservedPods[1:] {
+				logs.Info("Because has more than one pod, delete old pod", "pod", pod_.Name)
 				err = r.Delete(ctx, pod_)
 				if err != nil {
 					err = errors.Wrapf(err, "delete pod %s", pod_.Name)
