@@ -40,6 +40,18 @@ rules:
   verbs:
   - update
 - apiGroups:
+  - "batch"
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - update
+  - patch
+  - get
+  - list
+  - watch
+- apiGroups:
   - ""
   resources:
   - pods

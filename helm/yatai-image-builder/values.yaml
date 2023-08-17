@@ -99,7 +99,7 @@ aws:
 
 internalImages:
   bentoDownloader: quay.io/bentoml/bento-downloader:0.0.1
-  kaniko: quay.io/bentoml/kaniko:1.9.1
+  kaniko: quay.io/bentoml/kaniko:debug
   buildkit: quay.io/bentoml/buildkit:master
   buildkitRootless: quay.io/bentoml/buildkit:master-rootless
 
