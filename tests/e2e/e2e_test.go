@@ -4,6 +4,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	commonconsts "github.com/bentoml/yatai-common/consts"
+
 	resourcesclient "github.com/bentoml/yatai-image-builder/generated/resources/clientset/versioned/typed/resources/v1alpha1"
 
 	//nolint:golint
@@ -29,6 +31,9 @@ import (
 
 var _ = Describe("yatai-image-builder", Ordered, func() {
 	AfterAll(func() {
+		if os.Getenv("DEBUG") == "true" {
+			return
+		}
 		By("Showing image builder pod events")
 		cmd := exec.Command("kubectl", "-n", "yatai", "describe", "pod", "-l", fmt.Sprintf("%s=true", commonconsts.KubeLabelIsBentoImageBuilder))
 		logs, _ := utils.Run(cmd)
