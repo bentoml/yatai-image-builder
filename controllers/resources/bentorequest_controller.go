@@ -28,7 +28,6 @@ import (
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
-	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -42,6 +41,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/yaml"
 
 	"bytes"
 	"encoding/base64"
