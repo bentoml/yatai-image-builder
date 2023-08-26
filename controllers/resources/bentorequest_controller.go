@@ -28,6 +28,7 @@ import (
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -169,17 +170,17 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}()
 
+	var imageInfo ImageInfo
+	imageInfo, err = r.getImageInfo(ctx, GetImageInfoOption{
+		BentoRequest: bentoRequest,
+	})
+	if err != nil {
+		err = errors.Wrap(err, "get image info")
+		return
+	}
+
 	imageExistsCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeImageExists)
 	if imageExistsCondition == nil || imageExistsCondition.Status == metav1.ConditionUnknown {
-		var imageInfo ImageInfo
-		imageInfo, err = r.getImageInfo(ctx, GetImageInfoOption{
-			BentoRequest: bentoRequest,
-		})
-		if err != nil {
-			err = errors.Wrap(err, "get image info")
-			return
-		}
-
 		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImage", "Checking image exists: %s", imageInfo.ImageName)
 		var imageExists bool
 		imageExists, err = checkImageExists(imageInfo.DockerRegistry, imageInfo.InClusterImageName)
@@ -247,15 +248,6 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return
 	}
 
-	var imageInfo ImageInfo
-	imageInfo, err = r.getImageInfo(ctx, GetImageInfoOption{
-		BentoRequest: bentoRequest,
-	})
-	if err != nil {
-		err = errors.Wrap(err, "get image info")
-		return
-	}
-
 	imageExists := imageExistsCondition != nil && imageExistsCondition.Status == metav1.ConditionTrue && imageExistsCondition.Message == imageInfo.ImageName
 	if !imageExists {
 		var hashStr string
@@ -265,27 +257,30 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return
 		}
 
-		podLabels := map[string]string{
+		jobLabels := map[string]string{
 			commonconsts.KubeLabelBentoRequest: bentoRequest.Name,
 		}
 
-		pods := &corev1.PodList{}
-		err = r.List(ctx, pods, client.InNamespace(req.Namespace), client.MatchingLabels(podLabels))
+		jobs := &batchv1.JobList{}
+		err = r.List(ctx, jobs, client.InNamespace(req.Namespace), client.MatchingLabels(jobLabels))
 		if err != nil {
-			err = errors.Wrap(err, "list pods")
+			err = errors.Wrap(err, "list jobs")
 			return
 		}
 
-		reservedPods := make([]*corev1.Pod, 0)
-		for _, pod_ := range pods.Items {
-			pod_ := pod_
+		reservedJobs := make([]*batchv1.Job, 0)
+		for _, job_ := range jobs.Items {
+			job_ := job_
 
-			oldHash := pod_.Annotations[KubeAnnotationBentoRequestHash]
+			oldHash := job_.Annotations[KubeAnnotationBentoRequestHash]
 			if oldHash != hashStr {
-				logs.Info("Because hash changed, delete old pod", "pod", pod_.Name, "oldHash", oldHash, "newHash", hashStr)
-				err = r.Delete(ctx, &pod_)
+				logs.Info("Because hash changed, delete old job", "job", job_.Name, "oldHash", oldHash, "newHash", hashStr)
+				// --cascade=foreground
+				err = r.Delete(ctx, &job_, &client.DeleteOptions{
+					PropagationPolicy: &[]metav1.DeletionPropagation{metav1.DeletePropagationForeground}[0],
+				})
 				if err != nil {
-					err = errors.Wrapf(err, "delete pod %s", pod_.Name)
+					err = errors.Wrapf(err, "delete job %s", job_.Name)
 					return
 				}
 				result = ctrl.Result{
@@ -293,56 +288,82 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				}
 				return
 			} else {
-				reservedPods = append(reservedPods, &pod_)
+				reservedJobs = append(reservedJobs, &job_)
 			}
 		}
 
-		var pod *corev1.Pod
-		if len(reservedPods) > 0 {
-			pod = reservedPods[0]
+		var job *batchv1.Job
+		if len(reservedJobs) > 0 {
+			job = reservedJobs[0]
 		}
 
-		if len(reservedPods) > 1 {
-			for _, pod_ := range reservedPods[1:] {
-				logs.Info("Because has more than one pod, delete old pod", "pod", pod_.Name)
-				err = r.Delete(ctx, pod_)
+		if len(reservedJobs) > 1 {
+			for _, job_ := range reservedJobs[1:] {
+				logs.Info("Because has more than one job, delete old job", "job", job_.Name)
+				// --cascade=foreground
+				err = r.Delete(ctx, job_, &client.DeleteOptions{
+					PropagationPolicy: &[]metav1.DeletionPropagation{metav1.DeletePropagationForeground}[0],
+				})
 				if err != nil {
-					err = errors.Wrapf(err, "delete pod %s", pod_.Name)
+					err = errors.Wrapf(err, "delete job %s", job_.Name)
 					return
 				}
 			}
 		}
 
-		if pod == nil {
-			var imageInfo ImageInfo
-			imageInfo, err = r.getImageInfo(ctx, GetImageInfoOption{
-				BentoRequest: bentoRequest,
-			})
-			if err != nil {
-				err = errors.Wrap(err, "get image info")
-				return
-			}
-
-			pod, err = r.generateImageBuilderPod(ctx, GenerateImageBuilderPodOption{
+		if job == nil {
+			job, err = r.generateImageBuilderJob(ctx, GenerateImageBuilderJobOption{
 				ImageInfo:    imageInfo,
 				BentoRequest: bentoRequest,
 			})
 			if err != nil {
-				err = errors.Wrap(err, "generate image builder pod")
+				err = errors.Wrap(err, "generate image builder job")
 				return
 			}
-			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Creating image builder pod: %s", pod.Name)
-			err = r.Create(ctx, pod)
+			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderJob", "Creating image builder job: %s", job.Name)
+			err = r.Create(ctx, job)
 			if err != nil {
-				err = errors.Wrapf(err, "create image builder pod %s", pod.Name)
+				err = errors.Wrapf(err, "create image builder job %s", job.Name)
 				return
 			}
-			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Created image builder pod: %s", pod.Name)
+			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderJob", "Created image builder job: %s", job.Name)
 			result = ctrl.Result{
 				RequeueAfter: 5 * time.Second,
 			}
 			return
 		}
+
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImageBuilderJob", "Found image builder job: %s", job.Name)
+
+		podLabels := map[string]string{
+			"job-name": job.Name,
+		}
+
+		pods := &corev1.PodList{}
+		err = r.List(ctx, pods, client.InNamespace(job.Namespace), client.MatchingLabels(podLabels))
+		if err != nil {
+			err = errors.Wrap(err, "list pods")
+			return
+		}
+
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImageBuilderJob", "Found %d pods for image builder job: %s/%s", len(pods.Items), job.Namespace, job.Name)
+
+		var pod *corev1.Pod
+		for _, pod_ := range pods.Items {
+			pod_ := pod_
+			pod = &pod_
+			break
+		}
+
+		if pod == nil {
+			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "GetImageBuilderPod", "No image builder pod found, requeue")
+			result = ctrl.Result{
+				RequeueAfter: 5 * time.Second,
+			}
+			return
+		}
+
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "GetImageBuilderPod", "Found image builder pod: %s", pod.Name)
 
 		/*
 			Please don't blame me when you see this kind of code,
@@ -1023,7 +1044,7 @@ func (r *BentoRequestReconciler) getBento(ctx context.Context, bentoRequest *res
 	return
 }
 
-func (r *BentoRequestReconciler) getImageBuilderPodName() string {
+func (r *BentoRequestReconciler) getImageBuilderJobName() string {
 	guid := xid.New()
 	return fmt.Sprintf("yatai-bento-image-builder-%s", guid.String())
 }
@@ -1038,14 +1059,72 @@ func (r *BentoRequestReconciler) getImageBuilderPodLabels(bentoRequest *resource
 	}
 }
 
-type GenerateImageBuilderPodOption struct {
+type GenerateImageBuilderJobOption struct {
 	ImageInfo    ImageInfo
 	BentoRequest *resourcesv1alpha1.BentoRequest
 }
 
-func (r *BentoRequestReconciler) generateImageBuilderPod(ctx context.Context, opt GenerateImageBuilderPodOption) (pod *corev1.Pod, err error) {
+func (r *BentoRequestReconciler) generateImageBuilderJob(ctx context.Context, opt GenerateImageBuilderJobOption) (job *batchv1.Job, err error) {
+	// nolint: gosimple
+	podTemplateSpec, err := r.generateImageBuilderPodTemplateSpec(ctx, GenerateImageBuilderPodTemplateSpecOption{
+		ImageInfo:    opt.ImageInfo,
+		BentoRequest: opt.BentoRequest,
+	})
+	if err != nil {
+		err = errors.Wrap(err, "generate image builder pod template spec")
+		return
+	}
+	kubeAnnotations := make(map[string]string)
+	hashStr, err := r.getHashStr(opt.BentoRequest)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get hash string")
+		return
+	}
+	kubeAnnotations[KubeAnnotationBentoRequestHash] = hashStr
+	job = &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        r.getImageBuilderJobName(),
+			Namespace:   opt.BentoRequest.Namespace,
+			Labels:      r.getImageBuilderPodLabels(opt.BentoRequest),
+			Annotations: kubeAnnotations,
+		},
+		Spec: batchv1.JobSpec{
+			Completions:  pointer.Int32Ptr(1),
+			Parallelism:  pointer.Int32Ptr(1),
+			BackoffLimit: pointer.Int32Ptr(0),
+			PodFailurePolicy: &batchv1.PodFailurePolicy{
+				Rules: []batchv1.PodFailurePolicyRule{
+					{
+						Action: batchv1.PodFailurePolicyActionFailJob,
+						OnExitCodes: &batchv1.PodFailurePolicyOnExitCodesRequirement{
+							ContainerName: pointer.StringPtr(BuilderContainerName),
+							Operator:      batchv1.PodFailurePolicyOnExitCodesOpIn,
+							Values:        []int32{BuilderJobFailedExitCode},
+						},
+					},
+				},
+			},
+			Template: *podTemplateSpec,
+		},
+	}
+	err = ctrl.SetControllerReference(opt.BentoRequest, job, r.Scheme)
+	if err != nil {
+		err = errors.Wrapf(err, "set controller reference for job %s", job.Name)
+		return
+	}
+	return
+}
+
+const BuilderContainerName = "builder"
+const BuilderJobFailedExitCode = 42
+
+type GenerateImageBuilderPodTemplateSpecOption struct {
+	ImageInfo    ImageInfo
+	BentoRequest *resourcesv1alpha1.BentoRequest
+}
+
+func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context.Context, opt GenerateImageBuilderPodTemplateSpecOption) (pod *corev1.PodTemplateSpec, err error) {
 	bentoRepositoryName, _, bentoVersion := xstrings.Partition(opt.BentoRequest.Spec.BentoTag, ":")
-	kubeName := r.getImageBuilderPodName()
 	kubeLabels := r.getImageBuilderPodLabels(opt.BentoRequest)
 	restConfig := clientconfig.GetConfigOrDie()
 	kubeCli, err := kubernetes.NewForConfig(restConfig)
@@ -1055,9 +1134,6 @@ func (r *BentoRequestReconciler) generateImageBuilderPod(ctx context.Context, op
 	}
 
 	inClusterImageName := opt.ImageInfo.InClusterImageName
-
-	logs := log.FromContext(ctx)
-	logs.Info(fmt.Sprintf("Generating image builder pod %s", kubeName))
 
 	dockerConfigJSONSecretName := opt.ImageInfo.DockerConfigJSONSecretName
 
@@ -1579,16 +1655,14 @@ echo "Done"
 	}
 
 	kubeAnnotations := make(map[string]string)
-	hashStr, err := r.getHashStr(opt.BentoRequest)
-	if err != nil {
-		err = errors.Wrap(err, "failed to get hash string")
-		return
+	command := []string{
+		"/kaniko/executor",
 	}
-	kubeAnnotations[KubeAnnotationBentoRequestHash] = hashStr
-	var command []string
 	args := []string{
 		"--context=/workspace/buildcontext",
 		"--verbosity=info",
+		"--cache=true",
+		"--compressed-caching=false",
 		fmt.Sprintf("--dockerfile=%s", dockerFilePath),
 		fmt.Sprintf("--insecure=%v", dockerRegistryInsecure),
 		fmt.Sprintf("--destination=%s", inClusterImageName),
@@ -1726,12 +1800,17 @@ echo "Done"
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is not found in namespace %s", buildArgsSecretName, configNamespace)
 	}
 
+	builderContainerArgs := []string{
+		"-c",
+		fmt.Sprintf("%s %s && exit 0 || exit %d", strings.Join(command, " "), strings.Join(args, " "), BuilderJobFailedExitCode),
+	}
+
 	container := corev1.Container{
-		Name:            "builder",
+		Name:            BuilderContainerName,
 		Image:           builderImage,
 		ImagePullPolicy: corev1.PullAlways,
-		Command:         command,
-		Args:            args,
+		Command:         []string{"sh"},
+		Args:            builderContainerArgs,
 		VolumeMounts:    volumeMounts,
 		Env:             envs,
 		TTY:             true,
@@ -1757,10 +1836,8 @@ echo "Done"
 		container.Resources = *opt.BentoRequest.Spec.ImageBuilderContainerResources
 	}
 
-	pod = &corev1.Pod{
+	pod = &corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        kubeName,
-			Namespace:   opt.BentoRequest.Namespace,
 			Labels:      kubeLabels,
 			Annotations: kubeAnnotations,
 		},
@@ -1865,12 +1942,6 @@ echo "Done"
 		}
 		env = append(env, opt.BentoRequest.Spec.ImageBuilderExtraContainerEnv...)
 		pod.Spec.Containers[i].Env = env
-	}
-
-	err = ctrl.SetControllerReference(opt.BentoRequest, pod, r.Scheme)
-	if err != nil {
-		err = errors.Wrapf(err, "set controller reference for pod %s", pod.Name)
-		return
 	}
 
 	return
@@ -1982,7 +2053,7 @@ func (r *BentoRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&resourcesv1alpha1.BentoRequest{}).
 		Owns(&resourcesv1alpha1.Bento{}).
-		Owns(&corev1.Pod{}).
+		Owns(&batchv1.Job{}).
 		WithEventFilter(pred).
 		Complete(r)
 	return errors.Wrap(err, "failed to setup BentoRequest controller")
