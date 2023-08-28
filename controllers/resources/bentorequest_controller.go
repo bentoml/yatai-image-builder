@@ -18,6 +18,8 @@ package resources
 
 import (
 	"context"
+	// nolint: gosec
+	"crypto/md5"
 	"strconv"
 
 	"fmt"
@@ -46,6 +48,7 @@ import (
 
 	"bytes"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -130,6 +133,12 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if bentoRequest.Status.Conditions == nil || len(bentoRequest.Status.Conditions) == 0 {
 		bentoRequest, err = r.setStatusConditions(ctx, req,
 			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsSeeding,
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Reconciling",
+				Message: "Starting to reconcile BentoRequest",
+			},
+			metav1.Condition{
 				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
 				Status:  metav1.ConditionUnknown,
 				Reason:  "Reconciling",
@@ -169,6 +178,259 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return
 		}
 	}()
+
+	var bentoRequestHashStr string
+	bentoRequestHashStr, err = r.getHashStr(bentoRequest)
+	if err != nil {
+		err = errors.Wrapf(err, "get BentoRequest %s/%s hash string", bentoRequest.Namespace, bentoRequest.Name)
+		return
+	}
+
+	bentoAvailableCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable)
+	if bentoAvailableCondition == nil || bentoAvailableCondition.Status != metav1.ConditionUnknown {
+		bentoRequest, err = r.setStatusConditions(ctx, req,
+			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Reconciling",
+				Message: "Reconciling",
+			},
+		)
+		if err != nil {
+			return
+		}
+		result = ctrl.Result{
+			Requeue: true,
+		}
+		return
+	}
+
+	separateModels := isSeparateModels(bentoRequest)
+
+	modelTags := make([]string, 0)
+	for _, model := range bentoRequest.Spec.Models {
+		modelTags = append(modelTags, model.Tag)
+	}
+
+	modelsExistsCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeModelsExists)
+	modelsExists := modelsExistsCondition != nil && modelsExistsCondition.Status == metav1.ConditionTrue && modelsExistsCondition.Message == strings.Join(modelTags, ", ")
+	if separateModels {
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "SeparateModels", "Separate models are enabled")
+		if modelsExistsCondition == nil || modelsExistsCondition.Status == metav1.ConditionUnknown {
+			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "ModelsExists", "Models are not ready")
+			bentoRequest, err = r.setStatusConditions(ctx, req,
+				metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsExists,
+					Status:  metav1.ConditionFalse,
+					Reason:  "Reconciling",
+					Message: "Models are not ready",
+				},
+			)
+			if err != nil {
+				return
+			}
+			result = ctrl.Result{
+				Requeue: true,
+			}
+			return
+		}
+		if !modelsExists {
+			modelsMap := make(map[string]*resourcesv1alpha1.BentoModel)
+			for _, model := range bentoRequest.Spec.Models {
+				model := model
+				modelsMap[model.Tag] = &model
+			}
+
+			jobLabels := map[string]string{
+				commonconsts.KubeLabelBentoRequest:  bentoRequest.Name,
+				commonconsts.KubeLabelIsModelSeeder: "true",
+			}
+
+			jobs := &batchv1.JobList{}
+			err = r.List(ctx, jobs, client.InNamespace(req.Namespace), client.MatchingLabels(jobLabels))
+			if err != nil {
+				err = errors.Wrap(err, "list jobs")
+				return
+			}
+
+			jobDeleted := false
+			existingJobModelTags := make(map[string]struct{})
+			for _, job_ := range jobs.Items {
+				job_ := job_
+
+				modelTag := fmt.Sprintf("%s:%s", job_.Labels[commonconsts.KubeLabelYataiModelRepository], job_.Labels[commonconsts.KubeLabelYataiModel])
+				_, ok := modelsMap[modelTag]
+
+				if !ok {
+					r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "DeleteJob", " Due to the nonexistence of the model %s, job %s has been deleted.", modelTag, job_.Name)
+					// --cascade=foreground
+					err = r.Delete(ctx, &job_, &client.DeleteOptions{
+						PropagationPolicy: &[]metav1.DeletionPropagation{metav1.DeletePropagationForeground}[0],
+					})
+					if err != nil {
+						err = errors.Wrapf(err, "delete job %s", job_.Name)
+						return
+					}
+					jobDeleted = true
+				} else {
+					existingJobModelTags[modelTag] = struct{}{}
+				}
+			}
+
+			if jobDeleted {
+				result = ctrl.Result{
+					Requeue: true,
+				}
+				return
+			}
+
+			for _, model := range bentoRequest.Spec.Models {
+				if _, ok := existingJobModelTags[model.Tag]; ok {
+					continue
+				}
+				model := model
+				pvc := r.generateModelPVC(GenerateModelPVCOption{
+					BentoRequest: bentoRequest,
+					Model:        &model,
+				})
+				err = r.Create(ctx, pvc)
+				isPVCAlreadyExists := k8serrors.IsAlreadyExists(err)
+				if err != nil && !isPVCAlreadyExists {
+					err = errors.Wrapf(err, "create model %s/%s pvc", bentoRequest.Namespace, model.Tag)
+					return ctrl.Result{}, err
+				}
+				job, err := r.generateModelSeederJob(ctx, GenerateModelSeederJobOption{
+					BentoRequest: bentoRequest,
+					Model:        &model,
+				})
+				if err != nil {
+					err = errors.Wrap(err, "generate model seeder job")
+					return ctrl.Result{}, err
+				}
+				oldJob := &batchv1.Job{}
+				err = r.Get(ctx, client.ObjectKeyFromObject(job), oldJob)
+				oldJobIsNotFound := k8serrors.IsNotFound(err)
+				if err != nil && !oldJobIsNotFound {
+					err = errors.Wrap(err, "get job")
+					return ctrl.Result{}, err
+				}
+				if oldJobIsNotFound {
+					err = r.Create(ctx, job)
+					if err != nil {
+						err = errors.Wrap(err, "create job")
+						return ctrl.Result{}, err
+					}
+					r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CreateJob", "Job %s has been created.", job.Name)
+				} else {
+					job.Labels = oldJob.Labels
+					job.Annotations = oldJob.Annotations
+					err = r.Update(ctx, job)
+					if err != nil {
+						err = errors.Wrap(err, "update job")
+						return ctrl.Result{}, err
+					}
+					r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "UpdateJob", "Job %s has been updated.", job.Name)
+				}
+			}
+
+			jobs = &batchv1.JobList{}
+			err = r.List(ctx, jobs, client.InNamespace(req.Namespace), client.MatchingLabels(jobLabels))
+			if err != nil {
+				err = errors.Wrap(err, "list jobs")
+				return
+			}
+
+			succeedModelTags := make(map[string]struct{})
+			failedJobNames := make([]string, 0)
+			notReadyJobNames := make([]string, 0)
+			for _, job_ := range jobs.Items {
+				if job_.Spec.Completions != nil && job_.Status.Succeeded == *job_.Spec.Completions {
+					modelTag := fmt.Sprintf("%s:%s", job_.Labels[commonconsts.KubeLabelYataiModelRepository], job_.Labels[commonconsts.KubeLabelYataiModel])
+					succeedModelTags[modelTag] = struct{}{}
+					continue
+				}
+				if job_.Status.Failed > 0 {
+					for _, condition := range job_.Status.Conditions {
+						if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
+							failedJobNames = append(failedJobNames, job_.Name)
+							continue
+						}
+					}
+				}
+				notReadyJobNames = append(notReadyJobNames, job_.Name)
+			}
+
+			if len(failedJobNames) > 0 {
+				msg := fmt.Sprintf("Model seeder jobs failed: %s", strings.Join(failedJobNames, ", "))
+				r.Recorder.Event(bentoRequest, corev1.EventTypeNormal, "ModelsExists", msg)
+				bentoRequest, err = r.setStatusConditions(ctx, req,
+					metav1.Condition{
+						Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsExists,
+						Status:  metav1.ConditionFalse,
+						Reason:  "Reconciling",
+						Message: msg,
+					},
+					metav1.Condition{
+						Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
+						Status:  metav1.ConditionFalse,
+						Reason:  "Reconciling",
+						Message: msg,
+					},
+				)
+				if err != nil {
+					return
+				}
+				result = ctrl.Result{}
+				return
+			}
+
+			allModelsExist := true
+
+			for _, model := range bentoRequest.Spec.Models {
+				if _, ok := succeedModelTags[model.Tag]; !ok {
+					allModelsExist = false
+					break
+				}
+			}
+
+			if allModelsExist {
+				bentoRequest, err = r.setStatusConditions(ctx, req,
+					metav1.Condition{
+						Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsExists,
+						Status:  metav1.ConditionTrue,
+						Reason:  "Reconciling",
+						Message: strings.Join(modelTags, ", "),
+					},
+				)
+				if err != nil {
+					return
+				}
+				bentoRequest, err = r.setStatusConditions(ctx, req,
+					metav1.Condition{
+						Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsSeeding,
+						Status:  metav1.ConditionFalse,
+						Reason:  "Reconciling",
+						Message: "All models have been seeded.",
+					},
+				)
+				if err != nil {
+					return
+				}
+			} else {
+				bentoRequest, err = r.setStatusConditions(ctx, req,
+					metav1.Condition{
+						Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsSeeding,
+						Status:  metav1.ConditionTrue,
+						Reason:  "Reconciling",
+						Message: fmt.Sprintf("Model seeder jobs are not ready: %s.", strings.Join(notReadyJobNames, ", ")),
+					},
+				)
+				if err != nil {
+					return
+				}
+			}
+		}
+	}
 
 	var imageInfo ImageInfo
 	imageInfo, err = r.getImageInfo(ctx, GetImageInfoOption{
@@ -229,36 +491,11 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return
 	}
 
-	bentoAvailableCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable)
-	if bentoAvailableCondition == nil || bentoAvailableCondition.Status != metav1.ConditionUnknown {
-		bentoRequest, err = r.setStatusConditions(ctx, req,
-			metav1.Condition{
-				Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
-				Status:  metav1.ConditionUnknown,
-				Reason:  "Reconciling",
-				Message: "Reconciling",
-			},
-		)
-		if err != nil {
-			return
-		}
-		result = ctrl.Result{
-			Requeue: true,
-		}
-		return
-	}
-
 	imageExists := imageExistsCondition != nil && imageExistsCondition.Status == metav1.ConditionTrue && imageExistsCondition.Message == imageInfo.ImageName
 	if !imageExists {
-		var hashStr string
-		hashStr, err = r.getHashStr(bentoRequest)
-		if err != nil {
-			err = errors.Wrap(err, "get hash string")
-			return
-		}
-
 		jobLabels := map[string]string{
-			commonconsts.KubeLabelBentoRequest: bentoRequest.Name,
+			commonconsts.KubeLabelBentoRequest:        bentoRequest.Name,
+			commonconsts.KubeLabelIsBentoImageBuilder: "true",
 		}
 
 		jobs := &batchv1.JobList{}
@@ -273,8 +510,8 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			job_ := job_
 
 			oldHash := job_.Annotations[KubeAnnotationBentoRequestHash]
-			if oldHash != hashStr {
-				logs.Info("Because hash changed, delete old job", "job", job_.Name, "oldHash", oldHash, "newHash", hashStr)
+			if oldHash != bentoRequestHashStr {
+				logs.Info("Because hash changed, delete old job", "job", job_.Name, "oldHash", oldHash, "newHash", bentoRequestHashStr)
 				// --cascade=foreground
 				err = r.Delete(ctx, &job_, &client.DeleteOptions{
 					PropagationPolicy: &[]metav1.DeletionPropagation{metav1.DeletePropagationForeground}[0],
@@ -335,142 +572,89 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImageBuilderJob", "Found image builder job: %s", job.Name)
 
-		podLabels := map[string]string{
-			"job-name": job.Name,
-		}
-
-		pods := &corev1.PodList{}
-		err = r.List(ctx, pods, client.InNamespace(job.Namespace), client.MatchingLabels(podLabels))
+		err = r.Get(ctx, req.NamespacedName, bentoRequest)
 		if err != nil {
-			err = errors.Wrap(err, "list pods")
+			logs.Error(err, "Failed to re-fetch BentoRequest")
 			return
 		}
+		imageBuildingCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeImageBuilding)
 
-		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImageBuilderJob", "Found %d pods for image builder job: %s/%s", len(pods.Items), job.Namespace, job.Name)
+		isJobFailed := false
+		isJobRunning := false
 
-		var pod *corev1.Pod
-		for _, pod_ := range pods.Items {
-			pod_ := pod_
-			pod = &pod_
-			break
-		}
-
-		if pod == nil {
-			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "GetImageBuilderPod", "No image builder pod found, requeue")
-			result = ctrl.Result{
-				RequeueAfter: 5 * time.Second,
-			}
-			return
-		}
-
-		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "GetImageBuilderPod", "Found image builder pod: %s", pod.Name)
-
-		/*
-			Please don't blame me when you see this kind of code,
-			this is to avoid "the object has been modified; please apply your changes to the latest version and try again" when updating CR status,
-			don't doubt that almost all CRD operators (e.g. cert-manager) can't avoid this stupid error and can only try to avoid this by this stupid way.
-		*/
-		for i := 0; i < 3; i++ {
-			err = r.Get(ctx, req.NamespacedName, bentoRequest)
-			if err != nil {
-				logs.Error(err, "Failed to re-fetch BentoRequest")
-				return
-			}
-
-			bentoRequest.Status.ImageBuilderPodStatus = pod.Status
-
-			err = r.Status().Update(ctx, bentoRequest)
-			if err != nil {
-				time.Sleep(100 * time.Millisecond)
-			} else {
-				break
-			}
-		}
-
-		if err != nil {
-			logs.Error(err, "Failed to update BentoRequest status")
-			return
-		}
-
-		if pod.Status.Phase == corev1.PodRunning || pod.Status.Phase == corev1.PodPending {
-			err = r.Get(ctx, req.NamespacedName, bentoRequest)
-			if err != nil {
-				logs.Error(err, "Failed to re-fetch BentoRequest")
-				return
-			}
-			imageBuildingCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeImageBuilding)
-			/*
-				Please don't blame me when you see this kind of code,
-				this is to avoid "the object has been modified; please apply your changes to the latest version and try again" when updating CR status,
-				don't doubt that almost all CRD operators (e.g. cert-manager) can't avoid this stupid error and can only try to avoid this by this stupid way.
-			*/
-			for i := 0; i < 3; i++ {
-				err = r.Get(ctx, req.NamespacedName, bentoRequest)
-				if err != nil {
-					logs.Error(err, "Failed to re-fetch BentoRequest")
-					return
-				}
-				if pod.Status.Phase == corev1.PodRunning {
-					meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
-						Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
-						Status:  metav1.ConditionTrue,
-						Reason:  "Reconciling",
-						Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
-					})
-				} else {
-					meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
-						Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
-						Status:  metav1.ConditionUnknown,
-						Reason:  "Reconciling",
-						Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
-					})
-				}
-				bentoRequest.Status.ImageBuilderPodStatus = pod.Status
-				if bentoRequest.Spec.ImageBuildTimeout != nil {
-					if imageBuildingCondition != nil && imageBuildingCondition.LastTransitionTime.Add(*bentoRequest.Spec.ImageBuildTimeout).Before(time.Now()) {
-						meta.SetStatusCondition(&bentoRequest.Status.Conditions, metav1.Condition{
-							Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
-							Status:  metav1.ConditionFalse,
-							Reason:  "Timeout",
-							Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
-						})
-						err = errors.New("image build timeout")
-						return
+		if job.Spec.Completions == nil || job.Status.Succeeded != *job.Spec.Completions {
+			if job.Status.Failed > 0 {
+				for _, condition := range job.Status.Conditions {
+					if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
+						isJobFailed = true
+						break
 					}
 				}
+				if !isJobFailed {
+					isJobRunning = true
+				}
+			}
+		} else {
+			isJobRunning = true
+		}
 
-				err = r.Status().Update(ctx, bentoRequest)
-				if err != nil {
-					time.Sleep(100 * time.Millisecond)
-				} else {
-					break
+		if isJobRunning {
+			conditions := make([]metav1.Condition, 0)
+			if job.Status.Active > 0 {
+				conditions = append(conditions, metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+					Status:  metav1.ConditionTrue,
+					Reason:  "Reconciling",
+					Message: fmt.Sprintf("Image building job %s is running", job.Name),
+				})
+			} else {
+				conditions = append(conditions, metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+					Status:  metav1.ConditionUnknown,
+					Reason:  "Reconciling",
+					Message: fmt.Sprintf("Image building job %s is waiting", job.Name),
+				})
+			}
+			if bentoRequest.Spec.ImageBuildTimeout != nil {
+				if imageBuildingCondition != nil && imageBuildingCondition.LastTransitionTime.Add(*bentoRequest.Spec.ImageBuildTimeout).Before(time.Now()) {
+					conditions = append(conditions, metav1.Condition{
+						Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+						Status:  metav1.ConditionFalse,
+						Reason:  "Timeout",
+						Message: fmt.Sprintf("Image building job %s is timeout", job.Name),
+					})
+					if _, err = r.setStatusConditions(ctx, req, conditions...); err != nil {
+						return
+					}
+					err = errors.New("image build timeout")
+					return
 				}
 			}
 
-			if err != nil {
-				logs.Error(err, "Failed to update BentoRequest status")
+			if bentoRequest, err = r.setStatusConditions(ctx, req, conditions...); err != nil {
 				return
 			}
 
-			if imageBuildingCondition != nil && imageBuildingCondition.Status != metav1.ConditionTrue && pod.Status.Phase == corev1.PodRunning {
+			if imageBuildingCondition != nil && imageBuildingCondition.Status != metav1.ConditionTrue && isJobRunning {
 				r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoImageBuilder", "Image is building now")
 			}
 
 			result = ctrl.Result{
+				Requeue:      true,
 				RequeueAfter: 10 * time.Second,
 			}
 
 			return
 		}
 
-		if pod.Status.Phase != corev1.PodSucceeded {
-			r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "BentoImageBuilder", "Image built failed, image builder pod %s status is %s", pod.Name, pod.Status.Phase)
+		if isJobFailed {
+			r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "BentoImageBuilder", "Image built failed, image builder job %s is failed", job.Name)
 			bentoRequest, err = r.setStatusConditions(ctx, req,
 				metav1.Condition{
 					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
 					Status:  metav1.ConditionFalse,
 					Reason:  "Reconciling",
-					Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
+					Message: fmt.Sprintf("Image building job %s is failed.", job.Name),
 				},
 			)
 			if err != nil {
@@ -481,7 +665,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 					Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
 					Status:  metav1.ConditionFalse,
 					Reason:  "Reconciling",
-					Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
+					Message: fmt.Sprintf("Image building job %s is failed.", job.Name),
 				},
 			)
 			if err != nil {
@@ -495,7 +679,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
 				Status:  metav1.ConditionFalse,
 				Reason:  "Reconciling",
-				Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
+				Message: fmt.Sprintf("Image building job %s is successed.", job.Name),
 			},
 			metav1.Condition{
 				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
@@ -517,6 +701,14 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return
 	}
 
+	if separateModels && !modelsExists {
+		result = ctrl.Result{
+			Requeue: true,
+		}
+
+		return
+	}
+
 	bentoCR := &resourcesv1alpha1.Bento{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      bentoRequest.Name,
@@ -527,7 +719,18 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			Image:   imageInfo.ImageName,
 			Context: bentoRequest.Spec.Context,
 			Runners: bentoRequest.Spec.Runners,
+			Models:  bentoRequest.Spec.Models,
 		},
+	}
+
+	if separateModels {
+		bentoCR.Annotations = map[string]string{
+			commonconsts.KubeAnnotationYataiImageBuilderSeparateModels: commonconsts.KubeLabelValueTrue,
+			commonconsts.KubeAnnotationAWSAccessKeySecretName:          bentoRequest.Annotations[commonconsts.KubeAnnotationAWSAccessKeySecretName],
+		}
+		if isAddNamespacePrefix() {
+			bentoCR.Annotations[commonconsts.KubeAnnotationIsMultiTenancy] = commonconsts.KubeLabelValueTrue
+		}
 	}
 
 	err = ctrl.SetControllerReference(bentoRequest, bentoCR, r.Scheme)
@@ -638,7 +841,7 @@ func (r *BentoRequestReconciler) setStatusConditions(ctx context.Context, req ct
 }
 
 func UsingAWSECRWithIAMRole() bool {
-	return os.Getenv(commonconsts.EnvAWSECRWithIAMRole) == "true"
+	return os.Getenv(commonconsts.EnvAWSECRWithIAMRole) == commonconsts.KubeLabelValueTrue
 }
 
 func GetAWSECRRegion() string {
@@ -921,6 +1124,10 @@ func getDockerRegistry(ctx context.Context, bentoRequest *resourcesv1alpha1.Bent
 	return
 }
 
+func isAddNamespacePrefix() bool {
+	return os.Getenv("ADD_NAMESPACE_PREFIX_TO_IMAGE_NAME") == trueStr
+}
+
 func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegistry modelschemas.DockerRegistrySchema, bentoRepositoryName, bentoVersion string, inCluster bool) string {
 	if bentoRequest != nil && bentoRequest.Spec.Image != "" {
 		return bentoRequest.Spec.Image
@@ -931,12 +1138,16 @@ func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegis
 	} else {
 		uri = dockerRegistry.BentosRepositoryURI
 	}
-	if addPrefix := os.Getenv("ADD_NAMESPACE_PREFIX_TO_IMAGE_NAME"); addPrefix == trueStr {
+	if isAddNamespacePrefix() {
 		imageName = fmt.Sprintf("%s:yatai.%s.%s.%s", uri, bentoRequest.Namespace, bentoRepositoryName, bentoVersion)
 	} else {
 		imageName = fmt.Sprintf("%s:yatai.%s.%s", uri, bentoRepositoryName, bentoVersion)
 	}
 	return imageName
+}
+
+func isSeparateModels(bentoRequest *resourcesv1alpha1.BentoRequest) (separateModels bool) {
+	return bentoRequest.Annotations[commonconsts.KubeAnnotationYataiImageBuilderSeparateModels] == commonconsts.KubeLabelValueTrue
 }
 
 func checkImageExists(dockerRegistry modelschemas.DockerRegistrySchema, imageName string) (bool, error) {
@@ -1066,6 +1277,48 @@ func (r *BentoRequestReconciler) getImageBuilderJobName() string {
 	return fmt.Sprintf("yatai-bento-image-builder-%s", guid.String())
 }
 
+func (r *BentoRequestReconciler) getModelSeederJobName() string {
+	guid := xid.New()
+	return fmt.Sprintf("yatai-model-seeder-%s", guid.String())
+}
+
+func (r *BentoRequestReconciler) getModelSeederJobLabels(bentoRequest *resourcesv1alpha1.BentoRequest, model *resourcesv1alpha1.BentoModel) map[string]string {
+	bentoRepositoryName, _, bentoVersion := xstrings.Partition(bentoRequest.Spec.BentoTag, ":")
+	modelRepositoryName, _, modelVersion := xstrings.Partition(model.Tag, ":")
+	return map[string]string{
+		commonconsts.KubeLabelBentoRequest:         bentoRequest.Name,
+		commonconsts.KubeLabelIsModelSeeder:        "true",
+		commonconsts.KubeLabelYataiModelRepository: modelRepositoryName,
+		commonconsts.KubeLabelYataiModel:           modelVersion,
+		commonconsts.KubeLabelYataiBentoRepository: bentoRepositoryName,
+		commonconsts.KubeLabelYataiBento:           bentoVersion,
+	}
+}
+
+func (r *BentoRequestReconciler) getModelSeederPodLabels(bentoRequest *resourcesv1alpha1.BentoRequest, model *resourcesv1alpha1.BentoModel) map[string]string {
+	bentoRepositoryName, _, bentoVersion := xstrings.Partition(bentoRequest.Spec.BentoTag, ":")
+	modelRepositoryName, _, modelVersion := xstrings.Partition(model.Tag, ":")
+	return map[string]string{
+		commonconsts.KubeLabelBentoRequest:         bentoRequest.Name,
+		commonconsts.KubeLabelIsModelSeeder:        "true",
+		commonconsts.KubeLabelIsBentoImageBuilder:  "true",
+		commonconsts.KubeLabelYataiModelRepository: modelRepositoryName,
+		commonconsts.KubeLabelYataiModel:           modelVersion,
+		commonconsts.KubeLabelYataiBentoRepository: bentoRepositoryName,
+		commonconsts.KubeLabelYataiBento:           bentoVersion,
+	}
+}
+
+func (r *BentoRequestReconciler) getImageBuilderJobLabels(bentoRequest *resourcesv1alpha1.BentoRequest) map[string]string {
+	bentoRepositoryName, _, bentoVersion := xstrings.Partition(bentoRequest.Spec.BentoTag, ":")
+	return map[string]string{
+		commonconsts.KubeLabelBentoRequest:         bentoRequest.Name,
+		commonconsts.KubeLabelIsBentoImageBuilder:  "true",
+		commonconsts.KubeLabelYataiBentoRepository: bentoRepositoryName,
+		commonconsts.KubeLabelYataiBento:           bentoVersion,
+	}
+}
+
 func (r *BentoRequestReconciler) getImageBuilderPodLabels(bentoRequest *resourcesv1alpha1.BentoRequest) map[string]string {
 	bentoRepositoryName, _, bentoVersion := xstrings.Partition(bentoRequest.Spec.BentoTag, ":")
 	return map[string]string{
@@ -1074,6 +1327,348 @@ func (r *BentoRequestReconciler) getImageBuilderPodLabels(bentoRequest *resource
 		commonconsts.KubeLabelYataiBentoRepository: bentoRepositoryName,
 		commonconsts.KubeLabelYataiBento:           bentoVersion,
 	}
+}
+
+func hash(text string) string {
+	// nolint: gosec
+	hasher := md5.New()
+	hasher.Write([]byte(text))
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+func (r *BentoRequestReconciler) getModelPVCName(bentoRequest *resourcesv1alpha1.BentoRequest, model *resourcesv1alpha1.BentoModel) string {
+	var hashStr string
+	if isAddNamespacePrefix() {
+		hashStr = hash(fmt.Sprintf("%s:%s", bentoRequest.Namespace, model.Tag))
+	} else {
+		hashStr = hash(model.Tag)
+	}
+	pvcName := fmt.Sprintf("model-seeder-%s", hashStr)
+	if len(pvcName) > 63 {
+		pvcName = pvcName[:63]
+	}
+	return pvcName
+}
+
+func (r *BentoRequestReconciler) getJuiceFSModelPath(bentoRequest *resourcesv1alpha1.BentoRequest, model *resourcesv1alpha1.BentoModel) string {
+	modelRepositoryName, _, modelVersion := xstrings.Partition(model.Tag, ":")
+	path := fmt.Sprintf("models/.shared/%s/%s", modelRepositoryName, modelVersion)
+	if isAddNamespacePrefix() {
+		path = fmt.Sprintf("models/%s/%s/%s", bentoRequest.Namespace, modelRepositoryName, modelVersion)
+	}
+	return path
+}
+
+type GenerateModelPVCOption struct {
+	BentoRequest *resourcesv1alpha1.BentoRequest
+	Model        *resourcesv1alpha1.BentoModel
+}
+
+func (r *BentoRequestReconciler) generateModelPVC(opt GenerateModelPVCOption) (pvc *corev1.PersistentVolumeClaim) {
+	storageSize := resource.MustParse("100Gi")
+	if opt.Model.Size != nil {
+		storageSize = *opt.Model.Size
+		minStorageSize := resource.MustParse("1Gi")
+		if storageSize.Value() < minStorageSize.Value() {
+			storageSize = minStorageSize
+		}
+		storageSize.Set(storageSize.Value() * 2)
+	}
+	path := r.getJuiceFSModelPath(opt.BentoRequest, opt.Model)
+	pvcName := r.getModelPVCName(opt.BentoRequest, opt.Model)
+	pvc = &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pvcName,
+			Namespace: opt.BentoRequest.Namespace,
+			Annotations: map[string]string{
+				"path": path,
+			},
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
+			Resources: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: storageSize,
+				},
+			},
+			StorageClassName: pointer.StringPtr("juicefs-sc"),
+		},
+	}
+	return
+}
+
+type GenerateModelSeederJobOption struct {
+	BentoRequest *resourcesv1alpha1.BentoRequest
+	Model        *resourcesv1alpha1.BentoModel
+}
+
+func (r *BentoRequestReconciler) generateModelSeederJob(ctx context.Context, opt GenerateModelSeederJobOption) (job *batchv1.Job, err error) {
+	// nolint: gosimple
+	podTemplateSpec, err := r.generateModelSeederPodTemplateSpec(ctx, GenerateModelSeederPodTemplateSpecOption{
+		BentoRequest: opt.BentoRequest,
+		Model:        opt.Model,
+	})
+	if err != nil {
+		err = errors.Wrap(err, "generate image builder pod template spec")
+		return
+	}
+	kubeAnnotations := make(map[string]string)
+	hashStr, err := r.getHashStr(opt.BentoRequest)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get hash string")
+		return
+	}
+	kubeAnnotations[KubeAnnotationBentoRequestHash] = hashStr
+	job = &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        r.getModelSeederJobName(),
+			Namespace:   opt.BentoRequest.Namespace,
+			Labels:      r.getModelSeederJobLabels(opt.BentoRequest, opt.Model),
+			Annotations: kubeAnnotations,
+		},
+		Spec: batchv1.JobSpec{
+			Completions: pointer.Int32Ptr(1),
+			Parallelism: pointer.Int32Ptr(1),
+			PodFailurePolicy: &batchv1.PodFailurePolicy{
+				Rules: []batchv1.PodFailurePolicyRule{
+					{
+						Action: batchv1.PodFailurePolicyActionFailJob,
+						OnExitCodes: &batchv1.PodFailurePolicyOnExitCodesRequirement{
+							ContainerName: pointer.StringPtr(ModelSeederContainerName),
+							Operator:      batchv1.PodFailurePolicyOnExitCodesOpIn,
+							Values:        []int32{ModelSeederJobFailedExitCode},
+						},
+					},
+				},
+			},
+			Template: *podTemplateSpec,
+		},
+	}
+	err = ctrl.SetControllerReference(opt.BentoRequest, job, r.Scheme)
+	if err != nil {
+		err = errors.Wrapf(err, "set controller reference for job %s", job.Name)
+		return
+	}
+	return
+}
+
+type GenerateModelSeederPodTemplateSpecOption struct {
+	BentoRequest *resourcesv1alpha1.BentoRequest
+	Model        *resourcesv1alpha1.BentoModel
+}
+
+func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.Context, opt GenerateModelSeederPodTemplateSpecOption) (pod *corev1.PodTemplateSpec, err error) {
+	modelRepositoryName, _, modelVersion := xstrings.Partition(opt.BentoRequest.Spec.BentoTag, ":")
+	kubeLabels := r.getModelSeederPodLabels(opt.BentoRequest, opt.Model)
+
+	volumes := make([]corev1.Volume, 0)
+
+	volumeMounts := make([]corev1.VolumeMount, 0)
+
+	yataiAPITokenSecretName := ""
+
+	// nolint: gosec
+	awsAccessKeySecretName := opt.BentoRequest.Annotations[commonconsts.KubeAnnotationAWSAccessKeySecretName]
+	if awsAccessKeySecretName == "" {
+		awsAccessKeyID := os.Getenv(commonconsts.EnvAWSAccessKeyID)
+		awsSecretAccessKey := os.Getenv(commonconsts.EnvAWSSecretAccessKey)
+		if awsAccessKeyID != "" && awsSecretAccessKey != "" {
+			// nolint: gosec
+			awsAccessKeySecretName = "yatai-image-builder-aws-access-key"
+			stringData := map[string]string{
+				commonconsts.EnvAWSAccessKeyID:     awsAccessKeyID,
+				commonconsts.EnvAWSSecretAccessKey: awsSecretAccessKey,
+			}
+			awsAccessKeySecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      awsAccessKeySecretName,
+					Namespace: opt.BentoRequest.Namespace,
+				},
+				StringData: stringData,
+			}
+			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Creating or updating secret %s in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
+			_, err = controllerutil.CreateOrUpdate(ctx, r.Client, awsAccessKeySecret, func() error {
+				awsAccessKeySecret.StringData = stringData
+				return nil
+			})
+			if err != nil {
+				err = errors.Wrapf(err, "failed to create or update secret %s", awsAccessKeySecretName)
+				return
+			}
+			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is created or updated in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
+		}
+	}
+
+	internalImages := commonconfig.GetInternalImages()
+	logrus.Infof("Model seeder is using the images %v", *internalImages)
+
+	downloaderContainerResources := corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("1000m"),
+			corev1.ResourceMemory: resource.MustParse("3000Mi"),
+		},
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("100m"),
+			corev1.ResourceMemory: resource.MustParse("1000Mi"),
+		},
+	}
+
+	downloaderContainerEnvFrom := opt.BentoRequest.Spec.DownloaderContainerEnvFrom
+
+	if yataiAPITokenSecretName != "" {
+		downloaderContainerEnvFrom = append(downloaderContainerEnvFrom, corev1.EnvFromSource{
+			SecretRef: &corev1.SecretEnvSource{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: yataiAPITokenSecretName,
+				},
+			},
+		})
+	}
+
+	if awsAccessKeySecretName != "" {
+		downloaderContainerEnvFrom = append(downloaderContainerEnvFrom, corev1.EnvFromSource{
+			SecretRef: &corev1.SecretEnvSource{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: awsAccessKeySecretName,
+				},
+			},
+		})
+	}
+
+	containers := make([]corev1.Container, 0)
+
+	model := opt.Model
+
+	modelDownloadURL := model.DownloadURL
+	modelDownloadHeader := ""
+	if modelDownloadURL == "" {
+		var yataiClient_ **yataiclient.YataiClient
+		var yataiConf_ **commonconfig.YataiConfig
+
+		yataiClient_, yataiConf_, err = getYataiClient(ctx)
+		if err != nil {
+			err = errors.Wrap(err, "get yatai client")
+			return
+		}
+
+		if yataiClient_ == nil || yataiConf_ == nil {
+			err = errors.New("can't get yatai client, please check yatai configuration")
+			return
+		}
+
+		yataiClient := *yataiClient_
+		yataiConf := *yataiConf_
+
+		var model_ *schemasv1.ModelFullSchema
+		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting model %s from yatai service", model.Tag)
+		model_, err = yataiClient.GetModel(ctx, modelRepositoryName, modelVersion)
+		if err != nil {
+			err = errors.Wrap(err, "get model")
+			return
+		}
+		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Model %s is got from yatai service", model.Tag)
+
+		if model_.TransmissionStrategy != nil && *model_.TransmissionStrategy == modelschemas.TransmissionStrategyPresignedURL {
+			var model0 *schemasv1.ModelSchema
+			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting presigned url for model %s from yatai service", model.Tag)
+			model0, err = yataiClient.PresignModelDownloadURL(ctx, modelRepositoryName, modelVersion)
+			if err != nil {
+				err = errors.Wrap(err, "presign model download url")
+				return
+			}
+			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Presigned url for model %s is got from yatai service", model.Tag)
+			modelDownloadURL = model0.PresignedDownloadUrl
+		} else {
+			modelDownloadURL = fmt.Sprintf("%s/api/v1/model_repositories/%s/models/%s/download", yataiConf.Endpoint, modelRepositoryName, modelVersion)
+			modelDownloadHeader = fmt.Sprintf("%s: %s:%s:$%s", commonconsts.YataiApiTokenHeaderName, commonconsts.YataiImageBuilderComponentName, yataiConf.ClusterName, commonconsts.EnvYataiApiToken)
+		}
+	}
+
+	modelDirPath := "/juicefs-workspace"
+	var modelSeedCommandOutput bytes.Buffer
+	err = template.Must(template.New("script").Parse(`
+set -e
+
+if [ -f "{{.ModelDirPath}}/.exists" ]; then
+	echo "Model {{.ModelDirPath}} already exists, skip downloading"
+	exit 0
+fi
+
+mkdir -p {{.ModelDirPath}}
+url="{{.ModelDownloadURL}}"
+echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} tar file from ${url} to /tmp/downloaded.tar..."
+if [[ ${url} == s3://* ]]; then
+	echo "Downloading from s3..."
+	aws s3 cp ${url} /tmp/downloaded.tar
+else
+	curl --fail -L -H "{{.ModelDownloadHeader}}" ${url} --output /tmp/downloaded.tar --progress-bar
+fi
+cd {{.ModelDirPath}}
+echo "Extracting model tar file..."
+tar -xvf /tmp/downloaded.tar
+echo "Creating {{.ModelDirPath}}/.exists file..."
+touch {{.ModelDirPath}}/.exists
+echo "Removing model tar file..."
+rm /tmp/downloaded.tar
+echo "Done"
+`)).Execute(&modelSeedCommandOutput, map[string]interface{}{
+		"ModelDirPath":        modelDirPath,
+		"ModelDownloadURL":    modelDownloadURL,
+		"ModelDownloadHeader": modelDownloadHeader,
+		"ModelRepositoryName": modelRepositoryName,
+		"ModelVersion":        modelVersion,
+	})
+	if err != nil {
+		err = errors.Wrap(err, "failed to generate download command")
+		return
+	}
+	modelSeedCommand := modelSeedCommandOutput.String()
+	pvcName := r.getModelPVCName(opt.BentoRequest, model)
+	volumes = append(volumes, corev1.Volume{
+		Name: pvcName,
+		VolumeSource: corev1.VolumeSource{
+			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+				ClaimName: pvcName,
+			},
+		},
+	})
+	containers = append(containers, corev1.Container{
+		Name:  ModelSeederContainerName,
+		Image: internalImages.BentoDownloader,
+		Command: []string{
+			"bash",
+			"-c",
+			modelSeedCommand,
+		},
+		VolumeMounts: append(volumeMounts, corev1.VolumeMount{
+			Name:      pvcName,
+			MountPath: "/juicefs-workspace",
+		}),
+		Resources: downloaderContainerResources,
+		EnvFrom:   downloaderContainerEnvFrom,
+		Env: []corev1.EnvVar{
+			{
+				Name:  "AWS_EC2_METADATA_DISABLED",
+				Value: "true",
+			},
+		},
+	})
+
+	kubeAnnotations := make(map[string]string)
+
+	pod = &corev1.PodTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:      kubeLabels,
+			Annotations: kubeAnnotations,
+		},
+		Spec: corev1.PodSpec{
+			RestartPolicy: corev1.RestartPolicyNever,
+			Volumes:       volumes,
+			Containers:    containers,
+		},
+	}
+
+	return
 }
 
 type GenerateImageBuilderJobOption struct {
@@ -1102,7 +1697,7 @@ func (r *BentoRequestReconciler) generateImageBuilderJob(ctx context.Context, op
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        r.getImageBuilderJobName(),
 			Namespace:   opt.BentoRequest.Namespace,
-			Labels:      r.getImageBuilderPodLabels(opt.BentoRequest),
+			Labels:      r.getImageBuilderJobLabels(opt.BentoRequest),
 			Annotations: kubeAnnotations,
 		},
 		Spec: batchv1.JobSpec{
@@ -1133,6 +1728,8 @@ func (r *BentoRequestReconciler) generateImageBuilderJob(ctx context.Context, op
 
 const BuilderContainerName = "builder"
 const BuilderJobFailedExitCode = 42
+const ModelSeederContainerName = "seeder"
+const ModelSeederJobFailedExitCode = 42
 
 type GenerateImageBuilderPodTemplateSpecOption struct {
 	ImageInfo    ImageInfo
@@ -1289,7 +1886,7 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 	}
 
 	// nolint: gosec
-	awsAccessKeySecretName := opt.BentoRequest.Labels[commonconsts.KubeLabelAWSAccessKeySecretName]
+	awsAccessKeySecretName := opt.BentoRequest.Annotations[commonconsts.KubeAnnotationAWSAccessKeySecretName]
 	if awsAccessKeySecretName == "" {
 		awsAccessKeyID := os.Getenv(commonconsts.EnvAWSAccessKeyID)
 		awsSecretAccessKey := os.Getenv(commonconsts.EnvAWSSecretAccessKey)
@@ -1426,6 +2023,10 @@ echo "Done"
 		},
 	}
 
+	containers := make([]corev1.Container, 0)
+
+	separateModels := isSeparateModels(opt.BentoRequest)
+
 	models := opt.BentoRequest.Spec.Models
 	modelsSeen := map[string]struct{}{}
 	for _, model := range models {
@@ -1443,6 +2044,9 @@ echo "Done"
 	}
 
 	for idx, model := range models {
+		if separateModels {
+			continue
+		}
 		modelRepositoryName, _, modelVersion := xstrings.Partition(model.Tag, ":")
 		modelDownloadURL := model.DownloadURL
 		modelDownloadHeader := ""
@@ -1842,6 +2446,8 @@ echo "Done"
 		container.Resources = *opt.BentoRequest.Spec.ImageBuilderContainerResources
 	}
 
+	containers = append(containers, container)
+
 	pod = &corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels:      kubeLabels,
@@ -1851,9 +2457,7 @@ echo "Done"
 			RestartPolicy:  corev1.RestartPolicyNever,
 			Volumes:        volumes,
 			InitContainers: initContainers,
-			Containers: []corev1.Container{
-				container,
-			},
+			Containers:     containers,
 		},
 	}
 
