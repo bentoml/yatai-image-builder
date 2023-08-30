@@ -1089,9 +1089,8 @@ func (r *BentoRequestReconciler) generateImageBuilderJob(ctx context.Context, op
 			Annotations: kubeAnnotations,
 		},
 		Spec: batchv1.JobSpec{
-			Completions:  pointer.Int32Ptr(1),
-			Parallelism:  pointer.Int32Ptr(1),
-			BackoffLimit: pointer.Int32Ptr(0),
+			Completions: pointer.Int32Ptr(1),
+			Parallelism: pointer.Int32Ptr(1),
 			PodFailurePolicy: &batchv1.PodFailurePolicy{
 				Rules: []batchv1.PodFailurePolicyRule{
 					{
