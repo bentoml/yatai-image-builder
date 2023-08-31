@@ -913,11 +913,16 @@ func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegis
 	if bentoRequest != nil && bentoRequest.Spec.Image != "" {
 		return bentoRequest.Spec.Image
 	}
-	var imageName string
+	var uri, imageName string
 	if inCluster {
-		imageName = fmt.Sprintf("%s:yatai.%s.%s", dockerRegistry.BentosRepositoryURIInCluster, bentoRepositoryName, bentoVersion)
+		uri = dockerRegistry.BentosRepositoryURIInCluster
 	} else {
-		imageName = fmt.Sprintf("%s:yatai.%s.%s", dockerRegistry.BentosRepositoryURI, bentoRepositoryName, bentoVersion)
+		uri = dockerRegistry.BentosRepositoryURI
+	}
+	if addPrefix := os.Getenv("ADD_NAMESPACE_PREFIX_TO_IMAGE_NAME"); addPrefix == trueStr {
+		imageName = fmt.Sprintf("%s:yatai.%s.%s.%s", uri, bentoRequest.Namespace, bentoRepositoryName, bentoVersion)
+	} else {
+		imageName = fmt.Sprintf("%s:yatai.%s.%s", uri, bentoRepositoryName, bentoVersion)
 	}
 	return imageName
 }
