@@ -464,6 +464,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 
 		if pod.Status.Phase != corev1.PodSucceeded {
+			r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "BentoImageBuilder", "Image built failed, image builder pod %s status is %s", pod.Name, pod.Status.Phase)
 			bentoRequest, err = r.setStatusConditions(ctx, req,
 				metav1.Condition{
 					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
