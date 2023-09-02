@@ -476,6 +476,17 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			if err != nil {
 				return
 			}
+			bentoRequest, err = r.setStatusConditions(ctx, req,
+				metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
+					Status:  metav1.ConditionFalse,
+					Reason:  "Reconciling",
+					Message: fmt.Sprintf("Image builder pod %s status is %s", pod.Name, pod.Status.Phase),
+				},
+			)
+			if err != nil {
+				return
+			}
 			return
 		}
 
