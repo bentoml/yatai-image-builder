@@ -4,6 +4,20 @@ metadata:
   name: yatai-with-bento-request-{{ .Release.Namespace }}
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - secrets
+  resourceNames:
+  - yatai-image-builder-aws-access-key
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - resources.yatai.ai
   resources:
   - bentorequests
