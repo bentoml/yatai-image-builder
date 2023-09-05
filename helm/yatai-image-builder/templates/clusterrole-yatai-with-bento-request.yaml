@@ -7,10 +7,15 @@ rules:
   - ""
   resources:
   - secrets
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - secrets
   resourceNames:
   - yatai-image-builder-aws-access-key
   verbs:
-  - create
   - delete
   - get
   - list
