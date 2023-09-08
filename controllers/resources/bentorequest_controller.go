@@ -1832,16 +1832,6 @@ echo "Done"
 		TTY:             true,
 		Stdin:           true,
 		SecurityContext: builderContainerSecurityContext,
-		Resources: corev1.ResourceRequirements{
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("500m"),
-				corev1.ResourceMemory: resource.MustParse("1Gi"),
-			},
-			Limits: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("1"),
-				corev1.ResourceMemory: resource.MustParse("3Gi"),
-			},
-		},
 	}
 
 	if globalDefaultImageBuilderContainerResources != nil {
