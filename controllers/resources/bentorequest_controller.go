@@ -207,228 +207,16 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	separateModels := isSeparateModels(bentoRequest)
 
-	modelTags := make([]string, 0)
-	for _, model := range bentoRequest.Spec.Models {
-		modelTags = append(modelTags, model.Tag)
-	}
+	modelsExists := false
 
-	modelsExistsCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeModelsExists)
-	modelsExists := modelsExistsCondition != nil && modelsExistsCondition.Status == metav1.ConditionTrue && modelsExistsCondition.Message == strings.Join(modelTags, ", ")
 	if separateModels {
-		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "SeparateModels", "Separate models are enabled")
-		if modelsExistsCondition == nil || modelsExistsCondition.Status == metav1.ConditionUnknown {
-			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "ModelsExists", "Models are not ready")
-			bentoRequest, err = r.setStatusConditions(ctx, req,
-				metav1.Condition{
-					Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsExists,
-					Status:  metav1.ConditionFalse,
-					Reason:  "Reconciling",
-					Message: "Models are not ready",
-				},
-			)
-			if err != nil {
-				return
-			}
-			result = ctrl.Result{
-				Requeue: true,
-			}
+		bentoRequest, modelsExists, err = r.ensureModelsExists(ctx, ensureModelsExistsOption{
+			bentoRequest: bentoRequest,
+			req:          req,
+		})
+		if err != nil {
+			err = errors.Wrapf(err, "ensure models exists")
 			return
-		}
-		if !modelsExists {
-			modelsMap := make(map[string]*resourcesv1alpha1.BentoModel)
-			for _, model := range bentoRequest.Spec.Models {
-				model := model
-				modelsMap[model.Tag] = &model
-			}
-
-			jobLabels := map[string]string{
-				commonconsts.KubeLabelBentoRequest:  bentoRequest.Name,
-				commonconsts.KubeLabelIsModelSeeder: "true",
-			}
-
-			jobs := &batchv1.JobList{}
-			err = r.List(ctx, jobs, client.InNamespace(req.Namespace), client.MatchingLabels(jobLabels))
-			if err != nil {
-				err = errors.Wrap(err, "list jobs")
-				return
-			}
-
-			jobDeleted := false
-			existingJobModelTags := make(map[string]struct{})
-			for _, job_ := range jobs.Items {
-				job_ := job_
-
-				modelTag := fmt.Sprintf("%s:%s", job_.Labels[commonconsts.KubeLabelYataiModelRepository], job_.Labels[commonconsts.KubeLabelYataiModel])
-				_, ok := modelsMap[modelTag]
-
-				if !ok {
-					r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "DeleteJob", " Due to the nonexistence of the model %s, job %s has been deleted.", modelTag, job_.Name)
-					// --cascade=foreground
-					err = r.Delete(ctx, &job_, &client.DeleteOptions{
-						PropagationPolicy: &[]metav1.DeletionPropagation{metav1.DeletePropagationForeground}[0],
-					})
-					if err != nil {
-						err = errors.Wrapf(err, "delete job %s", job_.Name)
-						return
-					}
-					jobDeleted = true
-				} else {
-					existingJobModelTags[modelTag] = struct{}{}
-				}
-			}
-
-			if jobDeleted {
-				result = ctrl.Result{
-					Requeue: true,
-				}
-				return
-			}
-
-			for _, model := range bentoRequest.Spec.Models {
-				if _, ok := existingJobModelTags[model.Tag]; ok {
-					continue
-				}
-				model := model
-				pvc := r.generateModelPVC(GenerateModelPVCOption{
-					BentoRequest: bentoRequest,
-					Model:        &model,
-				})
-				err = r.Create(ctx, pvc)
-				isPVCAlreadyExists := k8serrors.IsAlreadyExists(err)
-				if err != nil && !isPVCAlreadyExists {
-					err = errors.Wrapf(err, "create model %s/%s pvc", bentoRequest.Namespace, model.Tag)
-					return ctrl.Result{}, err
-				}
-				job, err := r.generateModelSeederJob(ctx, GenerateModelSeederJobOption{
-					BentoRequest: bentoRequest,
-					Model:        &model,
-				})
-				if err != nil {
-					err = errors.Wrap(err, "generate model seeder job")
-					return ctrl.Result{}, err
-				}
-				oldJob := &batchv1.Job{}
-				err = r.Get(ctx, client.ObjectKeyFromObject(job), oldJob)
-				oldJobIsNotFound := k8serrors.IsNotFound(err)
-				if err != nil && !oldJobIsNotFound {
-					err = errors.Wrap(err, "get job")
-					return ctrl.Result{}, err
-				}
-				if oldJobIsNotFound {
-					err = r.Create(ctx, job)
-					if err != nil {
-						err = errors.Wrap(err, "create job")
-						return ctrl.Result{}, err
-					}
-					r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CreateJob", "Job %s has been created.", job.Name)
-				} else {
-					job.Labels = oldJob.Labels
-					job.Annotations = oldJob.Annotations
-					err = r.Update(ctx, job)
-					if err != nil {
-						err = errors.Wrap(err, "update job")
-						return ctrl.Result{}, err
-					}
-					r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "UpdateJob", "Job %s has been updated.", job.Name)
-				}
-			}
-
-			jobs = &batchv1.JobList{}
-			err = r.List(ctx, jobs, client.InNamespace(req.Namespace), client.MatchingLabels(jobLabels))
-			if err != nil {
-				err = errors.Wrap(err, "list jobs")
-				return
-			}
-
-			succeedModelTags := make(map[string]struct{})
-			failedJobNames := make([]string, 0)
-			notReadyJobNames := make([]string, 0)
-			for _, job_ := range jobs.Items {
-				if job_.Spec.Completions != nil && job_.Status.Succeeded == *job_.Spec.Completions {
-					modelTag := fmt.Sprintf("%s:%s", job_.Labels[commonconsts.KubeLabelYataiModelRepository], job_.Labels[commonconsts.KubeLabelYataiModel])
-					succeedModelTags[modelTag] = struct{}{}
-					continue
-				}
-				if job_.Status.Failed > 0 {
-					for _, condition := range job_.Status.Conditions {
-						if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
-							failedJobNames = append(failedJobNames, job_.Name)
-							continue
-						}
-					}
-				}
-				notReadyJobNames = append(notReadyJobNames, job_.Name)
-			}
-
-			if len(failedJobNames) > 0 {
-				msg := fmt.Sprintf("Model seeder jobs failed: %s", strings.Join(failedJobNames, ", "))
-				r.Recorder.Event(bentoRequest, corev1.EventTypeNormal, "ModelsExists", msg)
-				bentoRequest, err = r.setStatusConditions(ctx, req,
-					metav1.Condition{
-						Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsExists,
-						Status:  metav1.ConditionFalse,
-						Reason:  "Reconciling",
-						Message: msg,
-					},
-					metav1.Condition{
-						Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
-						Status:  metav1.ConditionFalse,
-						Reason:  "Reconciling",
-						Message: msg,
-					},
-				)
-				if err != nil {
-					return
-				}
-				result = ctrl.Result{}
-				return
-			}
-
-			allModelsExist := true
-
-			for _, model := range bentoRequest.Spec.Models {
-				if _, ok := succeedModelTags[model.Tag]; !ok {
-					allModelsExist = false
-					break
-				}
-			}
-
-			if allModelsExist {
-				bentoRequest, err = r.setStatusConditions(ctx, req,
-					metav1.Condition{
-						Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsExists,
-						Status:  metav1.ConditionTrue,
-						Reason:  "Reconciling",
-						Message: strings.Join(modelTags, ", "),
-					},
-				)
-				if err != nil {
-					return
-				}
-				bentoRequest, err = r.setStatusConditions(ctx, req,
-					metav1.Condition{
-						Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsSeeding,
-						Status:  metav1.ConditionFalse,
-						Reason:  "Reconciling",
-						Message: "All models have been seeded.",
-					},
-				)
-				if err != nil {
-					return
-				}
-			} else {
-				bentoRequest, err = r.setStatusConditions(ctx, req,
-					metav1.Condition{
-						Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsSeeding,
-						Status:  metav1.ConditionTrue,
-						Reason:  "Reconciling",
-						Message: fmt.Sprintf("Model seeder jobs are not ready: %s.", strings.Join(notReadyJobNames, ", ")),
-					},
-				)
-				if err != nil {
-					return
-				}
-			}
 		}
 	}
 
@@ -805,6 +593,221 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return
 	}
 
+	return
+}
+
+type ensureModelsExistsOption struct {
+	bentoRequest *resourcesv1alpha1.BentoRequest
+	req          ctrl.Request
+}
+
+func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ensureModelsExistsOption) (bentoRequest *resourcesv1alpha1.BentoRequest, modelsExists bool, err error) {
+	bentoRequest = opt.bentoRequest
+	modelTags := make([]string, 0)
+	for _, model := range bentoRequest.Spec.Models {
+		modelTags = append(modelTags, model.Tag)
+	}
+
+	modelsExistsCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeModelsExists)
+	modelsExists = modelsExistsCondition != nil && modelsExistsCondition.Status == metav1.ConditionTrue && modelsExistsCondition.Message == strings.Join(modelTags, ", ")
+	r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "SeparateModels", "Separate models are enabled")
+	if modelsExistsCondition == nil || modelsExistsCondition.Status == metav1.ConditionUnknown {
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "ModelsExists", "Models are not ready")
+		bentoRequest, err = r.setStatusConditions(ctx, opt.req,
+			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsExists,
+				Status:  metav1.ConditionFalse,
+				Reason:  "Reconciling",
+				Message: "Models are not ready",
+			},
+		)
+		return
+	}
+	if !modelsExists {
+		modelsMap := make(map[string]*resourcesv1alpha1.BentoModel)
+		for _, model := range bentoRequest.Spec.Models {
+			model := model
+			modelsMap[model.Tag] = &model
+		}
+
+		jobLabels := map[string]string{
+			commonconsts.KubeLabelBentoRequest:  bentoRequest.Name,
+			commonconsts.KubeLabelIsModelSeeder: "true",
+		}
+
+		jobs := &batchv1.JobList{}
+		err = r.List(ctx, jobs, client.InNamespace(bentoRequest.Namespace), client.MatchingLabels(jobLabels))
+		if err != nil {
+			err = errors.Wrap(err, "list jobs")
+			return
+		}
+
+		jobDeleted := false
+		existingJobModelTags := make(map[string]struct{})
+		for _, job_ := range jobs.Items {
+			job_ := job_
+
+			modelTag := fmt.Sprintf("%s:%s", job_.Labels[commonconsts.KubeLabelYataiModelRepository], job_.Labels[commonconsts.KubeLabelYataiModel])
+			_, ok := modelsMap[modelTag]
+
+			if !ok {
+				r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "DeleteJob", " Due to the nonexistence of the model %s, job %s has been deleted.", modelTag, job_.Name)
+				// --cascade=foreground
+				err = r.Delete(ctx, &job_, &client.DeleteOptions{
+					PropagationPolicy: &[]metav1.DeletionPropagation{metav1.DeletePropagationForeground}[0],
+				})
+				if err != nil {
+					err = errors.Wrapf(err, "delete job %s", job_.Name)
+					return
+				}
+				jobDeleted = true
+			} else {
+				existingJobModelTags[modelTag] = struct{}{}
+			}
+		}
+
+		if jobDeleted {
+			return
+		}
+
+		for _, model := range bentoRequest.Spec.Models {
+			if _, ok := existingJobModelTags[model.Tag]; ok {
+				continue
+			}
+			model := model
+			pvc := r.generateModelPVC(GenerateModelPVCOption{
+				BentoRequest: bentoRequest,
+				Model:        &model,
+			})
+			err = r.Create(ctx, pvc)
+			isPVCAlreadyExists := k8serrors.IsAlreadyExists(err)
+			if err != nil && !isPVCAlreadyExists {
+				err = errors.Wrapf(err, "create model %s/%s pvc", bentoRequest.Namespace, model.Tag)
+				return
+			}
+			var job *batchv1.Job
+			job, err = r.generateModelSeederJob(ctx, GenerateModelSeederJobOption{
+				BentoRequest: bentoRequest,
+				Model:        &model,
+			})
+			if err != nil {
+				err = errors.Wrap(err, "generate model seeder job")
+				return
+			}
+			oldJob := &batchv1.Job{}
+			err = r.Get(ctx, client.ObjectKeyFromObject(job), oldJob)
+			oldJobIsNotFound := k8serrors.IsNotFound(err)
+			if err != nil && !oldJobIsNotFound {
+				err = errors.Wrap(err, "get job")
+				return
+			}
+			if oldJobIsNotFound {
+				err = r.Create(ctx, job)
+				if err != nil {
+					err = errors.Wrap(err, "create job")
+					return
+				}
+				r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CreateJob", "Job %s has been created.", job.Name)
+			} else {
+				job.Labels = oldJob.Labels
+				job.Annotations = oldJob.Annotations
+				err = r.Update(ctx, job)
+				if err != nil {
+					err = errors.Wrap(err, "update job")
+					return
+				}
+				r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "UpdateJob", "Job %s has been updated.", job.Name)
+			}
+		}
+
+		jobs = &batchv1.JobList{}
+		err = r.List(ctx, jobs, client.InNamespace(bentoRequest.Namespace), client.MatchingLabels(jobLabels))
+		if err != nil {
+			err = errors.Wrap(err, "list jobs")
+			return
+		}
+
+		succeedModelTags := make(map[string]struct{})
+		failedJobNames := make([]string, 0)
+		notReadyJobNames := make([]string, 0)
+		for _, job_ := range jobs.Items {
+			if job_.Spec.Completions != nil && job_.Status.Succeeded == *job_.Spec.Completions {
+				modelTag := fmt.Sprintf("%s:%s", job_.Labels[commonconsts.KubeLabelYataiModelRepository], job_.Labels[commonconsts.KubeLabelYataiModel])
+				succeedModelTags[modelTag] = struct{}{}
+				continue
+			}
+			if job_.Status.Failed > 0 {
+				for _, condition := range job_.Status.Conditions {
+					if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
+						failedJobNames = append(failedJobNames, job_.Name)
+						continue
+					}
+				}
+			}
+			notReadyJobNames = append(notReadyJobNames, job_.Name)
+		}
+
+		if len(failedJobNames) > 0 {
+			msg := fmt.Sprintf("Model seeder jobs failed: %s", strings.Join(failedJobNames, ", "))
+			r.Recorder.Event(bentoRequest, corev1.EventTypeNormal, "ModelsExists", msg)
+			bentoRequest, err = r.setStatusConditions(ctx, opt.req,
+				metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsExists,
+					Status:  metav1.ConditionFalse,
+					Reason:  "Reconciling",
+					Message: msg,
+				},
+				metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
+					Status:  metav1.ConditionFalse,
+					Reason:  "Reconciling",
+					Message: msg,
+				},
+			)
+			return
+		}
+
+		modelsExists = true
+
+		for _, model := range bentoRequest.Spec.Models {
+			if _, ok := succeedModelTags[model.Tag]; !ok {
+				modelsExists = false
+				break
+			}
+		}
+
+		if modelsExists {
+			bentoRequest, err = r.setStatusConditions(ctx, opt.req,
+				metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsExists,
+					Status:  metav1.ConditionTrue,
+					Reason:  "Reconciling",
+					Message: strings.Join(modelTags, ", "),
+				},
+				metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsSeeding,
+					Status:  metav1.ConditionFalse,
+					Reason:  "Reconciling",
+					Message: "All models have been seeded.",
+				},
+			)
+			if err != nil {
+				return
+			}
+		} else {
+			bentoRequest, err = r.setStatusConditions(ctx, opt.req,
+				metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsSeeding,
+					Status:  metav1.ConditionTrue,
+					Reason:  "Reconciling",
+					Message: fmt.Sprintf("Model seeder jobs are not ready: %s.", strings.Join(notReadyJobNames, ", ")),
+				},
+			)
+			if err != nil {
+				return
+			}
+		}
+	}
 	return
 }
 
