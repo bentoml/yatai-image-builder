@@ -179,13 +179,6 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}()
 
-	var bentoRequestHashStr string
-	bentoRequestHashStr, err = r.getHashStr(bentoRequest)
-	if err != nil {
-		err = errors.Wrapf(err, "get BentoRequest %s/%s hash string", bentoRequest.Namespace, bentoRequest.Name)
-		return
-	}
-
 	bentoAvailableCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable)
 	if bentoAvailableCondition == nil || bentoAvailableCondition.Status != metav1.ConditionUnknown {
 		bentoRequest, err = r.setStatusConditions(ctx, req,
@@ -220,272 +213,20 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	var imageInfo ImageInfo
-	imageInfo, err = r.getImageInfo(ctx, GetImageInfoOption{
-		BentoRequest: bentoRequest,
+	bentoRequest, imageInfo, imageExists, err := r.ensureImageExists(ctx, ensureImageExistsOption{
+		bentoRequest: bentoRequest,
+		req:          req,
 	})
+
 	if err != nil {
-		err = errors.Wrap(err, "get image info")
+		err = errors.Wrapf(err, "ensure image exists")
 		return
 	}
 
-	imageExistsCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeImageExists)
-	if imageExistsCondition == nil || imageExistsCondition.Status == metav1.ConditionUnknown {
-		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImage", "Checking image exists: %s", imageInfo.ImageName)
-		var imageExists bool
-		imageExists, err = checkImageExists(imageInfo.DockerRegistry, imageInfo.InClusterImageName)
-		if err != nil {
-			err = errors.Wrapf(err, "check image %s exists", imageInfo.ImageName)
-			return
-		}
-
-		err = r.Get(ctx, req.NamespacedName, bentoRequest)
-		if err != nil {
-			logs.Error(err, "Failed to re-fetch BentoRequest")
-			return
-		}
-
-		if imageExists {
-			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImage", "Image exists: %s", imageInfo.ImageName)
-			bentoRequest, err = r.setStatusConditions(ctx, req,
-				metav1.Condition{
-					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
-					Status:  metav1.ConditionTrue,
-					Reason:  "Reconciling",
-					Message: imageInfo.ImageName,
-				},
-			)
-			if err != nil {
-				return
-			}
-		} else {
-			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImage", "Image not exists: %s", imageInfo.ImageName)
-			bentoRequest, err = r.setStatusConditions(ctx, req,
-				metav1.Condition{
-					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
-					Status:  metav1.ConditionFalse,
-					Reason:  "Reconciling",
-					Message: fmt.Sprintf("Image %s is not exists", imageInfo.ImageName),
-				},
-			)
-			if err != nil {
-				return
-			}
-		}
-
-		result = ctrl.Result{
-			Requeue: true,
-		}
-		return
-	}
-
-	imageExists := imageExistsCondition != nil && imageExistsCondition.Status == metav1.ConditionTrue && imageExistsCondition.Message == imageInfo.ImageName
 	if !imageExists {
-		jobLabels := map[string]string{
-			commonconsts.KubeLabelBentoRequest:        bentoRequest.Name,
-			commonconsts.KubeLabelIsBentoImageBuilder: "true",
-		}
-
-		jobs := &batchv1.JobList{}
-		err = r.List(ctx, jobs, client.InNamespace(req.Namespace), client.MatchingLabels(jobLabels))
-		if err != nil {
-			err = errors.Wrap(err, "list jobs")
-			return
-		}
-
-		reservedJobs := make([]*batchv1.Job, 0)
-		for _, job_ := range jobs.Items {
-			job_ := job_
-
-			oldHash := job_.Annotations[KubeAnnotationBentoRequestHash]
-			if oldHash != bentoRequestHashStr {
-				logs.Info("Because hash changed, delete old job", "job", job_.Name, "oldHash", oldHash, "newHash", bentoRequestHashStr)
-				// --cascade=foreground
-				err = r.Delete(ctx, &job_, &client.DeleteOptions{
-					PropagationPolicy: &[]metav1.DeletionPropagation{metav1.DeletePropagationForeground}[0],
-				})
-				if err != nil {
-					err = errors.Wrapf(err, "delete job %s", job_.Name)
-					return
-				}
-				result = ctrl.Result{
-					Requeue: true,
-				}
-				return
-			} else {
-				reservedJobs = append(reservedJobs, &job_)
-			}
-		}
-
-		var job *batchv1.Job
-		if len(reservedJobs) > 0 {
-			job = reservedJobs[0]
-		}
-
-		if len(reservedJobs) > 1 {
-			for _, job_ := range reservedJobs[1:] {
-				logs.Info("Because has more than one job, delete old job", "job", job_.Name)
-				// --cascade=foreground
-				err = r.Delete(ctx, job_, &client.DeleteOptions{
-					PropagationPolicy: &[]metav1.DeletionPropagation{metav1.DeletePropagationForeground}[0],
-				})
-				if err != nil {
-					err = errors.Wrapf(err, "delete job %s", job_.Name)
-					return
-				}
-			}
-		}
-
-		if job == nil {
-			job, err = r.generateImageBuilderJob(ctx, GenerateImageBuilderJobOption{
-				ImageInfo:    imageInfo,
-				BentoRequest: bentoRequest,
-			})
-			if err != nil {
-				err = errors.Wrap(err, "generate image builder job")
-				return
-			}
-			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderJob", "Creating image builder job: %s", job.Name)
-			err = r.Create(ctx, job)
-			if err != nil {
-				err = errors.Wrapf(err, "create image builder job %s", job.Name)
-				return
-			}
-			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderJob", "Created image builder job: %s", job.Name)
-			result = ctrl.Result{
-				RequeueAfter: 5 * time.Second,
-			}
-			return
-		}
-
-		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImageBuilderJob", "Found image builder job: %s", job.Name)
-
-		err = r.Get(ctx, req.NamespacedName, bentoRequest)
-		if err != nil {
-			logs.Error(err, "Failed to re-fetch BentoRequest")
-			return
-		}
-		imageBuildingCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeImageBuilding)
-
-		isJobFailed := false
-		isJobRunning := false
-
-		if job.Spec.Completions == nil || job.Status.Succeeded != *job.Spec.Completions {
-			if job.Status.Failed > 0 {
-				for _, condition := range job.Status.Conditions {
-					if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
-						isJobFailed = true
-						break
-					}
-				}
-				if !isJobFailed {
-					isJobRunning = true
-				}
-			}
-		} else {
-			isJobRunning = true
-		}
-
-		if isJobRunning {
-			conditions := make([]metav1.Condition, 0)
-			if job.Status.Active > 0 {
-				conditions = append(conditions, metav1.Condition{
-					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
-					Status:  metav1.ConditionTrue,
-					Reason:  "Reconciling",
-					Message: fmt.Sprintf("Image building job %s is running", job.Name),
-				})
-			} else {
-				conditions = append(conditions, metav1.Condition{
-					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
-					Status:  metav1.ConditionUnknown,
-					Reason:  "Reconciling",
-					Message: fmt.Sprintf("Image building job %s is waiting", job.Name),
-				})
-			}
-			if bentoRequest.Spec.ImageBuildTimeout != nil {
-				if imageBuildingCondition != nil && imageBuildingCondition.LastTransitionTime.Add(*bentoRequest.Spec.ImageBuildTimeout).Before(time.Now()) {
-					conditions = append(conditions, metav1.Condition{
-						Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
-						Status:  metav1.ConditionFalse,
-						Reason:  "Timeout",
-						Message: fmt.Sprintf("Image building job %s is timeout", job.Name),
-					})
-					if _, err = r.setStatusConditions(ctx, req, conditions...); err != nil {
-						return
-					}
-					err = errors.New("image build timeout")
-					return
-				}
-			}
-
-			if bentoRequest, err = r.setStatusConditions(ctx, req, conditions...); err != nil {
-				return
-			}
-
-			if imageBuildingCondition != nil && imageBuildingCondition.Status != metav1.ConditionTrue && isJobRunning {
-				r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoImageBuilder", "Image is building now")
-			}
-
-			result = ctrl.Result{
-				Requeue:      true,
-				RequeueAfter: 10 * time.Second,
-			}
-
-			return
-		}
-
-		if isJobFailed {
-			r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "BentoImageBuilder", "Image built failed, image builder job %s is failed", job.Name)
-			bentoRequest, err = r.setStatusConditions(ctx, req,
-				metav1.Condition{
-					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
-					Status:  metav1.ConditionFalse,
-					Reason:  "Reconciling",
-					Message: fmt.Sprintf("Image building job %s is failed.", job.Name),
-				},
-			)
-			if err != nil {
-				return
-			}
-			bentoRequest, err = r.setStatusConditions(ctx, req,
-				metav1.Condition{
-					Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
-					Status:  metav1.ConditionFalse,
-					Reason:  "Reconciling",
-					Message: fmt.Sprintf("Image building job %s is failed.", job.Name),
-				},
-			)
-			if err != nil {
-				return
-			}
-			return
-		}
-
-		bentoRequest, err = r.setStatusConditions(ctx, req,
-			metav1.Condition{
-				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
-				Status:  metav1.ConditionFalse,
-				Reason:  "Reconciling",
-				Message: fmt.Sprintf("Image building job %s is successed.", job.Name),
-			},
-			metav1.Condition{
-				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
-				Status:  metav1.ConditionTrue,
-				Reason:  "Reconciling",
-				Message: imageInfo.ImageName,
-			},
-		)
-		if err != nil {
-			return
-		}
-
-		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoImageBuilder", "Image has been built successfully")
-
 		result = ctrl.Result{
 			Requeue: true,
 		}
-
 		return
 	}
 
@@ -591,6 +332,274 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	)
 	if err != nil {
 		return
+	}
+
+	return
+}
+
+type ensureImageExistsOption struct {
+	bentoRequest *resourcesv1alpha1.BentoRequest
+	req          ctrl.Request
+}
+
+func (r *BentoRequestReconciler) ensureImageExists(ctx context.Context, opt ensureImageExistsOption) (bentoRequest *resourcesv1alpha1.BentoRequest, imageInfo ImageInfo, imageExists bool, err error) {
+	logs := log.FromContext(ctx)
+
+	bentoRequest = opt.bentoRequest
+	req := opt.req
+
+	imageInfo, err = r.getImageInfo(ctx, GetImageInfoOption{
+		BentoRequest: bentoRequest,
+	})
+	if err != nil {
+		err = errors.Wrap(err, "get image info")
+		return
+	}
+
+	imageExistsCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeImageExists)
+	if imageExistsCondition == nil || imageExistsCondition.Status == metav1.ConditionUnknown {
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImage", "Checking image exists: %s", imageInfo.ImageName)
+		imageExists, err = checkImageExists(imageInfo.DockerRegistry, imageInfo.InClusterImageName)
+		if err != nil {
+			err = errors.Wrapf(err, "check image %s exists", imageInfo.ImageName)
+			return
+		}
+
+		err = r.Get(ctx, req.NamespacedName, bentoRequest)
+		if err != nil {
+			logs.Error(err, "Failed to re-fetch BentoRequest")
+			return
+		}
+
+		if imageExists {
+			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImage", "Image exists: %s", imageInfo.ImageName)
+			bentoRequest, err = r.setStatusConditions(ctx, req,
+				metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
+					Status:  metav1.ConditionTrue,
+					Reason:  "Reconciling",
+					Message: imageInfo.ImageName,
+				},
+			)
+			if err != nil {
+				return
+			}
+		} else {
+			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImage", "Image not exists: %s", imageInfo.ImageName)
+			bentoRequest, err = r.setStatusConditions(ctx, req,
+				metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
+					Status:  metav1.ConditionFalse,
+					Reason:  "Reconciling",
+					Message: fmt.Sprintf("Image %s is not exists", imageInfo.ImageName),
+				},
+			)
+			if err != nil {
+				return
+			}
+		}
+
+		return
+	}
+
+	var bentoRequestHashStr string
+	bentoRequestHashStr, err = r.getHashStr(bentoRequest)
+	if err != nil {
+		err = errors.Wrapf(err, "get BentoRequest %s/%s hash string", bentoRequest.Namespace, bentoRequest.Name)
+		return
+	}
+
+	imageExists = imageExistsCondition != nil && imageExistsCondition.Status == metav1.ConditionTrue && imageExistsCondition.Message == imageInfo.ImageName
+	if !imageExists {
+		jobLabels := map[string]string{
+			commonconsts.KubeLabelBentoRequest:        bentoRequest.Name,
+			commonconsts.KubeLabelIsBentoImageBuilder: "true",
+		}
+
+		jobs := &batchv1.JobList{}
+		err = r.List(ctx, jobs, client.InNamespace(req.Namespace), client.MatchingLabels(jobLabels))
+		if err != nil {
+			err = errors.Wrap(err, "list jobs")
+			return
+		}
+
+		reservedJobs := make([]*batchv1.Job, 0)
+		for _, job_ := range jobs.Items {
+			job_ := job_
+
+			oldHash := job_.Annotations[KubeAnnotationBentoRequestHash]
+			if oldHash != bentoRequestHashStr {
+				logs.Info("Because hash changed, delete old job", "job", job_.Name, "oldHash", oldHash, "newHash", bentoRequestHashStr)
+				// --cascade=foreground
+				err = r.Delete(ctx, &job_, &client.DeleteOptions{
+					PropagationPolicy: &[]metav1.DeletionPropagation{metav1.DeletePropagationForeground}[0],
+				})
+				if err != nil {
+					err = errors.Wrapf(err, "delete job %s", job_.Name)
+					return
+				}
+				return
+			} else {
+				reservedJobs = append(reservedJobs, &job_)
+			}
+		}
+
+		var job *batchv1.Job
+		if len(reservedJobs) > 0 {
+			job = reservedJobs[0]
+		}
+
+		if len(reservedJobs) > 1 {
+			for _, job_ := range reservedJobs[1:] {
+				logs.Info("Because has more than one job, delete old job", "job", job_.Name)
+				// --cascade=foreground
+				err = r.Delete(ctx, job_, &client.DeleteOptions{
+					PropagationPolicy: &[]metav1.DeletionPropagation{metav1.DeletePropagationForeground}[0],
+				})
+				if err != nil {
+					err = errors.Wrapf(err, "delete job %s", job_.Name)
+					return
+				}
+			}
+		}
+
+		if job == nil {
+			job, err = r.generateImageBuilderJob(ctx, GenerateImageBuilderJobOption{
+				ImageInfo:    imageInfo,
+				BentoRequest: bentoRequest,
+			})
+			if err != nil {
+				err = errors.Wrap(err, "generate image builder job")
+				return
+			}
+			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderJob", "Creating image builder job: %s", job.Name)
+			err = r.Create(ctx, job)
+			if err != nil {
+				err = errors.Wrapf(err, "create image builder job %s", job.Name)
+				return
+			}
+			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderJob", "Created image builder job: %s", job.Name)
+			return
+		}
+
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImageBuilderJob", "Found image builder job: %s", job.Name)
+
+		err = r.Get(ctx, req.NamespacedName, bentoRequest)
+		if err != nil {
+			logs.Error(err, "Failed to re-fetch BentoRequest")
+			return
+		}
+		imageBuildingCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeImageBuilding)
+
+		isJobFailed := false
+		isJobRunning := false
+
+		if job.Spec.Completions == nil || job.Status.Succeeded != *job.Spec.Completions {
+			if job.Status.Failed > 0 {
+				for _, condition := range job.Status.Conditions {
+					if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
+						isJobFailed = true
+						break
+					}
+				}
+				if !isJobFailed {
+					isJobRunning = true
+				}
+			}
+		} else {
+			isJobRunning = true
+		}
+
+		if isJobRunning {
+			conditions := make([]metav1.Condition, 0)
+			if job.Status.Active > 0 {
+				conditions = append(conditions, metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+					Status:  metav1.ConditionTrue,
+					Reason:  "Reconciling",
+					Message: fmt.Sprintf("Image building job %s is running", job.Name),
+				})
+			} else {
+				conditions = append(conditions, metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+					Status:  metav1.ConditionUnknown,
+					Reason:  "Reconciling",
+					Message: fmt.Sprintf("Image building job %s is waiting", job.Name),
+				})
+			}
+			if bentoRequest.Spec.ImageBuildTimeout != nil {
+				if imageBuildingCondition != nil && imageBuildingCondition.LastTransitionTime.Add(*bentoRequest.Spec.ImageBuildTimeout).Before(time.Now()) {
+					conditions = append(conditions, metav1.Condition{
+						Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+						Status:  metav1.ConditionFalse,
+						Reason:  "Timeout",
+						Message: fmt.Sprintf("Image building job %s is timeout", job.Name),
+					})
+					if _, err = r.setStatusConditions(ctx, req, conditions...); err != nil {
+						return
+					}
+					err = errors.New("image build timeout")
+					return
+				}
+			}
+
+			if bentoRequest, err = r.setStatusConditions(ctx, req, conditions...); err != nil {
+				return
+			}
+
+			if imageBuildingCondition != nil && imageBuildingCondition.Status != metav1.ConditionTrue && isJobRunning {
+				r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoImageBuilder", "Image is building now")
+			}
+
+			return
+		}
+
+		if isJobFailed {
+			r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "BentoImageBuilder", "Image built failed, image builder job %s is failed", job.Name)
+			bentoRequest, err = r.setStatusConditions(ctx, req,
+				metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+					Status:  metav1.ConditionFalse,
+					Reason:  "Reconciling",
+					Message: fmt.Sprintf("Image building job %s is failed.", job.Name),
+				},
+			)
+			if err != nil {
+				return
+			}
+			bentoRequest, err = r.setStatusConditions(ctx, req,
+				metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
+					Status:  metav1.ConditionFalse,
+					Reason:  "Reconciling",
+					Message: fmt.Sprintf("Image building job %s is failed.", job.Name),
+				},
+			)
+			if err != nil {
+				return
+			}
+			return
+		}
+
+		bentoRequest, err = r.setStatusConditions(ctx, req,
+			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+				Status:  metav1.ConditionFalse,
+				Reason:  "Reconciling",
+				Message: fmt.Sprintf("Image building job %s is successed.", job.Name),
+			},
+			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Reconciling",
+				Message: imageInfo.ImageName,
+			},
+		)
+		if err != nil {
+			return
+		}
+
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoImageBuilder", "Image has been built successfully")
 	}
 
 	return
