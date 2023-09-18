@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -35,8 +36,9 @@ type BentoContext struct {
 
 type BentoModel struct {
 	// +kubebuilder:validation:Required
-	Tag         string `json:"tag"`
-	DownloadURL string `json:"downloadUrl,omitempty"`
+	Tag         string             `json:"tag"`
+	DownloadURL string             `json:"downloadUrl,omitempty"`
+	Size        *resource.Quantity `json:"size,omitempty"`
 }
 
 type BentoRunner struct {
@@ -57,6 +59,7 @@ type BentoSpec struct {
 	Image   string        `json:"image"`
 	Context *BentoContext `json:"context,omitempty"`
 	Runners []BentoRunner `json:"runners,omitempty"`
+	Models  []BentoModel  `json:"models,omitempty"`
 
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 }
