@@ -24,8 +24,10 @@ import (
 )
 
 const (
+	BentoRequestConditionTypeModelsSeeding  = "ModelsSeeding"
 	BentoRequestConditionTypeImageBuilding  = "ImageBuilding"
 	BentoRequestConditionTypeImageExists    = "ImageExists"
+	BentoRequestConditionTypeModelsExists   = "ModelsExists"
 	BentoRequestConditionTypeBentoAvailable = "BentoAvailable"
 )
 
