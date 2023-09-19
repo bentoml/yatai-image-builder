@@ -989,15 +989,15 @@ func MakeSureDockerConfigJSONSecret(ctx context.Context, kubeCli *kubernetes.Cli
 	return
 }
 
-func getYataiClient(ctx context.Context) (yataiClient **yataiclient.YataiClient, yataiConf **commonconfig.YataiConfig, err error) {
-	restConfig := clientconfig.GetConfigOrDie()
-	clientset, err := kubernetes.NewForConfig(restConfig)
-	if err != nil {
-		err = errors.Wrap(err, "create kubernetes clientset")
-		return
-	}
-
-	yataiConf_, err := commonconfig.GetYataiConfig(ctx, clientset, commonconsts.YataiImageBuilderComponentName, true)
+func (r *BentoRequestReconciler) getYataiClient(ctx context.Context) (yataiClient **yataiclient.YataiClient, yataiConf **commonconfig.YataiConfig, err error) {
+	yataiConf_, err := commonconfig.GetYataiConfig(ctx, func(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
+		secret := &corev1.Secret{}
+		err := r.Get(ctx, types.NamespacedName{
+			Namespace: namespace,
+			Name:      name,
+		}, secret)
+		return secret, errors.Wrap(err, "get secret")
+	}, commonconsts.YataiImageBuilderComponentName, true)
 	isNotFound := k8serrors.IsNotFound(err)
 	if err != nil && !isNotFound {
 		err = errors.Wrap(err, "get yatai config")
@@ -1023,10 +1023,13 @@ func getYataiClient(ctx context.Context) (yataiClient **yataiclient.YataiClient,
 	return
 }
 
-func getDockerRegistry(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest, cliset *kubernetes.Clientset) (dockerRegistry modelschemas.DockerRegistrySchema, err error) {
+func (r *BentoRequestReconciler) getDockerRegistry(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest) (dockerRegistry modelschemas.DockerRegistrySchema, err error) {
 	if bentoRequest != nil && bentoRequest.Spec.DockerConfigJSONSecretName != "" {
-		var secret *corev1.Secret
-		secret, err = cliset.CoreV1().Secrets(bentoRequest.Namespace).Get(ctx, bentoRequest.Spec.DockerConfigJSONSecretName, metav1.GetOptions{})
+		secret := &corev1.Secret{}
+		err = r.Get(ctx, types.NamespacedName{
+			Namespace: bentoRequest.Namespace,
+			Name:      bentoRequest.Spec.DockerConfigJSONSecretName,
+		}, secret)
 		if err != nil {
 			err = errors.Wrapf(err, "get docker config json secret %s", bentoRequest.Spec.DockerConfigJSONSecretName)
 			return
@@ -1092,7 +1095,14 @@ func getDockerRegistry(ctx context.Context, bentoRequest *resourcesv1alpha1.Bent
 		return
 	}
 
-	dockerRegistryConfig, err := commonconfig.GetDockerRegistryConfig(ctx, cliset)
+	dockerRegistryConfig, err := commonconfig.GetDockerRegistryConfig(ctx, func(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
+		secret := &corev1.Secret{}
+		err := r.Get(ctx, types.NamespacedName{
+			Namespace: namespace,
+			Name:      name,
+		}, secret)
+		return secret, errors.Wrap(err, "get secret")
+	})
 	if err != nil {
 		err = errors.Wrap(err, "get docker registry")
 		return
@@ -1219,7 +1229,7 @@ func (r *BentoRequestReconciler) getImageInfo(ctx context.Context, opt GetImageI
 		err = errors.Wrap(err, "create kubernetes clientset")
 		return
 	}
-	dockerRegistry, err := getDockerRegistry(ctx, opt.BentoRequest, kubeCli)
+	dockerRegistry, err := r.getDockerRegistry(ctx, opt.BentoRequest)
 	if err != nil {
 		err = errors.Wrap(err, "get docker registry")
 		return
@@ -1237,7 +1247,11 @@ func (r *BentoRequestReconciler) getImageInfo(ctx context.Context, opt GetImageI
 
 	if imageInfo.DockerConfigJSONSecretName == "" {
 		var dockerRegistryConf *commonconfig.DockerRegistryConfig
-		dockerRegistryConf, err = commonconfig.GetDockerRegistryConfig(ctx, kubeCli)
+		dockerRegistryConf, err = commonconfig.GetDockerRegistryConfig(ctx, func(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
+			secret := &corev1.Secret{}
+			err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, secret)
+			return secret, errors.Wrap(err, "get docker registry secret")
+		})
 		if err != nil {
 			err = errors.Wrap(err, "get docker registry")
 			return
@@ -1261,7 +1275,7 @@ func (r *BentoRequestReconciler) getImageInfo(ctx context.Context, opt GetImageI
 func (r *BentoRequestReconciler) getBento(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest) (bento *schemasv1.BentoFullSchema, err error) {
 	bentoRepositoryName, _, bentoVersion := xstrings.Partition(bentoRequest.Spec.BentoTag, ":")
 
-	yataiClient_, _, err := getYataiClient(ctx)
+	yataiClient_, _, err := r.getYataiClient(ctx)
 	if err != nil {
 		err = errors.Wrap(err, "get yatai client")
 		return
@@ -1557,7 +1571,7 @@ func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.
 		var yataiClient_ **yataiclient.YataiClient
 		var yataiConf_ **commonconfig.YataiConfig
 
-		yataiClient_, yataiConf_, err = getYataiClient(ctx)
+		yataiClient_, yataiConf_, err = r.getYataiClient(ctx)
 		if err != nil {
 			err = errors.Wrap(err, "get yatai client")
 			return
@@ -1682,14 +1696,14 @@ echo "Done"
 
 	var globalExtraPodSpec *resourcesv1alpha1.ExtraPodSpec
 
-	restConfig := clientconfig.GetConfigOrDie()
-	kubeCli, err := kubernetes.NewForConfig(restConfig)
-	if err != nil {
-		err = errors.Wrap(err, "create kubernetes client")
-		return
-	}
-
-	configNamespace, err := commonconfig.GetYataiImageBuilderNamespace(ctx, kubeCli)
+	configNamespace, err := commonconfig.GetYataiImageBuilderNamespace(ctx, func(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
+		secret := &corev1.Secret{}
+		err := r.Get(ctx, types.NamespacedName{
+			Namespace: namespace,
+			Name:      name,
+		}, secret)
+		return secret, errors.Wrap(err, "get secret")
+	})
 	if err != nil {
 		err = errors.Wrap(err, "failed to get Yatai image builder namespace")
 		return
@@ -1871,7 +1885,7 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 		var yataiClient_ **yataiclient.YataiClient
 		var yataiConf_ **commonconfig.YataiConfig
 
-		yataiClient_, yataiConf_, err = getYataiClient(ctx)
+		yataiClient_, yataiConf_, err = r.getYataiClient(ctx)
 		if err != nil {
 			err = errors.Wrap(err, "get yatai client")
 			return
@@ -2121,7 +2135,7 @@ echo "Done"
 			var yataiClient_ **yataiclient.YataiClient
 			var yataiConf_ **commonconfig.YataiConfig
 
-			yataiClient_, yataiConf_, err = getYataiClient(ctx)
+			yataiClient_, yataiConf_, err = r.getYataiClient(ctx)
 			if err != nil {
 				err = errors.Wrap(err, "get yatai client")
 				return
@@ -2226,7 +2240,14 @@ echo "Done"
 	var buildArgs []string
 	var builderArgs []string
 
-	configNamespace, err := commonconfig.GetYataiImageBuilderNamespace(ctx, kubeCli)
+	configNamespace, err := commonconfig.GetYataiImageBuilderNamespace(ctx, func(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
+		secret := &corev1.Secret{}
+		err := r.Get(ctx, types.NamespacedName{
+			Namespace: namespace,
+			Name:      name,
+		}, secret)
+		return secret, errors.Wrap(err, "get secret")
+	})
 	if err != nil {
 		err = errors.Wrap(err, "failed to get Yatai image builder namespace")
 		return
@@ -2646,7 +2667,7 @@ func (r *BentoRequestReconciler) doRegisterYataiComponent() (err error) {
 	defer cancel()
 
 	logs.Info("getting yatai client")
-	yataiClient, yataiConf, err := getYataiClient(ctx)
+	yataiClient, yataiConf, err := r.getYataiClient(ctx)
 	if err != nil {
 		err = errors.Wrap(err, "get yatai client")
 		return
@@ -2660,14 +2681,14 @@ func (r *BentoRequestReconciler) doRegisterYataiComponent() (err error) {
 	yataiClient_ := *yataiClient
 	yataiConf_ := *yataiConf
 
-	restConf := clientconfig.GetConfigOrDie()
-	cliset, err := kubernetes.NewForConfig(restConf)
-	if err != nil {
-		err = errors.Wrapf(err, "create kubernetes client for %s", restConf.Host)
-		return
-	}
-
-	namespace, err := commonconfig.GetYataiImageBuilderNamespace(ctx, cliset)
+	namespace, err := commonconfig.GetYataiImageBuilderNamespace(ctx, func(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
+		secret := &corev1.Secret{}
+		err := r.Get(ctx, types.NamespacedName{
+			Namespace: namespace,
+			Name:      name,
+		}, secret)
+		return secret, errors.Wrap(err, "get secret")
+	})
 	if err != nil {
 		err = errors.Wrap(err, "get yatai image builder namespace")
 		return
