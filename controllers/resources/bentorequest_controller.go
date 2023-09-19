@@ -1680,6 +1680,57 @@ echo "Done"
 		},
 	}
 
+	var globalExtraPodSpec *resourcesv1alpha1.ExtraPodSpec
+
+	restConfig := clientconfig.GetConfigOrDie()
+	kubeCli, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		err = errors.Wrap(err, "create kubernetes client")
+		return
+	}
+
+	configNamespace, err := commonconfig.GetYataiImageBuilderNamespace(ctx, kubeCli)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get Yatai image builder namespace")
+		return
+	}
+
+	configCmName := "yatai-image-builder-config"
+	r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateModelSeederPod", "Getting configmap %s from namespace %s", configCmName, configNamespace)
+	configCm := &corev1.ConfigMap{}
+	err = r.Get(ctx, types.NamespacedName{Name: configCmName, Namespace: configNamespace}, configCm)
+	configCmIsNotFound := k8serrors.IsNotFound(err)
+	if err != nil && !configCmIsNotFound {
+		err = errors.Wrap(err, "failed to get configmap")
+		return
+	}
+
+	if !configCmIsNotFound {
+		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateModelSeederPod", "Configmap %s is got from namespace %s", configCmName, configNamespace)
+
+		globalExtraPodSpec = &resourcesv1alpha1.ExtraPodSpec{}
+
+		if val, ok := configCm.Data["extra_pod_spec"]; ok {
+			err = yaml.Unmarshal([]byte(val), globalExtraPodSpec)
+			if err != nil {
+				err = errors.Wrapf(err, "failed to yaml unmarshal extra_pod_spec, please check the configmap %s in namespace %s", configCmName, configNamespace)
+				return
+			}
+		}
+	} else {
+		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateModelSeederPod", "Configmap %s is not found in namespace %s", configCmName, configNamespace)
+	}
+
+	if globalExtraPodSpec != nil {
+		pod.Spec.PriorityClassName = globalExtraPodSpec.PriorityClassName
+		pod.Spec.SchedulerName = globalExtraPodSpec.SchedulerName
+		pod.Spec.NodeSelector = globalExtraPodSpec.NodeSelector
+		pod.Spec.Affinity = globalExtraPodSpec.Affinity
+		pod.Spec.Tolerations = globalExtraPodSpec.Tolerations
+		pod.Spec.TopologySpreadConstraints = globalExtraPodSpec.TopologySpreadConstraints
+		pod.Spec.ServiceAccountName = globalExtraPodSpec.ServiceAccountName
+	}
+
 	return
 }
 
