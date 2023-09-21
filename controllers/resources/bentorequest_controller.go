@@ -59,14 +59,11 @@ import (
 	"github.com/prune998/docker-registry-client/registry"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/client-go/kubernetes"
 
 	commonconfig "github.com/bentoml/yatai-common/config"
 	commonconsts "github.com/bentoml/yatai-common/consts"
 	"github.com/bentoml/yatai-schemas/modelschemas"
 	"github.com/bentoml/yatai-schemas/schemasv1"
-
-	clientconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
 	"github.com/bentoml/yatai-image-builder/version"
@@ -938,7 +935,7 @@ func getBentoImageBuildEngine() BentoImageBuildEngine {
 	return BentoImageBuildEngine(engine)
 }
 
-func MakeSureDockerConfigJSONSecret(ctx context.Context, kubeCli *kubernetes.Clientset, namespace string, dockerRegistryConf *commonconfig.DockerRegistryConfig) (dockerConfigJSONSecret *corev1.Secret, err error) {
+func (r *BentoRequestReconciler) makeSureDockerConfigJSONSecret(ctx context.Context, namespace string, dockerRegistryConf *commonconfig.DockerRegistryConfig) (dockerConfigJSONSecret *corev1.Secret, err error) {
 	if dockerRegistryConf.Username == "" {
 		return
 	}
@@ -965,9 +962,9 @@ func MakeSureDockerConfigJSONSecret(ctx context.Context, kubeCli *kubernetes.Cli
 		return nil, err
 	}
 
-	secretsCli := kubeCli.CoreV1().Secrets(namespace)
+	dockerConfigJSONSecret = &corev1.Secret{}
 
-	dockerConfigJSONSecret, err = secretsCli.Get(ctx, dockerConfigSecretName, metav1.GetOptions{})
+	err = r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: dockerConfigSecretName}, dockerConfigJSONSecret)
 	dockerConfigIsNotFound := k8serrors.IsNotFound(err)
 	// nolint: gocritic
 	if err != nil && !dockerConfigIsNotFound {
@@ -977,15 +974,19 @@ func MakeSureDockerConfigJSONSecret(ctx context.Context, kubeCli *kubernetes.Cli
 	err = nil
 	if dockerConfigIsNotFound {
 		dockerConfigJSONSecret = &corev1.Secret{
-			Type:       corev1.SecretTypeDockerConfigJson,
-			ObjectMeta: metav1.ObjectMeta{Name: dockerConfigSecretName},
+			Type: corev1.SecretTypeDockerConfigJson,
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      dockerConfigSecretName,
+				Namespace: namespace,
+			},
 			Data: map[string][]byte{
 				".dockerconfigjson": dockerConfigContent,
 			},
 		}
-		_, err_ := secretsCli.Create(ctx, dockerConfigJSONSecret, metav1.CreateOptions{})
+		err_ := r.Create(ctx, dockerConfigJSONSecret)
 		if err_ != nil {
-			dockerConfigJSONSecret, err = secretsCli.Get(ctx, dockerConfigSecretName, metav1.GetOptions{})
+			dockerConfigJSONSecret = &corev1.Secret{}
+			err = r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: dockerConfigSecretName}, dockerConfigJSONSecret)
 			dockerConfigIsNotFound = k8serrors.IsNotFound(err)
 			if err != nil && !dockerConfigIsNotFound {
 				err = errors.Wrap(err, "get docker config secret")
@@ -1001,7 +1002,7 @@ func MakeSureDockerConfigJSONSecret(ctx context.Context, kubeCli *kubernetes.Cli
 		}
 	} else {
 		dockerConfigJSONSecret.Data[".dockerconfigjson"] = dockerConfigContent
-		_, err = secretsCli.Update(ctx, dockerConfigJSONSecret, metav1.UpdateOptions{})
+		err = r.Update(ctx, dockerConfigJSONSecret)
 		if err != nil {
 			err = errors.Wrap(err, "update docker config secret")
 			return nil, err
@@ -1245,8 +1246,6 @@ type GetImageInfoOption struct {
 
 func (r *BentoRequestReconciler) getImageInfo(ctx context.Context, opt GetImageInfoOption) (imageInfo ImageInfo, err error) {
 	bentoRepositoryName, _, bentoVersion := xstrings.Partition(opt.BentoRequest.Spec.BentoTag, ":")
-	restConfig := clientconfig.GetConfigOrDie()
-	kubeCli, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		err = errors.Wrap(err, "create kubernetes clientset")
 		return
@@ -1281,7 +1280,7 @@ func (r *BentoRequestReconciler) getImageInfo(ctx context.Context, opt GetImageI
 		imageInfo.DockerRegistryInsecure = !dockerRegistryConf.Secure
 		var dockerConfigSecret *corev1.Secret
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Making sure docker config secret %s in namespace %s", commonconsts.KubeSecretNameRegcred, opt.BentoRequest.Namespace)
-		dockerConfigSecret, err = MakeSureDockerConfigJSONSecret(ctx, kubeCli, opt.BentoRequest.Namespace, dockerRegistryConf)
+		dockerConfigSecret, err = r.makeSureDockerConfigJSONSecret(ctx, opt.BentoRequest.Namespace, dockerRegistryConf)
 		if err != nil {
 			err = errors.Wrap(err, "make sure docker config secret")
 			return
@@ -1839,12 +1838,6 @@ type GenerateImageBuilderPodTemplateSpecOption struct {
 func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context.Context, opt GenerateImageBuilderPodTemplateSpecOption) (pod *corev1.PodTemplateSpec, err error) {
 	bentoRepositoryName, _, bentoVersion := xstrings.Partition(opt.BentoRequest.Spec.BentoTag, ":")
 	kubeLabels := r.getImageBuilderPodLabels(opt.BentoRequest)
-	restConfig := clientconfig.GetConfigOrDie()
-	kubeCli, err := kubernetes.NewForConfig(restConfig)
-	if err != nil {
-		err = errors.Wrap(err, "create kubernetes clientset")
-		return
-	}
 
 	inClusterImageName := opt.ImageInfo.InClusterImageName
 
@@ -1950,7 +1943,8 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 
 		yataiAPITokenSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: yataiAPITokenSecretName,
+				Name:      yataiAPITokenSecretName,
+				Namespace: opt.BentoRequest.Namespace,
 			},
 			StringData: map[string]string{
 				commonconsts.EnvYataiApiToken: yataiConf.ApiToken,
@@ -1958,7 +1952,8 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 		}
 
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting secret %s in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
-		_, err = kubeCli.CoreV1().Secrets(opt.BentoRequest.Namespace).Get(ctx, yataiAPITokenSecretName, metav1.GetOptions{})
+		_yataiAPITokenSecret := &corev1.Secret{}
+		err = r.Get(ctx, types.NamespacedName{Namespace: opt.BentoRequest.Namespace, Name: yataiAPITokenSecretName}, _yataiAPITokenSecret)
 		isNotFound := k8serrors.IsNotFound(err)
 		if err != nil && !isNotFound {
 			err = errors.Wrapf(err, "failed to get secret %s", yataiAPITokenSecretName)
@@ -1967,7 +1962,7 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 
 		if isNotFound {
 			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is not found, so creating it in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
-			_, err = kubeCli.CoreV1().Secrets(opt.BentoRequest.Namespace).Create(ctx, yataiAPITokenSecret, metav1.CreateOptions{})
+			err = r.Create(ctx, yataiAPITokenSecret)
 			isExists := k8serrors.IsAlreadyExists(err)
 			if err != nil && !isExists {
 				err = errors.Wrapf(err, "failed to create secret %s", yataiAPITokenSecretName)
@@ -1976,7 +1971,7 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is created in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
 		} else {
 			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is found in namespace %s, so updating it", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
-			_, err = kubeCli.CoreV1().Secrets(opt.BentoRequest.Namespace).Update(ctx, yataiAPITokenSecret, metav1.UpdateOptions{})
+			err = r.Update(ctx, yataiAPITokenSecret)
 			if err != nil {
 				err = errors.Wrapf(err, "failed to update secret %s", yataiAPITokenSecretName)
 				return
@@ -2470,7 +2465,8 @@ echo "Done"
 		if configNamespace != opt.BentoRequest.Namespace {
 			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is in namespace %s, but BentoRequest is in namespace %s, so we need to copy the secret to BentoRequest namespace", buildArgsSecretName, configNamespace, opt.BentoRequest.Namespace)
 			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting secret %s in namespace %s", buildArgsSecretName, opt.BentoRequest.Namespace)
-			_, err = kubeCli.CoreV1().Secrets(opt.BentoRequest.Namespace).Get(ctx, buildArgsSecretName, metav1.GetOptions{})
+			_buildArgsSecret := &corev1.Secret{}
+			err = r.Get(ctx, types.NamespacedName{Namespace: opt.BentoRequest.Namespace, Name: buildArgsSecretName}, _buildArgsSecret)
 			localBuildArgsSecretIsNotFound := k8serrors.IsNotFound(err)
 			if err != nil && !localBuildArgsSecretIsNotFound {
 				err = errors.Wrapf(err, "failed to get secret %s from namespace %s", buildArgsSecretName, opt.BentoRequest.Namespace)
@@ -2478,12 +2474,13 @@ echo "Done"
 			}
 			if localBuildArgsSecretIsNotFound {
 				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Copying secret %s from namespace %s to namespace %s", buildArgsSecretName, configNamespace, opt.BentoRequest.Namespace)
-				_, err = kubeCli.CoreV1().Secrets(opt.BentoRequest.Namespace).Create(ctx, &corev1.Secret{
+				err = r.Create(ctx, &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: buildArgsSecretName,
+						Name:      buildArgsSecretName,
+						Namespace: opt.BentoRequest.Namespace,
 					},
 					Data: buildArgsSecret.Data,
-				}, metav1.CreateOptions{})
+				})
 				if err != nil {
 					err = errors.Wrapf(err, "failed to create secret %s in namespace %s", buildArgsSecretName, opt.BentoRequest.Namespace)
 					return
@@ -2491,12 +2488,13 @@ echo "Done"
 			} else {
 				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is already in namespace %s", buildArgsSecretName, opt.BentoRequest.Namespace)
 				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Updating secret %s in namespace %s", buildArgsSecretName, opt.BentoRequest.Namespace)
-				_, err = kubeCli.CoreV1().Secrets(opt.BentoRequest.Namespace).Update(ctx, &corev1.Secret{
+				err = r.Update(ctx, &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: buildArgsSecretName,
+						Name:      buildArgsSecretName,
+						Namespace: opt.BentoRequest.Namespace,
 					},
 					Data: buildArgsSecret.Data,
-				}, metav1.UpdateOptions{})
+				})
 				if err != nil {
 					err = errors.Wrapf(err, "failed to update secret %s in namespace %s", buildArgsSecretName, opt.BentoRequest.Namespace)
 					return
