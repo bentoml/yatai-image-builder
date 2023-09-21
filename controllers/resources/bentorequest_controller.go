@@ -1457,7 +1457,7 @@ func (r *BentoRequestReconciler) generateModelSeederJob(ctx context.Context, opt
 		Model:        opt.Model,
 	})
 	if err != nil {
-		err = errors.Wrap(err, "generate image builder pod template spec")
+		err = errors.Wrap(err, "generate model seeder pod template spec")
 		return
 	}
 	kubeAnnotations := make(map[string]string)
@@ -1740,6 +1740,7 @@ echo "Done"
 		err = errors.Wrap(err, "failed to get configmap")
 		return
 	}
+	err = nil
 
 	if !configCmIsNotFound {
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateModelSeederPod", "Configmap %s is got from namespace %s", configCmName, configNamespace)
@@ -2284,6 +2285,7 @@ echo "Done"
 		err = errors.Wrap(err, "failed to get configmap")
 		return
 	}
+	err = nil // nolint: ineffassign
 
 	if !configCmIsNotFound {
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Configmap %s is got from namespace %s", configCmName, configNamespace)
