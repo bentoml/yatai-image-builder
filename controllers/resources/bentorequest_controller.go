@@ -651,16 +651,38 @@ func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ens
 			return
 		}
 
+		var bentoRequestHashStr string
+		bentoRequestHashStr, err = r.getHashStr(bentoRequest)
+		if err != nil {
+			err = errors.Wrapf(err, "get BentoRequest %s/%s hash string", bentoRequest.Namespace, bentoRequest.Name)
+			return
+		}
+
 		jobDeleted := false
 		existingJobModelTags := make(map[string]struct{})
 		for _, job_ := range jobs.Items {
 			job_ := job_
 
+			oldHash := job_.Annotations[KubeAnnotationBentoRequestHash]
+			if oldHash != bentoRequestHashStr {
+				r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "DeleteJob", "Because hash changed, delete old job %s, oldHash: %s, newHash: %s", job_.Name, oldHash, bentoRequestHashStr)
+				// --cascade=foreground
+				err = r.Delete(ctx, &job_, &client.DeleteOptions{
+					PropagationPolicy: &[]metav1.DeletionPropagation{metav1.DeletePropagationForeground}[0],
+				})
+				if err != nil {
+					err = errors.Wrapf(err, "delete job %s", job_.Name)
+					return
+				}
+				jobDeleted = true
+				continue
+			}
+
 			modelTag := fmt.Sprintf("%s:%s", job_.Labels[commonconsts.KubeLabelYataiModelRepository], job_.Labels[commonconsts.KubeLabelYataiModel])
 			_, ok := modelsMap[modelTag]
 
 			if !ok {
-				r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "DeleteJob", " Due to the nonexistence of the model %s, job %s has been deleted.", modelTag, job_.Name)
+				r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "DeleteJob", "Due to the nonexistence of the model %s, job %s has been deleted.", modelTag, job_.Name)
 				// --cascade=foreground
 				err = r.Delete(ctx, &job_, &client.DeleteOptions{
 					PropagationPolicy: &[]metav1.DeletionPropagation{metav1.DeletePropagationForeground}[0],
