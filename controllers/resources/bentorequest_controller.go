@@ -1185,33 +1185,33 @@ func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegis
 	if bentoRequest != nil && bentoRequest.Spec.Image != "" {
 		return bentoRequest.Spec.Image
 	}
-	var uri, imageName string
+	var uri, tag string
 	if inCluster {
 		uri = dockerRegistry.BentosRepositoryURIInCluster
 	} else {
 		uri = dockerRegistry.BentosRepositoryURI
 	}
 	if isAddNamespacePrefix() {
-		imageName = fmt.Sprintf("%s:yatai.%s.%s.%s", uri, bentoRequest.Namespace, bentoRepositoryName, bentoVersion)
+		tag = fmt.Sprintf("yatai.%s.%s.%s", bentoRequest.Namespace, bentoRepositoryName, bentoVersion)
 	} else {
-		imageName = fmt.Sprintf("%s:yatai.%s.%s", uri, bentoRepositoryName, bentoVersion)
+		tag = fmt.Sprintf("yatai.%s.%s", bentoRepositoryName, bentoVersion)
 	}
-	if len(imageName) > 128 {
+	if len(tag) > 128 {
 		hashStr := hash(fmt.Sprintf("%s.%s", bentoRepositoryName, bentoVersion))
 		if isAddNamespacePrefix() {
-			imageName = fmt.Sprintf("%s:yatai.%s.%s", uri, bentoRequest.Namespace, hashStr)
+			tag = fmt.Sprintf("yatai.%s.%s", bentoRequest.Namespace, hashStr)
 		} else {
-			imageName = fmt.Sprintf("%s:yatai.%s", uri, hashStr)
+			tag = fmt.Sprintf("yatai.%s", hashStr)
 		}
-		if len(imageName) > 128 {
+		if len(tag) > 128 {
 			if isAddNamespacePrefix() {
-				imageName = fmt.Sprintf("%s:yatai.%s", uri, hash(fmt.Sprintf("%s.%s.%s", bentoRequest.Namespace, bentoRepositoryName, bentoVersion)))[:128]
+				tag = fmt.Sprintf("yatai.%s", hash(fmt.Sprintf("%s.%s.%s", bentoRequest.Namespace, bentoRepositoryName, bentoVersion)))[:128]
 			} else {
-				imageName = fmt.Sprintf("%s:yatai.%s", uri, hash(fmt.Sprintf("%s.%s", bentoRepositoryName, bentoVersion)))[:128]
+				tag = fmt.Sprintf("yatai.%s", hash(fmt.Sprintf("%s.%s", bentoRepositoryName, bentoVersion)))[:128]
 			}
 		}
 	}
-	return imageName
+	return fmt.Sprintf("%s:%s", uri, tag)
 }
 
 func isSeparateModels(bentoRequest *resourcesv1alpha1.BentoRequest) (separateModels bool) {
