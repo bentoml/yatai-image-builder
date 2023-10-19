@@ -1204,7 +1204,11 @@ func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegis
 			imageName = fmt.Sprintf("%s:yatai.%s", uri, hashStr)
 		}
 		if len(imageName) > 128 {
-			imageName = fmt.Sprintf("%s:yatai.%s", uri, hash(fmt.Sprintf("%s.%s.%s", bentoRequest.Namespace, bentoRepositoryName, bentoVersion)))[:128]
+			if isAddNamespacePrefix() {
+				imageName = fmt.Sprintf("%s:yatai.%s", uri, hash(fmt.Sprintf("%s.%s.%s", bentoRequest.Namespace, bentoRepositoryName, bentoVersion)))[:128]
+			} else {
+				imageName = fmt.Sprintf("%s:yatai.%s", uri, hash(fmt.Sprintf("%s.%s", bentoRepositoryName, bentoVersion)))[:128]
+			}
 		}
 	}
 	return imageName
