@@ -1461,7 +1461,7 @@ func (r *BentoRequestReconciler) generateModelPVC(opt GenerateModelPVCOption) (p
 					corev1.ResourceStorage: storageSize,
 				},
 			},
-			StorageClassName: pointer.StringPtr("juicefs-sc"),
+			StorageClassName: pointer.StringPtr(getJuiceFSStorageClassName()),
 		},
 	}
 	return
@@ -2771,6 +2771,13 @@ func (r *BentoRequestReconciler) registerYataiComponent() {
 			logs.Error(err, "registerYataiComponent")
 		}
 	}
+}
+
+func getJuiceFSStorageClassName() string {
+	if v := os.Getenv("JUICEFS_STORAGE_CLASS_NAME"); v != "" {
+		return v
+	}
+	return "juicefs-sc"
 }
 
 const (
