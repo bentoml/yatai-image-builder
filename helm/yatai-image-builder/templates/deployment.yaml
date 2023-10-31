@@ -55,6 +55,8 @@ spec:
                   name: {{ .Values.aws.secretAccessKeyExistingSecretName | quote }}
                   key: {{ .Values.aws.secretAccessKeyExistingSecretKey | quote }}
             {{- end }}
+            - name: JUICEFS_STORAGE_CLASS_NAME
+              value: {{ .Values.juicefsStorageClassName | quote }}
           envFrom:
             - secretRef:
                 name: {{ include "yatai-image-builder.envname" . }}
