@@ -1407,11 +1407,12 @@ func hash(text string) string {
 }
 
 func (r *BentoRequestReconciler) getModelPVCName(bentoRequest *resourcesv1alpha1.BentoRequest, model *resourcesv1alpha1.BentoModel) string {
+	storageClassName := getJuiceFSStorageClassName()
 	var hashStr string
 	if isAddNamespacePrefix() {
-		hashStr = hash(fmt.Sprintf("%s:%s", bentoRequest.Namespace, model.Tag))
+		hashStr = hash(fmt.Sprintf("%s:%s:%s", storageClassName, bentoRequest.Namespace, model.Tag))
 	} else {
-		hashStr = hash(model.Tag)
+		hashStr = hash(fmt.Sprintf("%s:%s", storageClassName, model.Tag))
 	}
 	pvcName := fmt.Sprintf("model-seeder-%s", hashStr)
 	if len(pvcName) > 63 {
