@@ -624,7 +624,7 @@ func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ens
 		}
 	}
 
-	modelsExists = modelsExistsCondition != nil && modelsExistsCondition.Status == metav1.ConditionTrue && modelsExistsCondition.Message == strings.Join(modelTags, ", ")
+	modelsExists = modelsExistsCondition != nil && modelsExistsCondition.Status == metav1.ConditionTrue && modelsExistsCondition.Message == fmt.Sprintf("%s:%s", getJuiceFSStorageClassName(), strings.Join(modelTags, ", "))
 	if modelsExists {
 		return
 	}
@@ -819,7 +819,7 @@ func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ens
 				Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsExists,
 				Status:  metav1.ConditionTrue,
 				Reason:  "Reconciling",
-				Message: strings.Join(modelTags, ", "),
+				Message: fmt.Sprintf("%s:%s", getJuiceFSStorageClassName(), strings.Join(modelTags, ", ")),
 			},
 			metav1.Condition{
 				Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsSeeding,
