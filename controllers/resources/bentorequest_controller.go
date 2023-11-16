@@ -355,7 +355,7 @@ func (r *BentoRequestReconciler) ensureImageExists(ctx context.Context, opt ensu
 	imageExistsCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeImageExists)
 	if imageExistsCondition == nil || imageExistsCondition.Status == metav1.ConditionUnknown {
 		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImage", "Checking image exists: %s", imageInfo.ImageName)
-		imageExists, err = checkImageExists(imageInfo.DockerRegistry, imageInfo.InClusterImageName)
+		imageExists, err = checkImageExists(bentoRequest, imageInfo.DockerRegistry, imageInfo.InClusterImageName)
 		if err != nil {
 			err = errors.Wrapf(err, "check image %s exists", imageInfo.ImageName)
 			return
@@ -1191,13 +1191,18 @@ func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegis
 	} else {
 		uri = dockerRegistry.BentosRepositoryURI
 	}
+	tail := fmt.Sprintf("%s.%s", bentoRepositoryName, bentoVersion)
+	separateModels := isSeparateModels(bentoRequest)
+	if separateModels {
+		tail += ".nomodels"
+	}
 	if isAddNamespacePrefix() {
-		tag = fmt.Sprintf("yatai.%s.%s.%s", bentoRequest.Namespace, bentoRepositoryName, bentoVersion)
+		tag = fmt.Sprintf("yatai.%s.%s", bentoRequest.Namespace, tail)
 	} else {
-		tag = fmt.Sprintf("yatai.%s.%s", bentoRepositoryName, bentoVersion)
+		tag = fmt.Sprintf("yatai.%s", tail)
 	}
 	if len(tag) > 128 {
-		hashStr := hash(fmt.Sprintf("%s.%s", bentoRepositoryName, bentoVersion))
+		hashStr := hash(tail)
 		if isAddNamespacePrefix() {
 			tag = fmt.Sprintf("yatai.%s.%s", bentoRequest.Namespace, hashStr)
 		} else {
@@ -1205,9 +1210,9 @@ func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegis
 		}
 		if len(tag) > 128 {
 			if isAddNamespacePrefix() {
-				tag = fmt.Sprintf("yatai.%s", hash(fmt.Sprintf("%s.%s.%s", bentoRequest.Namespace, bentoRepositoryName, bentoVersion)))[:128]
+				tag = fmt.Sprintf("yatai.%s", hash(fmt.Sprintf("%s.%s", bentoRequest.Namespace, tail)))[:128]
 			} else {
-				tag = fmt.Sprintf("yatai.%s", hash(fmt.Sprintf("%s.%s", bentoRepositoryName, bentoVersion)))[:128]
+				tag = fmt.Sprintf("yatai.%s", hash(tail))[:128]
 			}
 		}
 	}
@@ -1218,7 +1223,11 @@ func isSeparateModels(bentoRequest *resourcesv1alpha1.BentoRequest) (separateMod
 	return bentoRequest.Annotations[commonconsts.KubeAnnotationYataiImageBuilderSeparateModels] == commonconsts.KubeLabelValueTrue
 }
 
-func checkImageExists(dockerRegistry modelschemas.DockerRegistrySchema, imageName string) (bool, error) {
+func checkImageExists(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegistry modelschemas.DockerRegistrySchema, imageName string) (bool, error) {
+	if bentoRequest.Annotations["yatai.ai/force-build-image"] == commonconsts.KubeLabelValueTrue {
+		return false, nil
+	}
+
 	if UsingAWSECRWithIAMRole() {
 		return CheckECRImageExists(imageName)
 	}
