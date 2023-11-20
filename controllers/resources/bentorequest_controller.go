@@ -77,6 +77,8 @@ import (
 
 const (
 	KubeAnnotationBentoRequestHash = "yatai.ai/bento-request-hash"
+	// nolint: gosec
+	YataiImageBuilderAWSAccessKeySecretName = "yatai-image-builder-aws-access-key"
 )
 
 // BentoRequestReconciler reconciles a BentoRequest object
@@ -1554,7 +1556,7 @@ func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.
 		awsSecretAccessKey := os.Getenv(commonconsts.EnvAWSSecretAccessKey)
 		if awsAccessKeyID != "" && awsSecretAccessKey != "" {
 			// nolint: gosec
-			awsAccessKeySecretName = "yatai-image-builder-aws-access-key"
+			awsAccessKeySecretName = YataiImageBuilderAWSAccessKeySecretName
 			stringData := map[string]string{
 				commonconsts.EnvAWSAccessKeyID:     awsAccessKeyID,
 				commonconsts.EnvAWSSecretAccessKey: awsSecretAccessKey,
@@ -2020,7 +2022,7 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 		awsSecretAccessKey := os.Getenv(commonconsts.EnvAWSSecretAccessKey)
 		if awsAccessKeyID != "" && awsSecretAccessKey != "" {
 			// nolint: gosec
-			awsAccessKeySecretName = "yatai-image-builder-aws-access-key"
+			awsAccessKeySecretName = YataiImageBuilderAWSAccessKeySecretName
 			stringData := map[string]string{
 				commonconsts.EnvAWSAccessKeyID:     awsAccessKeyID,
 				commonconsts.EnvAWSSecretAccessKey: awsSecretAccessKey,
@@ -2382,6 +2384,7 @@ echo "Done"
 
 	dockerFilePath := "/workspace/buildcontext/env/docker/Dockerfile"
 
+	builderContainerEnvFrom := make([]corev1.EnvFromSource, 0)
 	envs := []corev1.EnvVar{
 		{
 			Name:  "DOCKER_CONFIG",
@@ -2450,6 +2453,55 @@ echo "Done"
 			fmt.Sprintf("dockerfile=%s", filepath.Dir(dockerFilePath)),
 			"--output",
 			fmt.Sprintf("type=image,name=%s,push=true,registry.insecure=%v", inClusterImageName, dockerRegistryInsecure),
+		}
+		buildkitS3CacheEnabled := os.Getenv("BUILDKIT_S3_CACHE_ENABLED") == commonconsts.KubeLabelValueTrue
+		if buildkitS3CacheEnabled {
+			buildkitS3CacheRegion := os.Getenv("BUILDKIT_S3_CACHE_REGION")
+			buildkitS3CacheBucket := os.Getenv("BUILDKIT_S3_CACHE_BUCKET")
+			cachedImageName := bentoRepositoryName
+			if isAddNamespacePrefix() {
+				cachedImageName = fmt.Sprintf("%s.%s", opt.BentoRequest.Namespace, bentoRepositoryName)
+			}
+			args = append(args, "--cache-from", fmt.Sprintf("type=s3,region=%s,bucket=%s,name=%s", buildkitS3CacheRegion, buildkitS3CacheBucket, cachedImageName))
+			args = append(args, "--cache-to", fmt.Sprintf("type=s3,region=%s,bucket=%s,name=%s,mode=max,compression=zstd,ignore-error=true", buildkitS3CacheRegion, buildkitS3CacheBucket, cachedImageName))
+			if awsAccessKeySecretName == "" {
+				awsAccessKeyID := os.Getenv(commonconsts.EnvAWSAccessKeyID)
+				awsSecretAccessKey := os.Getenv(commonconsts.EnvAWSSecretAccessKey)
+				if awsAccessKeyID != "" && awsSecretAccessKey != "" {
+					// nolint: gosec
+					awsAccessKeySecretName = YataiImageBuilderAWSAccessKeySecretName
+					stringData := map[string]string{
+						commonconsts.EnvAWSAccessKeyID:     awsAccessKeyID,
+						commonconsts.EnvAWSSecretAccessKey: awsSecretAccessKey,
+					}
+					awsAccessKeySecret := &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      awsAccessKeySecretName,
+							Namespace: opt.BentoRequest.Namespace,
+						},
+						StringData: stringData,
+					}
+					r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Creating or updating secret %s in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
+					_, err = controllerutil.CreateOrUpdate(ctx, r.Client, awsAccessKeySecret, func() error {
+						awsAccessKeySecret.StringData = stringData
+						return nil
+					})
+					if err != nil {
+						err = errors.Wrapf(err, "failed to create or update secret %s", awsAccessKeySecretName)
+						return
+					}
+					r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is created or updated in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
+				}
+			}
+			if awsAccessKeySecretName != "" {
+				builderContainerEnvFrom = append(builderContainerEnvFrom, corev1.EnvFromSource{
+					SecretRef: &corev1.SecretEnvSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: awsAccessKeySecretName,
+						},
+					},
+				})
+			}
 		}
 	}
 
@@ -2572,6 +2624,7 @@ echo "Done"
 		Args:            builderContainerArgs,
 		VolumeMounts:    volumeMounts,
 		Env:             envs,
+		EnvFrom:         builderContainerEnvFrom,
 		TTY:             true,
 		Stdin:           true,
 		SecurityContext: builderContainerSecurityContext,
