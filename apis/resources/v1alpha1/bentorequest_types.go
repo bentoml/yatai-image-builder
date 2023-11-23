@@ -24,11 +24,12 @@ import (
 )
 
 const (
-	BentoRequestConditionTypeModelsSeeding  = "ModelsSeeding"
-	BentoRequestConditionTypeImageBuilding  = "ImageBuilding"
-	BentoRequestConditionTypeImageExists    = "ImageExists"
-	BentoRequestConditionTypeModelsExists   = "ModelsExists"
-	BentoRequestConditionTypeBentoAvailable = "BentoAvailable"
+	BentoRequestConditionTypeModelsSeeding      = "ModelsSeeding"
+	BentoRequestConditionTypeImageBuilding      = "ImageBuilding"
+	BentoRequestConditionTypeImageExists        = "ImageExists"
+	BentoRequestConditionTypeImageExistsChecked = "ImageExistsChecked"
+	BentoRequestConditionTypeModelsExists       = "ModelsExists"
+	BentoRequestConditionTypeBentoAvailable     = "BentoAvailable"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!

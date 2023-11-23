@@ -352,8 +352,25 @@ func (r *BentoRequestReconciler) ensureImageExists(ctx context.Context, opt ensu
 		return
 	}
 
+	imageExistsCheckedCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeImageExistsChecked)
 	imageExistsCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeImageExists)
-	if imageExistsCondition == nil || imageExistsCondition.Status == metav1.ConditionUnknown {
+	if imageExistsCheckedCondition == nil || imageExistsCheckedCondition.Status == metav1.ConditionUnknown || imageExistsCheckedCondition.Message != imageInfo.ImageName {
+		imageExistsCheckedCondition = &metav1.Condition{
+			Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExistsChecked,
+			Status:  metav1.ConditionUnknown,
+			Reason:  "Reconciling",
+			Message: imageInfo.ImageName,
+		}
+		bentoAvailableCondition := &metav1.Condition{
+			Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
+			Status:  metav1.ConditionUnknown,
+			Reason:  "Reconciling",
+			Message: "Checking image exists",
+		}
+		bentoRequest, err = r.setStatusConditions(ctx, req, *imageExistsCheckedCondition, *bentoAvailableCondition)
+		if err != nil {
+			return
+		}
 		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImage", "Checking image exists: %s", imageInfo.ImageName)
 		imageExists, err = checkImageExists(bentoRequest, imageInfo.DockerRegistry, imageInfo.InClusterImageName)
 		if err != nil {
@@ -369,25 +386,37 @@ func (r *BentoRequestReconciler) ensureImageExists(ctx context.Context, opt ensu
 
 		if imageExists {
 			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImage", "Image exists: %s", imageInfo.ImageName)
+			imageExistsCheckedCondition = &metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExistsChecked,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Reconciling",
+				Message: imageInfo.ImageName,
+			}
 			imageExistsCondition = &metav1.Condition{
 				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
 				Status:  metav1.ConditionTrue,
 				Reason:  "Reconciling",
 				Message: imageInfo.ImageName,
 			}
-			bentoRequest, err = r.setStatusConditions(ctx, req, *imageExistsCondition)
+			bentoRequest, err = r.setStatusConditions(ctx, req, *imageExistsCondition, *imageExistsCheckedCondition)
 			if err != nil {
 				return
 			}
 		} else {
 			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImage", "Image not exists: %s", imageInfo.ImageName)
+			imageExistsCheckedCondition = &metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExistsChecked,
+				Status:  metav1.ConditionFalse,
+				Reason:  "Reconciling",
+				Message: fmt.Sprintf("Image not exists: %s", imageInfo.ImageName),
+			}
 			imageExistsCondition = &metav1.Condition{
 				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
 				Status:  metav1.ConditionFalse,
 				Reason:  "Reconciling",
 				Message: fmt.Sprintf("Image %s is not exists", imageInfo.ImageName),
 			}
-			bentoRequest, err = r.setStatusConditions(ctx, req, *imageExistsCondition)
+			bentoRequest, err = r.setStatusConditions(ctx, req, *imageExistsCondition, *imageExistsCheckedCondition)
 			if err != nil {
 				return
 			}
