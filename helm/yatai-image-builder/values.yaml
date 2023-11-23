@@ -108,3 +108,8 @@ bentoImageBuildEngine: kaniko # options: kaniko, buildkit, buildkit-rootless
 addNamespacePrefixToImageName: false
 
 juicefsStorageClassName: juicefs-sc
+
+buildkitS3Cache:
+  enabled: false
+  region: us-west-1
+  bucket: yatai-image-builder-cache

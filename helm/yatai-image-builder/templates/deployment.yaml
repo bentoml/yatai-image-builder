@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: {{ include "yatai-image-builder.fullname" . }}
   namespace: {{ .Release.Namespace }}
+  annotations:
+    rollme: {{ randAlphaNum 5 | quote }}
   labels:
     {{- include "yatai-image-builder.labels" . | nindent 4 }}
 spec:
