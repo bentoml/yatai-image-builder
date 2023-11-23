@@ -445,6 +445,8 @@ func (r *BentoRequestReconciler) ensureImageExists(ctx context.Context, opt ensu
 
 	if isSeparateModels(opt.bentoRequest) {
 		jobLabels[KubeLabelYataiImageBuilderSeparateModels] = commonconsts.KubeLabelValueTrue
+	} else {
+		jobLabels[KubeLabelYataiImageBuilderSeparateModels] = commonconsts.KubeLabelValueFalse
 	}
 
 	jobs := &batchv1.JobList{}
@@ -1435,6 +1437,8 @@ func (r *BentoRequestReconciler) getImageBuilderJobLabels(bentoRequest *resource
 
 	if isSeparateModels(bentoRequest) {
 		labels[KubeLabelYataiImageBuilderSeparateModels] = commonconsts.KubeLabelValueTrue
+	} else {
+		labels[KubeLabelYataiImageBuilderSeparateModels] = commonconsts.KubeLabelValueFalse
 	}
 	return labels
 }
