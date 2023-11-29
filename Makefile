@@ -255,3 +255,6 @@ start-dev:
 
 stop-dev:
 	kubectl -n yatai-image-builder patch deploy/yatai-image-builder -p '{"spec":{"replicas":1}}'
+
+build-kaniko-image:
+	docker buildx build --platform linux/amd64,linux/arm64 -t quay.io/bentoml/kaniko:debug -f Dockerfile-kaniko --push .
