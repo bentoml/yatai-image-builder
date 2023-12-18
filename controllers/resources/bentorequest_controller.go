@@ -930,35 +930,32 @@ func CheckECRImageExists(imageName string) (bool, error) {
 	if region == "" {
 		return false, fmt.Errorf("%s is not set", commonconsts.EnvAWSECRRegion)
 	}
-	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(region)},
-	)
+
+	sess, err := session.NewSession(&aws.Config{Region: aws.String(region)})
 	if err != nil {
-		err = errors.Wrap(err, "create aws session")
-		return false, err
+		return false, errors.Wrap(err, "create aws session")
 	}
 
 	_, _, imageName_ := xstrings.Partition(imageName, "/")
 	repoName, _, tag := xstrings.Partition(imageName_, ":")
 
 	svc := ecr.New(sess)
-	input := &ecr.ListImagesInput{
+	input := &ecr.DescribeImagesInput{
 		RepositoryName: aws.String(repoName),
+		ImageIds: []*ecr.ImageIdentifier{
+			{
+				ImageTag: aws.String(tag),
+			},
+		},
 	}
 
-	result, err := svc.ListImages(input)
+	result, err := svc.DescribeImages(input)
 	if err != nil {
-		err = errors.Wrap(err, "list ECR images")
-		return false, err
+		return false, errors.Wrap(err, "describe ECR images")
 	}
 
-	for _, image := range result.ImageIds {
-		if image.ImageTag != nil && *image.ImageTag == tag {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	// If result contains any images, the specified image exists.
+	return len(result.ImageDetails) > 0, nil
 }
 
 type BentoImageBuildEngine string
