@@ -71,6 +71,7 @@ import (
 	yataiclient "github.com/bentoml/yatai-image-builder/yatai-client"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ecr"
 )
@@ -949,13 +950,18 @@ func CheckECRImageExists(imageName string) (bool, error) {
 		},
 	}
 
-	result, err := svc.DescribeImages(input)
+	_, err = svc.DescribeImages(input)
 	if err != nil {
+		var awsErr awserr.Error
+		if errors.As(err, &awsErr) {
+			if awsErr.Code() == "ImageNotFoundException" {
+				return false, nil
+			}
+		}
 		return false, errors.Wrap(err, "describe ECR images")
 	}
 
-	// If result contains any images, the specified image exists.
-	return len(result.ImageDetails) > 0, nil
+	return true, nil
 }
 
 type BentoImageBuildEngine string
