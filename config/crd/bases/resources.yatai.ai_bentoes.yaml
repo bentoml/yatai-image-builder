@@ -83,6 +83,8 @@ spec:
                   - tag
                   type: object
                 type: array
+              name:
+                type: string
               runners:
                 items:
                   properties:

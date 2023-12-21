@@ -246,6 +246,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		Spec: resourcesv1alpha1.BentoSpec{
 			Tag:     bentoRequest.Spec.BentoTag,
 			Image:   imageInfo.ImageName,
+			Name:    bentoRequest.Spec.Name,
 			Context: bentoRequest.Spec.Context,
 			Runners: bentoRequest.Spec.Runners,
 			Models:  bentoRequest.Spec.Models,

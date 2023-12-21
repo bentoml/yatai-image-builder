@@ -76,6 +76,8 @@ spec:
                   - tag
                   type: object
                 type: array
+              name:
+                type: string
               runners:
                 items:
                   properties:
@@ -927,6 +929,8 @@ spec:
                   - tag
                   type: object
                 type: array
+              name:
+                type: string
               ociRegistryInsecure:
                 type: boolean
               runners:
