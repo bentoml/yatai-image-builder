@@ -91,6 +91,8 @@ spec:
                   - name
                   type: object
                 type: array
+              serviceName:
+                type: string
               tag:
                 type: string
             required:
@@ -944,6 +946,8 @@ spec:
                   - name
                   type: object
                 type: array
+              serviceName:
+                type: string
             required:
             - bentoTag
             type: object

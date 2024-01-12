@@ -244,11 +244,12 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			Namespace: bentoRequest.Namespace,
 		},
 		Spec: resourcesv1alpha1.BentoSpec{
-			Tag:     bentoRequest.Spec.BentoTag,
-			Image:   imageInfo.ImageName,
-			Context: bentoRequest.Spec.Context,
-			Runners: bentoRequest.Spec.Runners,
-			Models:  bentoRequest.Spec.Models,
+			Tag:         bentoRequest.Spec.BentoTag,
+			Image:       imageInfo.ImageName,
+			ServiceName: bentoRequest.Spec.ServiceName,
+			Context:     bentoRequest.Spec.Context,
+			Runners:     bentoRequest.Spec.Runners,
+			Models:      bentoRequest.Spec.Models,
 		},
 	}
 

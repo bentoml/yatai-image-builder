@@ -56,10 +56,11 @@ type BentoSpec struct {
 	// +kubebuilder:validation:Required
 	Tag string `json:"tag"`
 	// +kubebuilder:validation:Required
-	Image   string        `json:"image"`
-	Context *BentoContext `json:"context,omitempty"`
-	Runners []BentoRunner `json:"runners,omitempty"`
-	Models  []BentoModel  `json:"models,omitempty"`
+	Image       string        `json:"image"`
+	ServiceName string        `json:"serviceName,omitempty"`
+	Context     *BentoContext `json:"context,omitempty"`
+	Runners     []BentoRunner `json:"runners,omitempty"`
+	Models      []BentoModel  `json:"models,omitempty"`
 
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 }
