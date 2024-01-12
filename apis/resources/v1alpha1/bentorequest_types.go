@@ -58,6 +58,7 @@ type BentoRequestSpec struct {
 	// +kubebuilder:validation:Required
 	BentoTag    string        `json:"bentoTag"`
 	DownloadURL string        `json:"downloadUrl,omitempty"`
+	ServiceName string        `json:"serviceName,omitempty"`
 	Context     *BentoContext `json:"context,omitempty"`
 	Runners     []BentoRunner `json:"runners,omitempty"`
 	Models      []BentoModel  `json:"models,omitempty"`
