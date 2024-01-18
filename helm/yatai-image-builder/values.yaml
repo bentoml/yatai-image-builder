@@ -113,3 +113,6 @@ buildkitS3Cache:
   enabled: false
   region: us-west-1
   bucket: yatai-image-builder-cache
+
+estargz:
+  enabled: false
