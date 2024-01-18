@@ -338,6 +338,10 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return
 }
 
+func isEstargzEnabled() bool {
+	return os.Getenv("ESTARGZ_ENABLED") == commonconsts.KubeLabelValueTrue
+}
+
 type ensureImageExistsOption struct {
 	bentoRequest *resourcesv1alpha1.BentoRequest
 	req          ctrl.Request
@@ -1237,6 +1241,9 @@ func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegis
 	separateModels := isSeparateModels(bentoRequest)
 	if separateModels {
 		tail += ".nomodels"
+	}
+	if isEstargzEnabled() {
+		tail += ".esgz"
 	}
 	if isAddNamespacePrefix() {
 		tag = fmt.Sprintf("yatai.%s.%s", bentoRequest.Namespace, tail)
@@ -2432,7 +2439,7 @@ echo "Done"
 	dockerFilePath := "/workspace/buildcontext/env/docker/Dockerfile"
 
 	builderContainerEnvFrom := make([]corev1.EnvFromSource, 0)
-	envs := []corev1.EnvVar{
+	builderContainerEnvs := []corev1.EnvVar{
 		{
 			Name:  "DOCKER_CONFIG",
 			Value: "/kaniko/.docker/",
@@ -2444,19 +2451,12 @@ echo "Done"
 	}
 
 	if UsingAWSECRWithIAMRole() {
-		envs = append(envs, corev1.EnvVar{
+		builderContainerEnvs = append(builderContainerEnvs, corev1.EnvVar{
 			Name:  "AWS_REGION",
 			Value: GetAWSECRRegion(),
 		}, corev1.EnvVar{
 			Name:  "AWS_SDK_LOAD_CONFIG",
 			Value: "true",
-		})
-	}
-
-	if !privileged {
-		envs = append(envs, corev1.EnvVar{
-			Name:  "BUILDKITD_FLAGS",
-			Value: "--oci-worker-no-process-sandbox",
 		})
 	}
 
@@ -2477,6 +2477,12 @@ echo "Done"
 	switch buildEngine {
 	case BentoImageBuildEngineKaniko:
 		builderImage = internalImages.Kaniko
+		if isEstargzEnabled() {
+			builderContainerEnvs = append(builderContainerEnvs, corev1.EnvVar{
+				Name:  "GGCR_EXPERIMENT_ESTARGZ",
+				Value: "1",
+			})
+		}
 	case BentoImageBuildEngineBuildkit:
 		builderImage = internalImages.Buildkit
 	case BentoImageBuildEngineBuildkitRootless:
@@ -2489,6 +2495,19 @@ echo "Done"
 	isBuildkit := buildEngine == BentoImageBuildEngineBuildkit || buildEngine == BentoImageBuildEngineBuildkitRootless
 
 	if isBuildkit {
+		buildkitdFlags := []string{}
+		if !privileged {
+			buildkitdFlags = append(buildkitdFlags, "--oci-worker-no-process-sandbox")
+		}
+		if isEstargzEnabled() {
+			buildkitdFlags = append(buildkitdFlags, "--oci-worker-snapshotter=stargz")
+		}
+		if len(buildkitdFlags) > 0 {
+			builderContainerEnvs = append(builderContainerEnvs, corev1.EnvVar{
+				Name:  "BUILDKITD_FLAGS",
+				Value: strings.Join(buildkitdFlags, " "),
+			})
+		}
 		command = []string{"buildctl-daemonless.sh"}
 		args = []string{
 			"build",
@@ -2636,7 +2655,7 @@ echo "Done"
 
 		for key := range buildArgsSecret.Data {
 			envName := fmt.Sprintf("BENTOML_BUILD_ARG_%s", strings.ReplaceAll(strings.ToUpper(strcase.ToKebab(key)), "-", "_"))
-			envs = append(envs, corev1.EnvVar{
+			builderContainerEnvs = append(builderContainerEnvs, corev1.EnvVar{
 				Name: envName,
 				ValueFrom: &corev1.EnvVarSource{
 					SecretKeyRef: &corev1.SecretKeySelector{
@@ -2670,7 +2689,7 @@ echo "Done"
 		Command:         []string{"sh"},
 		Args:            builderContainerArgs,
 		VolumeMounts:    volumeMounts,
-		Env:             envs,
+		Env:             builderContainerEnvs,
 		EnvFrom:         builderContainerEnvFrom,
 		TTY:             true,
 		Stdin:           true,
