@@ -81,6 +81,8 @@ const (
 	YataiImageBuilderAWSAccessKeySecretName  = "yatai-image-builder-aws-access-key"
 	KubeAnnotationBentoRequestHash           = "yatai.ai/bento-request-hash"
 	KubeLabelYataiImageBuilderSeparateModels = "yatai.ai/yatai-image-builder-separate-models"
+	KubeAnnotationBentoStorageNS             = "yatai.ai/bento-storage-namepsace"
+	KubeAnnotationModelStorageNS             = "yatai.ai/model-storage-namepsace"
 )
 
 // BentoRequestReconciler reconciles a BentoRequest object
@@ -258,9 +260,10 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			commonconsts.KubeAnnotationYataiImageBuilderSeparateModels: commonconsts.KubeLabelValueTrue,
 			commonconsts.KubeAnnotationAWSAccessKeySecretName:          bentoRequest.Annotations[commonconsts.KubeAnnotationAWSAccessKeySecretName],
 		}
-		if isAddNamespacePrefix() {
+		if isAddNamespacePrefix() { // deprecated
 			bentoCR.Annotations[commonconsts.KubeAnnotationIsMultiTenancy] = commonconsts.KubeLabelValueTrue
 		}
+		bentoCR.Annotations[KubeAnnotationModelStorageNS] = bentoRequest.Annotations[KubeAnnotationModelStorageNS]
 	}
 
 	err = ctrl.SetControllerReference(bentoRequest, bentoCR, r.Scheme)
@@ -1227,6 +1230,34 @@ func isAddNamespacePrefix() bool {
 	return os.Getenv("ADD_NAMESPACE_PREFIX_TO_IMAGE_NAME") == trueStr
 }
 
+func getBentoImagePrefix(bentoRequest *resourcesv1alpha1.BentoRequest) string {
+	if bentoRequest == nil {
+		return ""
+	}
+	prefix, exist := bentoRequest.Annotations[KubeAnnotationBentoStorageNS]
+	if exist && prefix != "" {
+		return fmt.Sprintf("%s.", prefix)
+	}
+	if isAddNamespacePrefix() {
+		return fmt.Sprintf("%s.", bentoRequest.Namespace)
+	}
+	return ""
+}
+
+func getModelPrefix(bentoRequest *resourcesv1alpha1.BentoRequest, delimiter string) string {
+	if bentoRequest == nil {
+		return ""
+	}
+	prefix, exist := bentoRequest.Annotations[KubeAnnotationModelStorageNS]
+	if exist && prefix != "" {
+		return fmt.Sprintf("%s%s", prefix, delimiter)
+	}
+	if isAddNamespacePrefix() {
+		return fmt.Sprintf("%s%s", bentoRequest.Namespace, delimiter)
+	}
+	return ""
+}
+
 func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegistry modelschemas.DockerRegistrySchema, bentoRepositoryName, bentoVersion string, inCluster bool) string {
 	if bentoRequest != nil && bentoRequest.Spec.Image != "" {
 		return bentoRequest.Spec.Image
@@ -1245,24 +1276,14 @@ func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegis
 	if isEstargzEnabled() {
 		tail += ".esgz"
 	}
-	if isAddNamespacePrefix() {
-		tag = fmt.Sprintf("yatai.%s.%s", bentoRequest.Namespace, tail)
-	} else {
-		tag = fmt.Sprintf("yatai.%s", tail)
-	}
+
+	tag = fmt.Sprintf("yatai.%s%s", getBentoImagePrefix(bentoRequest), tail)
+
 	if len(tag) > 128 {
 		hashStr := hash(tail)
-		if isAddNamespacePrefix() {
-			tag = fmt.Sprintf("yatai.%s.%s", bentoRequest.Namespace, hashStr)
-		} else {
-			tag = fmt.Sprintf("yatai.%s", hashStr)
-		}
+		tag = fmt.Sprintf("yatai.%s%s", getBentoImagePrefix(bentoRequest), hashStr)
 		if len(tag) > 128 {
-			if isAddNamespacePrefix() {
-				tag = fmt.Sprintf("yatai.%s", hash(fmt.Sprintf("%s.%s", bentoRequest.Namespace, tail)))[:128]
-			} else {
-				tag = fmt.Sprintf("yatai.%s", hash(tail))[:128]
-			}
+			tag = fmt.Sprintf("yatai.%s", hash(fmt.Sprintf("%s%s", getBentoImagePrefix(bentoRequest), tail)))[:128]
 		}
 	}
 	return fmt.Sprintf("%s:%s", uri, tag)
@@ -1473,12 +1494,7 @@ func hash(text string) string {
 
 func (r *BentoRequestReconciler) getModelPVCName(bentoRequest *resourcesv1alpha1.BentoRequest, model *resourcesv1alpha1.BentoModel) string {
 	storageClassName := getJuiceFSStorageClassName()
-	var hashStr string
-	if isAddNamespacePrefix() {
-		hashStr = hash(fmt.Sprintf("%s:%s:%s", storageClassName, bentoRequest.Namespace, model.Tag))
-	} else {
-		hashStr = hash(fmt.Sprintf("%s:%s", storageClassName, model.Tag))
-	}
+	hashStr := hash(fmt.Sprintf("%s:%s%s", storageClassName, getModelPrefix(bentoRequest, ":"), model.Tag))
 	pvcName := fmt.Sprintf("model-seeder-%s", hashStr)
 	if len(pvcName) > 63 {
 		pvcName = pvcName[:63]
@@ -1488,9 +1504,12 @@ func (r *BentoRequestReconciler) getModelPVCName(bentoRequest *resourcesv1alpha1
 
 func (r *BentoRequestReconciler) getJuiceFSModelPath(bentoRequest *resourcesv1alpha1.BentoRequest, model *resourcesv1alpha1.BentoModel) string {
 	modelRepositoryName, _, modelVersion := xstrings.Partition(model.Tag, ":")
-	path := fmt.Sprintf("models/.shared/%s/%s", modelRepositoryName, modelVersion)
-	if isAddNamespacePrefix() {
-		path = fmt.Sprintf("models/%s/%s/%s", bentoRequest.Namespace, modelRepositoryName, modelVersion)
+	prefix := getModelPrefix(bentoRequest, "/")
+	var path string
+	if prefix == "" {
+		path = fmt.Sprintf("models/.shared/%s/%s", modelRepositoryName, modelVersion)
+	} else {
+		path = fmt.Sprintf("models/%s%s/%s", prefix, modelRepositoryName, modelVersion)
 	}
 	return path
 }
@@ -2524,10 +2543,7 @@ echo "Done"
 		if buildkitS3CacheEnabled {
 			buildkitS3CacheRegion := os.Getenv("BUILDKIT_S3_CACHE_REGION")
 			buildkitS3CacheBucket := os.Getenv("BUILDKIT_S3_CACHE_BUCKET")
-			cachedImageName := bentoRepositoryName
-			if isAddNamespacePrefix() {
-				cachedImageName = fmt.Sprintf("%s.%s", opt.BentoRequest.Namespace, bentoRepositoryName)
-			}
+			cachedImageName := fmt.Sprintf("%s%s", getBentoImagePrefix(opt.BentoRequest), bentoRepositoryName)
 			args = append(args, "--cache-from", fmt.Sprintf("type=s3,region=%s,bucket=%s,name=%s", buildkitS3CacheRegion, buildkitS3CacheBucket, cachedImageName))
 			args = append(args, "--cache-to", fmt.Sprintf("type=s3,region=%s,bucket=%s,name=%s,mode=max,compression=zstd,ignore-error=true", buildkitS3CacheRegion, buildkitS3CacheBucket, cachedImageName))
 			if awsAccessKeySecretName == "" {
