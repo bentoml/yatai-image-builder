@@ -78,11 +78,11 @@ import (
 
 const (
 	// nolint: gosec
-	YataiImageBuilderAWSAccessKeySecretName        = "yatai-image-builder-aws-access-key"
-	KubeAnnotationBentoRequestHash                 = "yatai.ai/bento-request-hash"
-	KubeLabelYataiImageBuilderSeparateModels       = "yatai.ai/yatai-image-builder-separate-models"
-	KubeAnnotationBentoStorageNS                   = "yatai.ai/bento-storage-namepsace"
-	KubeAnnotationModelStorageNS                   = "yatai.ai/model-storage-namepsace"
+	YataiImageBuilderAWSAccessKeySecretName  = "yatai-image-builder-aws-access-key"
+	KubeAnnotationBentoRequestHash           = "yatai.ai/bento-request-hash"
+	KubeLabelYataiImageBuilderSeparateModels = "yatai.ai/yatai-image-builder-separate-models"
+	KubeAnnotationBentoStorageNS             = "yatai.ai/bento-storage-namepsace"
+	KubeAnnotationModelStorageNS             = "yatai.ai/model-storage-namepsace"
 )
 
 // BentoRequestReconciler reconciles a BentoRequest object
@@ -260,7 +260,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			commonconsts.KubeAnnotationYataiImageBuilderSeparateModels: commonconsts.KubeLabelValueTrue,
 			commonconsts.KubeAnnotationAWSAccessKeySecretName:          bentoRequest.Annotations[commonconsts.KubeAnnotationAWSAccessKeySecretName],
 		}
-		if isAddNamespacePrefix() {  // deprecated
+		if isAddNamespacePrefix() { // deprecated
 			bentoCR.Annotations[commonconsts.KubeAnnotationIsMultiTenancy] = commonconsts.KubeLabelValueTrue
 		}
 		bentoCR.Annotations[KubeAnnotationModelStorageNS] = bentoRequest.Annotations[KubeAnnotationModelStorageNS]
@@ -1230,7 +1230,6 @@ func isAddNamespacePrefix() bool {
 	return os.Getenv("ADD_NAMESPACE_PREFIX_TO_IMAGE_NAME") == trueStr
 }
 
-
 func getBentoImagePrefix(bentoRequest *resourcesv1alpha1.BentoRequest) string {
 	if bentoRequest == nil {
 		return ""
@@ -1245,7 +1244,6 @@ func getBentoImagePrefix(bentoRequest *resourcesv1alpha1.BentoRequest) string {
 	return ""
 }
 
-
 func getModelPrefix(bentoRequest *resourcesv1alpha1.BentoRequest, delimiter string) string {
 	if bentoRequest == nil {
 		return ""
@@ -1259,7 +1257,6 @@ func getModelPrefix(bentoRequest *resourcesv1alpha1.BentoRequest, delimiter stri
 	}
 	return ""
 }
-
 
 func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegistry modelschemas.DockerRegistrySchema, bentoRepositoryName, bentoVersion string, inCluster bool) string {
 	if bentoRequest != nil && bentoRequest.Spec.Image != "" {
