@@ -78,9 +78,10 @@ import (
 
 const (
 	// nolint: gosec
-	YataiImageBuilderAWSAccessKeySecretName  = "yatai-image-builder-aws-access-key"
-	KubeAnnotationBentoRequestHash           = "yatai.ai/bento-request-hash"
-	KubeLabelYataiImageBuilderSeparateModels = "yatai.ai/yatai-image-builder-separate-models"
+	YataiImageBuilderAWSAccessKeySecretName        = "yatai-image-builder-aws-access-key"
+	KubeAnnotationBentoRequestHash                 = "yatai.ai/bento-request-hash"
+	KubeLabelYataiImageBuilderSeparateModels       = "yatai.ai/yatai-image-builder-separate-models"
+	KubeAnnotationYataiImageBuilderImageNamePrefix = "yatai.ai/image-builder-image-name-prefix"
 )
 
 // BentoRequestReconciler reconciles a BentoRequest object
@@ -1227,6 +1228,7 @@ func isAddNamespacePrefix() bool {
 	return os.Getenv("ADD_NAMESPACE_PREFIX_TO_IMAGE_NAME") == trueStr
 }
 
+
 func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegistry modelschemas.DockerRegistrySchema, bentoRepositoryName, bentoVersion string, inCluster bool) string {
 	if bentoRequest != nil && bentoRequest.Spec.Image != "" {
 		return bentoRequest.Spec.Image
@@ -1245,22 +1247,34 @@ func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegis
 	if isEstargzEnabled() {
 		tail += ".esgz"
 	}
-	if isAddNamespacePrefix() {
+
+	prefix, exist := bentoRequest.Annotations[KubeAnnotationYataiImageBuilderImageNamePrefix]
+	switch {
+	case exist && prefix != "":
+		tag = fmt.Sprintf("yatai.%s.%s", prefix, tail)
+	case isAddNamespacePrefix():
 		tag = fmt.Sprintf("yatai.%s.%s", bentoRequest.Namespace, tail)
-	} else {
+	default:
 		tag = fmt.Sprintf("yatai.%s", tail)
 	}
+
 	if len(tag) > 128 {
 		hashStr := hash(tail)
-		if isAddNamespacePrefix() {
+		switch {
+		case exist && prefix != "":
+			tag = fmt.Sprintf("yatai.%s.%s", prefix, hashStr)
+		case isAddNamespacePrefix():
 			tag = fmt.Sprintf("yatai.%s.%s", bentoRequest.Namespace, hashStr)
-		} else {
+		default:
 			tag = fmt.Sprintf("yatai.%s", hashStr)
 		}
 		if len(tag) > 128 {
-			if isAddNamespacePrefix() {
+			switch {
+			case exist && prefix != "":
+				tag = fmt.Sprintf("yatai.%s", hash(fmt.Sprintf("%s.%s", prefix, tail)))[:128]
+			case isAddNamespacePrefix():
 				tag = fmt.Sprintf("yatai.%s", hash(fmt.Sprintf("%s.%s", bentoRequest.Namespace, tail)))[:128]
-			} else {
+			default:
 				tag = fmt.Sprintf("yatai.%s", hash(tail))[:128]
 			}
 		}
