@@ -614,7 +614,6 @@ func (r *BentoRequestReconciler) ensureImageExists(ctx context.Context, opt ensu
 		if err != nil {
 			return
 		}
-		err = errors.Errorf("Image built failed, image builder job %s is failed", job.Name)
 		return
 	}
 
