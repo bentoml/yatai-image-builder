@@ -350,7 +350,7 @@ type ensureImageExistsOption struct {
 	req          ctrl.Request
 }
 
-func (r *BentoRequestReconciler) ensureImageExists(ctx context.Context, opt ensureImageExistsOption) (bentoRequest *resourcesv1alpha1.BentoRequest, imageInfo ImageInfo, imageExists bool, result ctrl.Result, err error) {
+func (r *BentoRequestReconciler) ensureImageExists(ctx context.Context, opt ensureImageExistsOption) (bentoRequest *resourcesv1alpha1.BentoRequest, imageInfo ImageInfo, imageExists bool, result ctrl.Result, err error) { // nolint: unparam
 	logs := log.FromContext(ctx)
 
 	bentoRequest = opt.bentoRequest
@@ -647,7 +647,7 @@ type ensureModelsExistsOption struct {
 	req          ctrl.Request
 }
 
-func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ensureModelsExistsOption) (bentoRequest *resourcesv1alpha1.BentoRequest, modelsExists bool, result ctrl.Result, err error) {
+func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ensureModelsExistsOption) (bentoRequest *resourcesv1alpha1.BentoRequest, modelsExists bool, result ctrl.Result, err error) { // nolint: unparam
 	bentoRequest = opt.bentoRequest
 	modelTags := make([]string, 0)
 	for _, model := range bentoRequest.Spec.Models {
@@ -2452,6 +2452,14 @@ echo "Done"
 		logrus.Info("passed in builder args: ", builderArgs)
 	} else {
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Configmap %s is not found in namespace %s", configCmName, configNamespace)
+	}
+
+	if buildArgs == nil {
+		buildArgs = make([]string, 0)
+	}
+
+	if opt.BentoRequest.Spec.BuildArgs != nil {
+		buildArgs = append(buildArgs, opt.BentoRequest.Spec.BuildArgs...)
 	}
 
 	dockerFilePath := "/workspace/buildcontext/env/docker/Dockerfile"
