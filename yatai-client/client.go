@@ -1,3 +1,4 @@
+// nolint: perfsprint
 package yataiclient
 
 import (

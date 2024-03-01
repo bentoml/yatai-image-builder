@@ -65,6 +65,10 @@ spec:
             properties:
               bentoTag:
                 type: string
+              buildArgs:
+                items:
+                  type: string
+                type: array
               context:
                 properties:
                   bentomlVersion:

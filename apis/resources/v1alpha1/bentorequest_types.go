@@ -69,6 +69,9 @@ type BentoRequestSpec struct {
 	ImageBuildTimeout *time.Duration `json:"imageBuildTimeout,omitempty"`
 
 	// +kubebuilder:validation:Optional
+	BuildArgs []string `json:"buildArgs,omitempty"`
+
+	// +kubebuilder:validation:Optional
 	ImageBuilderExtraPodMetadata *ExtraPodMetadata `json:"imageBuilderExtraPodMetadata,omitempty"`
 	// +kubebuilder:validation:Optional
 	ImageBuilderExtraPodSpec *ExtraPodSpec `json:"imageBuilderExtraPodSpec,omitempty"`
