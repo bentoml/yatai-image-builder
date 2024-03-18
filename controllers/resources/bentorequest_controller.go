@@ -1243,16 +1243,16 @@ func getBentoImagePrefix(bentoRequest *resourcesv1alpha1.BentoRequest) string {
 	return ""
 }
 
-func getModelPrefix(bentoRequest *resourcesv1alpha1.BentoRequest, delimiter string) string {
+func getModelNamespace(bentoRequest *resourcesv1alpha1.BentoRequest) string {
 	if bentoRequest == nil {
 		return ""
 	}
-	prefix, exist := bentoRequest.Annotations[KubeAnnotationModelStorageNS]
-	if exist && prefix != "" {
-		return fmt.Sprintf("%s%s", prefix, delimiter)
+	prefix := bentoRequest.Annotations[KubeAnnotationModelStorageNS]
+	if prefix != "" {
+		return prefix
 	}
 	if isAddNamespacePrefix() {
-		return fmt.Sprintf("%s%s", bentoRequest.Namespace, delimiter)
+		return bentoRequest.Namespace
 	}
 	return ""
 }
@@ -1493,7 +1493,13 @@ func hash(text string) string {
 
 func (r *BentoRequestReconciler) getModelPVCName(bentoRequest *resourcesv1alpha1.BentoRequest, model *resourcesv1alpha1.BentoModel) string {
 	storageClassName := getJuiceFSStorageClassName()
-	hashStr := hash(fmt.Sprintf("%s:%s%s", storageClassName, getModelPrefix(bentoRequest, ":"), model.Tag))
+	var hashStr string
+	ns := getModelNamespace(bentoRequest)
+	if ns == "" {
+		hashStr = hash(fmt.Sprintf("%s:%s", storageClassName, model.Tag))
+	} else {
+		hashStr = hash(fmt.Sprintf("%s:%s:%s", storageClassName, ns, model.Tag))
+	}
 	pvcName := fmt.Sprintf("model-seeder-%s", hashStr)
 	if len(pvcName) > 63 {
 		pvcName = pvcName[:63]
@@ -1503,12 +1509,12 @@ func (r *BentoRequestReconciler) getModelPVCName(bentoRequest *resourcesv1alpha1
 
 func (r *BentoRequestReconciler) getJuiceFSModelPath(bentoRequest *resourcesv1alpha1.BentoRequest, model *resourcesv1alpha1.BentoModel) string {
 	modelRepositoryName, _, modelVersion := xstrings.Partition(model.Tag, ":")
-	prefix := getModelPrefix(bentoRequest, "/")
+	ns := getModelNamespace(bentoRequest)
 	var path string
-	if prefix == "" {
+	if ns == "" {
 		path = fmt.Sprintf("models/.shared/%s/%s", modelRepositoryName, modelVersion)
 	} else {
-		path = fmt.Sprintf("models/%s%s/%s", prefix, modelRepositoryName, modelVersion)
+		path = fmt.Sprintf("models/%s/%s/%s", ns, modelRepositoryName, modelVersion)
 	}
 	return path
 }
