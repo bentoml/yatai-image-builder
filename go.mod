@@ -3,6 +3,7 @@ module github.com/bentoml/yatai-image-builder
 go 1.18
 
 require (
+	github.com/apparentlymart/go-shquot v0.0.1
 	github.com/aws/aws-sdk-go v1.44.152
 	github.com/bentoml/yatai-common v0.0.0-20230919163204-0803f8c923c0
 	github.com/bentoml/yatai-schemas v0.0.0-20230418023541-71c74442a90f
@@ -14,6 +15,7 @@ require (
 	github.com/onsi/gomega v1.22.1
 	github.com/pkg/errors v0.9.1
 	github.com/rs/xid v1.5.0
+	github.com/sergeymakinen/go-quote v1.1.0
 	github.com/sirupsen/logrus v1.8.1
 	k8s.io/api v0.25.0
 	k8s.io/apimachinery v0.25.0
@@ -59,7 +61,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/gnostic v0.6.8 // indirect
-	github.com/google/go-cmp v0.5.9 // indirect
+	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
@@ -84,7 +86,7 @@ require (
 	golang.org/x/mod v0.7.0 // indirect
 	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20221014153046-6fdb5e3db783 // indirect
-	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/sys v0.15.0 // indirect
 	golang.org/x/term v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/time v0.0.0-20220609170525-579cf78fd858 // indirect
