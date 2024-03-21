@@ -27,9 +27,11 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/apparentlymart/go-shquot/shquot"
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
+	"github.com/sergeymakinen/go-quote/unix"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -2613,10 +2615,11 @@ echo "Done"
 
 	// add build args to pass via --build-arg
 	for _, buildArg := range buildArgs {
+		quotedBuildArg := unix.SingleQuote.Quote(buildArg)
 		if isBuildkit {
-			args = append(args, "--opt", fmt.Sprintf("build-arg:%s", buildArg))
+			args = append(args, "--opt", fmt.Sprintf("build-arg:%s", quotedBuildArg))
 		} else {
-			args = append(args, fmt.Sprintf("--build-arg=%s", buildArg))
+			args = append(args, fmt.Sprintf("--build-arg=%s", quotedBuildArg))
 		}
 	}
 	// add other arguments to builder
@@ -2702,7 +2705,7 @@ echo "Done"
 
 	builderContainerArgs := []string{
 		"-c",
-		fmt.Sprintf("%s %s && exit 0 || exit %d", strings.Join(command, " "), strings.Join(args, " "), BuilderJobFailedExitCode),
+		fmt.Sprintf("%s && exit 0 || exit %d", shquot.POSIXShell(append(command, args...)), BuilderJobFailedExitCode),
 	}
 
 	container := corev1.Container{
