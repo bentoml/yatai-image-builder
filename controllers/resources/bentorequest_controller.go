@@ -2494,6 +2494,11 @@ echo "Done"
 		})
 	}
 
+	kanikoCacheRepo := os.Getenv("KANIKO_CACHE_REPO")
+	if kanikoCacheRepo == "" {
+		kanikoCacheRepo = opt.ImageInfo.DockerRegistry.BentosRepositoryURIInCluster
+	}
+
 	kubeAnnotations := make(map[string]string)
 	command := []string{
 		"/kaniko/executor",
@@ -2502,7 +2507,7 @@ echo "Done"
 		"--context=/workspace/buildcontext",
 		"--verbosity=info",
 		"--cache=true",
-		fmt.Sprintf("--cache-repo=%s", opt.ImageInfo.DockerRegistry.BentosRepositoryURIInCluster),
+		fmt.Sprintf("--cache-repo=%s", kanikoCacheRepo),
 		"--compressed-caching=false",
 		fmt.Sprintf("--dockerfile=%s", dockerFilePath),
 		fmt.Sprintf("--insecure=%v", dockerRegistryInsecure),
