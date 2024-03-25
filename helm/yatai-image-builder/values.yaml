@@ -114,5 +114,8 @@ buildkitS3Cache:
   region: us-west-1
   bucket: yatai-image-builder-cache
 
+kaniko:
+  cacheRepo: ''
+
 estargz:
   enabled: false
