@@ -2502,6 +2502,7 @@ echo "Done"
 		"--context=/workspace/buildcontext",
 		"--verbosity=info",
 		"--cache=true",
+		fmt.Sprintf("--cache-repo=%s", opt.ImageInfo.DockerRegistry.BentosRepositoryURIInCluster),
 		"--compressed-caching=false",
 		fmt.Sprintf("--dockerfile=%s", dockerFilePath),
 		fmt.Sprintf("--insecure=%v", dockerRegistryInsecure),
