@@ -1882,6 +1882,8 @@ echo "Done"
 		pod.Spec.ServiceAccountName = globalExtraPodSpec.ServiceAccountName
 	}
 
+	injectPodAffinity(&pod.Spec, opt.BentoRequest)
+
 	return
 }
 
@@ -1938,6 +1940,28 @@ func (r *BentoRequestReconciler) generateImageBuilderJob(ctx context.Context, op
 		return
 	}
 	return
+}
+
+func injectPodAffinity(podSpec *corev1.PodSpec, bentoRequest *resourcesv1alpha1.BentoRequest) {
+	if podSpec.Affinity == nil {
+		podSpec.Affinity = &corev1.Affinity{}
+	}
+
+	if podSpec.Affinity.PodAffinity == nil {
+		podSpec.Affinity.PodAffinity = &corev1.PodAffinity{}
+	}
+
+	podSpec.Affinity.PodAffinity.PreferredDuringSchedulingIgnoredDuringExecution = append(podSpec.Affinity.PodAffinity.PreferredDuringSchedulingIgnoredDuringExecution, corev1.WeightedPodAffinityTerm{
+		Weight: 100,
+		PodAffinityTerm: corev1.PodAffinityTerm{
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					commonconsts.KubeLabelBentoRequest: bentoRequest.Name,
+				},
+			},
+			TopologyKey: corev1.LabelHostname,
+		},
+	})
 }
 
 const BuilderContainerName = "builder"
@@ -2816,6 +2840,8 @@ echo "Done"
 			pod.Spec.ServiceAccountName = opt.BentoRequest.Spec.ImageBuilderExtraPodSpec.ServiceAccountName
 		}
 	}
+
+	injectPodAffinity(&pod.Spec, opt.BentoRequest)
 
 	if pod.Spec.ServiceAccountName == "" {
 		serviceAccounts := &corev1.ServiceAccountList{}
