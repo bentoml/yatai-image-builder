@@ -2530,6 +2530,8 @@ echo "Done"
 	args := []string{
 		"--context=/workspace/buildcontext",
 		"--verbosity=info",
+		"--image-fs-extract-retry=3",
+		"--image-download-retry=3",
 		"--cache=true",
 		fmt.Sprintf("--cache-repo=%s", kanikoCacheRepo),
 		"--compressed-caching=false",
