@@ -1758,7 +1758,7 @@ fi
 
 mkdir -p {{.ModelDirPath}}
 url="{{.ModelDownloadURL}}"
-echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} tar file from ${url} to /tmp/downloaded.tar..."
+echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
 if [[ ${url} == s3://* ]]; then
 	echo "Downloading from s3..."
 	aws s3 cp ${url} /tmp/downloaded.tar
@@ -2163,7 +2163,7 @@ set -e
 
 mkdir -p /workspace/buildcontext
 url="{{.BentoDownloadURL}}"
-echo "Downloading bento {{.BentoRepositoryName}}:{{.BentoVersion}} tar file from ${url} to /tmp/downloaded.tar..."
+echo "Downloading bento {{.BentoRepositoryName}}:{{.BentoVersion}} to /tmp/downloaded.tar..."
 if [[ ${url} == s3://* ]]; then
 	echo "Downloading from s3..."
 	aws s3 cp ${url} /tmp/downloaded.tar
@@ -2338,7 +2338,7 @@ set -e
 
 mkdir -p {{.ModelDirPath}}
 url="{{.ModelDownloadURL}}"
-echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} tar file from ${url} to /tmp/downloaded.tar..."
+echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
 if [[ ${url} == s3://* ]]; then
 	echo "Downloading from s3..."
 	aws s3 cp ${url} /tmp/downloaded.tar
