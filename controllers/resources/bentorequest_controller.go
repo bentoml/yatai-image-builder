@@ -80,11 +80,15 @@ import (
 
 const (
 	// nolint: gosec
-	YataiImageBuilderAWSAccessKeySecretName  = "yatai-image-builder-aws-access-key"
+	YataiImageBuilderAWSAccessKeySecretName = "yatai-image-builder-aws-access-key"
+	// nolint: gosec
+	YataiImageBuilderGCPAccessKeySecretName  = "yatai-image-builder-gcp-access-key"
 	KubeAnnotationBentoRequestHash           = "yatai.ai/bento-request-hash"
 	KubeLabelYataiImageBuilderSeparateModels = "yatai.ai/yatai-image-builder-separate-models"
 	KubeAnnotationBentoStorageNS             = "yatai.ai/bento-storage-namepsace"
 	KubeAnnotationModelStorageNS             = "yatai.ai/model-storage-namepsace"
+	StoreSchemaAWS                           = "aws"
+	StoreSchemaGCP                           = "gcp"
 )
 
 // BentoRequestReconciler reconciles a BentoRequest object
@@ -1762,6 +1766,9 @@ echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downl
 if [[ ${url} == s3://* ]]; then
 	echo "Downloading from s3..."
 	aws s3 cp ${url} /tmp/downloaded.tar
+elif [[ ${url} == gs://* ]]; then
+    echo "Downloading from GCS..."
+    gsutil cp ${url} /tmp/downloaded.tar
 else
 	curl --fail -L -H "{{.ModelDownloadHeader}}" ${url} --output /tmp/downloaded.tar --progress-bar
 fi
@@ -2118,39 +2125,6 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is updated in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
 		}
 	}
-
-	// nolint: gosec
-	awsAccessKeySecretName := opt.BentoRequest.Annotations[commonconsts.KubeAnnotationAWSAccessKeySecretName]
-	if awsAccessKeySecretName == "" {
-		awsAccessKeyID := os.Getenv(commonconsts.EnvAWSAccessKeyID)
-		awsSecretAccessKey := os.Getenv(commonconsts.EnvAWSSecretAccessKey)
-		if awsAccessKeyID != "" && awsSecretAccessKey != "" {
-			// nolint: gosec
-			awsAccessKeySecretName = YataiImageBuilderAWSAccessKeySecretName
-			stringData := map[string]string{
-				commonconsts.EnvAWSAccessKeyID:     awsAccessKeyID,
-				commonconsts.EnvAWSSecretAccessKey: awsSecretAccessKey,
-			}
-			awsAccessKeySecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      awsAccessKeySecretName,
-					Namespace: opt.BentoRequest.Namespace,
-				},
-				StringData: stringData,
-			}
-			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Creating or updating secret %s in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
-			_, err = controllerutil.CreateOrUpdate(ctx, r.Client, awsAccessKeySecret, func() error {
-				awsAccessKeySecret.StringData = stringData
-				return nil
-			})
-			if err != nil {
-				err = errors.Wrapf(err, "failed to create or update secret %s", awsAccessKeySecretName)
-				return
-			}
-			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is created or updated in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
-		}
-	}
-
 	internalImages := commonconfig.GetInternalImages()
 	logrus.Infof("Image builder is using the images %v", *internalImages)
 
@@ -2167,6 +2141,9 @@ echo "Downloading bento {{.BentoRepositoryName}}:{{.BentoVersion}} to /tmp/downl
 if [[ ${url} == s3://* ]]; then
 	echo "Downloading from s3..."
 	aws s3 cp ${url} /tmp/downloaded.tar
+elif [[ ${url} == gs://* ]]; then
+	echo "Downloading from GCS..."
+	gsutil cp ${url} /tmp/downloaded.tar
 else
 	curl --fail -L -H "{{.BentoDownloadHeader}}" ${url} --output /tmp/downloaded.tar --progress-bar
 fi
@@ -2226,14 +2203,91 @@ echo "Done"
 		})
 	}
 
-	if awsAccessKeySecretName != "" {
-		downloaderContainerEnvFrom = append(downloaderContainerEnvFrom, corev1.EnvFromSource{
-			SecretRef: &corev1.SecretEnvSource{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: awsAccessKeySecretName,
+	storeSchema := StoreSchemaAWS
+	if strings.HasPrefix(bentoDownloadURL, "gs") {
+		storeSchema = StoreSchemaGCP
+	}
+	var awsAccessKeySecretName, gcpAccessKeySecretName string
+	if storeSchema == StoreSchemaAWS {
+		// nolint: gosec
+		awsAccessKeySecretName = opt.BentoRequest.Annotations[commonconsts.KubeAnnotationAWSAccessKeySecretName]
+		if awsAccessKeySecretName == "" {
+			awsAccessKeyID := os.Getenv(commonconsts.EnvAWSAccessKeyID)
+			awsSecretAccessKey := os.Getenv(commonconsts.EnvAWSSecretAccessKey)
+			if awsAccessKeyID != "" && awsSecretAccessKey != "" {
+				// nolint: gosec
+				awsAccessKeySecretName = YataiImageBuilderAWSAccessKeySecretName
+				stringData := map[string]string{
+					commonconsts.EnvAWSAccessKeyID:     awsAccessKeyID,
+					commonconsts.EnvAWSSecretAccessKey: awsSecretAccessKey,
+				}
+				awsAccessKeySecret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      awsAccessKeySecretName,
+						Namespace: opt.BentoRequest.Namespace,
+					},
+					StringData: stringData,
+				}
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Creating or updating secret %s in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
+				_, err = controllerutil.CreateOrUpdate(ctx, r.Client, awsAccessKeySecret, func() error {
+					awsAccessKeySecret.StringData = stringData
+					return nil
+				})
+				if err != nil {
+					err = errors.Wrapf(err, "failed to create or update secret %s", awsAccessKeySecretName)
+					return
+				}
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is created or updated in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
+			}
+		} else {
+			downloaderContainerEnvFrom = append(downloaderContainerEnvFrom, corev1.EnvFromSource{
+				SecretRef: &corev1.SecretEnvSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: awsAccessKeySecretName,
+					},
 				},
-			},
-		})
+			})
+		}
+	} else {
+		// nolint: gosec
+		gcpAccessKeySecretName = opt.BentoRequest.Annotations[commonconsts.KubeAnnotationGCPAccessKeySecretName]
+		if gcpAccessKeySecretName == "" {
+			gcpAccessKeyID := os.Getenv(commonconsts.EnvGCPAccessKeyID)
+			gcpSecretAccessKey := os.Getenv(commonconsts.EnvGCPSecretAccessKey)
+			if gcpAccessKeyID != "" && gcpSecretAccessKey != "" {
+				// nolint: gosec
+				gcpAccessKeySecretName = YataiImageBuilderGCPAccessKeySecretName
+				stringData := map[string]string{
+					commonconsts.EnvGCPAccessKeyID:     gcpAccessKeyID,
+					commonconsts.EnvGCPSecretAccessKey: gcpSecretAccessKey,
+				}
+				gcpAccessKeySecret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      gcpAccessKeySecretName,
+						Namespace: opt.BentoRequest.Namespace,
+					},
+					StringData: stringData,
+				}
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Creating or updating secret %s in namespace %s", gcpAccessKeySecretName, opt.BentoRequest.Namespace)
+				_, err = controllerutil.CreateOrUpdate(ctx, r.Client, gcpAccessKeySecret, func() error {
+					gcpAccessKeySecret.StringData = stringData
+					return nil
+				})
+				if err != nil {
+					err = errors.Wrapf(err, "failed to create or update secret %s", gcpAccessKeySecretName)
+					return
+				}
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is created or updated in namespace %s", gcpAccessKeySecretName, opt.BentoRequest.Namespace)
+			}
+		} else {
+			downloaderContainerEnvFrom = append(downloaderContainerEnvFrom, corev1.EnvFromSource{
+				SecretRef: &corev1.SecretEnvSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: gcpAccessKeySecretName,
+					},
+				},
+			})
+		}
 	}
 
 	initContainers := []corev1.Container{
@@ -2342,6 +2396,9 @@ echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downl
 if [[ ${url} == s3://* ]]; then
 	echo "Downloading from s3..."
 	aws s3 cp ${url} /tmp/downloaded.tar
+elif [[ ${url} == gs://* ]]; then
+	echo "Downloading from GCS..."
+	gsutil cp ${url} /tmp/downloaded.tar
 else
 	curl --fail -L -H "{{.ModelDownloadHeader}}" ${url} --output /tmp/downloaded.tar --progress-bar
 fi
@@ -2593,40 +2650,19 @@ echo "Done"
 			cachedImageName := fmt.Sprintf("%s%s", getBentoImagePrefix(opt.BentoRequest), bentoRepositoryName)
 			args = append(args, "--cache-from", fmt.Sprintf("type=s3,region=%s,bucket=%s,name=%s", buildkitS3CacheRegion, buildkitS3CacheBucket, cachedImageName))
 			args = append(args, "--cache-to", fmt.Sprintf("type=s3,region=%s,bucket=%s,name=%s,mode=max,compression=zstd,ignore-error=true", buildkitS3CacheRegion, buildkitS3CacheBucket, cachedImageName))
-			if awsAccessKeySecretName == "" {
-				awsAccessKeyID := os.Getenv(commonconsts.EnvAWSAccessKeyID)
-				awsSecretAccessKey := os.Getenv(commonconsts.EnvAWSSecretAccessKey)
-				if awsAccessKeyID != "" && awsSecretAccessKey != "" {
-					// nolint: gosec
-					awsAccessKeySecretName = YataiImageBuilderAWSAccessKeySecretName
-					stringData := map[string]string{
-						commonconsts.EnvAWSAccessKeyID:     awsAccessKeyID,
-						commonconsts.EnvAWSSecretAccessKey: awsSecretAccessKey,
-					}
-					awsAccessKeySecret := &corev1.Secret{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      awsAccessKeySecretName,
-							Namespace: opt.BentoRequest.Namespace,
-						},
-						StringData: stringData,
-					}
-					r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Creating or updating secret %s in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
-					_, err = controllerutil.CreateOrUpdate(ctx, r.Client, awsAccessKeySecret, func() error {
-						awsAccessKeySecret.StringData = stringData
-						return nil
-					})
-					if err != nil {
-						err = errors.Wrapf(err, "failed to create or update secret %s", awsAccessKeySecretName)
-						return
-					}
-					r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is created or updated in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
-				}
-			}
-			if awsAccessKeySecretName != "" {
+			if storeSchema == StoreSchemaAWS && awsAccessKeySecretName != "" {
 				builderContainerEnvFrom = append(builderContainerEnvFrom, corev1.EnvFromSource{
 					SecretRef: &corev1.SecretEnvSource{
 						LocalObjectReference: corev1.LocalObjectReference{
 							Name: awsAccessKeySecretName,
+						},
+					},
+				})
+			} else if gcpAccessKeySecretName != "" {
+				builderContainerEnvFrom = append(builderContainerEnvFrom, corev1.EnvFromSource{
+					SecretRef: &corev1.SecretEnvSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: gcpAccessKeySecretName,
 						},
 					},
 				})

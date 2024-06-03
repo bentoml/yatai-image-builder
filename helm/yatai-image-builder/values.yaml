@@ -96,6 +96,11 @@ aws:
   secretAccessKey: ''
   secretAccessKeyExistingSecretName: ''
   secretAccessKeyExistingSecretKey: ''
+gcp:
+  accessKeyID: ''
+  secretAccessKey: ''
+  secretAccessKeyExistingSecretName: ''
+  secretAccessKeyExistingSecretKey: ''
 
 internalImages:
   bentoDownloader: quay.io/bentoml/bento-downloader:0.0.1
