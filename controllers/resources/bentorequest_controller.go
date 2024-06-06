@@ -2596,6 +2596,12 @@ echo "Done"
 		fmt.Sprintf("--insecure=%v", dockerRegistryInsecure),
 		fmt.Sprintf("--destination=%s", inClusterImageName),
 	}
+
+	kanikoSnapshotMode := os.Getenv("KANIKO_SNAPSHOT_MODE")
+	if kanikoSnapshotMode != "" {
+		args = append(args, fmt.Sprintf("--snapshot-mode=%s", kanikoSnapshotMode))
+	}
+
 	var builderImage string
 	switch buildEngine {
 	case BentoImageBuildEngineKaniko:

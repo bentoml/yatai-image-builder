@@ -121,6 +121,7 @@ buildkitS3Cache:
 
 kaniko:
   cacheRepo: ''
+  snapshotMode: '' # options: full, redo, time
 
 estargz:
   enabled: false
