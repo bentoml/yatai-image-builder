@@ -2652,8 +2652,8 @@ echo "Done"
 			buildkitS3CacheRegion := os.Getenv("BUILDKIT_S3_CACHE_REGION")
 			buildkitS3CacheBucket := os.Getenv("BUILDKIT_S3_CACHE_BUCKET")
 			cachedImageName := fmt.Sprintf("%s%s", getBentoImagePrefix(opt.BentoRequest), bentoRepositoryName)
-			args = append(args, "--cache-from", fmt.Sprintf("type=s3,region=%s,bucket=%s,name=%s", buildkitS3CacheRegion, buildkitS3CacheBucket, cachedImageName))
-			args = append(args, "--cache-to", fmt.Sprintf("type=s3,region=%s,bucket=%s,name=%s,mode=max,compression=zstd,ignore-error=true", buildkitS3CacheRegion, buildkitS3CacheBucket, cachedImageName))
+			args = append(args, "--import-cache", fmt.Sprintf("type=s3,region=%s,bucket=%s,name=%s", buildkitS3CacheRegion, buildkitS3CacheBucket, cachedImageName))
+			args = append(args, "--export-cache", fmt.Sprintf("type=s3,region=%s,bucket=%s,name=%s,mode=max,compression=zstd,ignore-error=true", buildkitS3CacheRegion, buildkitS3CacheBucket, cachedImageName))
 			if storeSchema == StoreSchemaAWS && awsAccessKeySecretName != "" {
 				builderContainerEnvFrom = append(builderContainerEnvFrom, corev1.EnvFromSource{
 					SecretRef: &corev1.SecretEnvSource{
@@ -2671,6 +2671,13 @@ echo "Done"
 					},
 				})
 			}
+		} else {
+			cacheRepo := os.Getenv("BUILDKIT_CACHE_REPO")
+			if cacheRepo == "" {
+				cacheRepo = opt.ImageInfo.DockerRegistry.BentosRepositoryURIInCluster
+			}
+			args = append(args, "--export-cache", fmt.Sprintf("type=registry,ref=%s:buildcache,mode=max,compression=zstd,ignore-error=true", cacheRepo))
+			args = append(args, "--import-cache", fmt.Sprintf("type=registry,ref=%s:buildcache", cacheRepo))
 		}
 	}
 
