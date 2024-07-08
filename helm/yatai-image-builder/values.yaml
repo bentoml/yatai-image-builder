@@ -114,10 +114,12 @@ addNamespacePrefixToImageName: false
 
 juicefsStorageClassName: juicefs-sc
 
-buildkitS3Cache:
-  enabled: false
-  region: us-west-1
-  bucket: yatai-image-builder-cache
+buildkit:
+  cacheRepo: ''
+  s3Cache:
+    enabled: false
+    region: us-west-1
+    bucket: yatai-image-builder-cache
 
 kaniko:
   cacheRepo: ''
