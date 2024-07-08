@@ -1353,10 +1353,6 @@ type GetImageInfoOption struct {
 
 func (r *BentoRequestReconciler) getImageInfo(ctx context.Context, opt GetImageInfoOption) (imageInfo ImageInfo, err error) {
 	bentoRepositoryName, _, bentoVersion := xstrings.Partition(opt.BentoRequest.Spec.BentoTag, ":")
-	if err != nil {
-		err = errors.Wrap(err, "create kubernetes clientset")
-		return
-	}
 	dockerRegistry, err := r.getDockerRegistry(ctx, opt.BentoRequest)
 	if err != nil {
 		err = errors.Wrap(err, "get docker registry")
@@ -2624,12 +2620,14 @@ echo "Done"
 	isBuildkit := buildEngine == BentoImageBuildEngineBuildkit || buildEngine == BentoImageBuildEngineBuildkitRootless
 
 	if isBuildkit {
+		output := fmt.Sprintf("type=image,name=%s,push=true,registry.insecure=%v", inClusterImageName, dockerRegistryInsecure)
 		buildkitdFlags := []string{}
 		if !privileged {
 			buildkitdFlags = append(buildkitdFlags, "--oci-worker-no-process-sandbox")
 		}
 		if isEstargzEnabled() {
 			buildkitdFlags = append(buildkitdFlags, "--oci-worker-snapshotter=stargz")
+			output += ",oci-mediatypes=true,compression=estargz,force-compression=true"
 		}
 		if len(buildkitdFlags) > 0 {
 			builderContainerEnvs = append(builderContainerEnvs, corev1.EnvVar{
@@ -2647,7 +2645,7 @@ echo "Done"
 			"--local",
 			fmt.Sprintf("dockerfile=%s", filepath.Dir(dockerFilePath)),
 			"--output",
-			fmt.Sprintf("type=image,name=%s,push=true,registry.insecure=%v", inClusterImageName, dockerRegistryInsecure),
+			output,
 		}
 		buildkitS3CacheEnabled := os.Getenv("BUILDKIT_S3_CACHE_ENABLED") == commonconsts.KubeLabelValueTrue
 		if buildkitS3CacheEnabled {
