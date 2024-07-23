@@ -127,3 +127,6 @@ kaniko:
 
 estargz:
   enabled: false
+
+serviceMonitor: # need prometheus crd installed
+  enabled: false
