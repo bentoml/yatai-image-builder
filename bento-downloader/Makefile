@@ -1,5 +1,5 @@
-IMAGE := quay.io/bentoml/bento-downloader:0.0.1
+IMAGE := quay.io/bentoml/bento-downloader:0.0.4
 
 build:
-	docker build -t ${IMAGE} .
+	docker buildx build --platform linux/amd64 -t ${IMAGE} .
 	docker push ${IMAGE}
