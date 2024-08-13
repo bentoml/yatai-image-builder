@@ -1766,6 +1766,8 @@ cleanup() {
 	rm -f /tmp/downloaded.tar
 }
 
+trap cleanup EXIT
+
 if [[ ${url} == hf://* ]]; then
 	mkdir -p /tmp/model
 	hf_url="${url:5}"
@@ -1774,7 +1776,7 @@ if [[ ${url} == hf://* ]]; then
 	revision=$(echo "{{.ModelTag}}" | cut -d ':' -f 2)
 	echo "Downloading model ${model_id} (endpoint=${endpoint}, revision=${revision}) from Huggingface..."
 	export HF_ENDPOINT=${endpoint}
-	huggingface-cli download ${model_id} --revision ${revision} --local-dir /tmp/model"
+	huggingface-cli download ${model_id} --revision ${revision} --local-dir /tmp/model
 	echo "Moving model to {{.ModelDirPath}}..."
 	mv /tmp/model/* {{.ModelDirPath}}
 else
@@ -1794,7 +1796,6 @@ else
 fi
 echo "Creating {{.ModelDirPath}}/.exists file..."
 touch {{.ModelDirPath}}/.exists
-trap cleanup EXIT
 echo "Done"
 `)).Execute(&modelSeedCommandOutput, map[string]interface{}{
 		"ModelDirPath":        modelDirPath,
