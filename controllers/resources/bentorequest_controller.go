@@ -1701,6 +1701,7 @@ func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.
 
 	model := opt.Model
 
+	modelTag := model.Tag
 	modelDownloadURL := model.DownloadURL
 	modelDownloadHeader := ""
 	if modelDownloadURL == "" {
@@ -1758,23 +1759,43 @@ fi
 
 mkdir -p {{.ModelDirPath}}
 url="{{.ModelDownloadURL}}"
-echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
-if [[ ${url} == s3://* ]]; then
-	echo "Downloading from s3..."
-	aws s3 cp ${url} /tmp/downloaded.tar
-elif [[ ${url} == gs://* ]]; then
-    echo "Downloading from GCS..."
-    gsutil cp ${url} /tmp/downloaded.tar
+
+cleanup() {
+	echo "Cleaning up..."
+	rm -rf /tmp/model
+	rm -f /tmp/downloaded.tar
+}
+
+trap cleanup EXIT
+
+if [[ ${url} == hf://* ]]; then
+	mkdir -p /tmp/model
+	hf_url="${url:5}"
+	model_id=$(echo "${hf_url}" | cut -d '@' -f 1)
+	endpoint=$(echo "${hf_url}" | cut -d '@' -f 2)
+	revision=$(echo "{{.ModelTag}}" | cut -d ':' -f 2)
+	echo "Downloading model ${model_id} (endpoint=${endpoint}, revision=${revision}) from Huggingface..."
+	export HF_ENDPOINT=${endpoint}
+	huggingface-cli download ${model_id} --revision ${revision} --local-dir /tmp/model
+	echo "Moving model to {{.ModelDirPath}}..."
+	mv /tmp/model/* {{.ModelDirPath}}
 else
-	curl --fail -L -H "{{.ModelDownloadHeader}}" ${url} --output /tmp/downloaded.tar --progress-bar
+	echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
+	if [[ ${url} == s3://* ]]; then
+		echo "Downloading from s3..."
+		aws s3 cp ${url} /tmp/downloaded.tar
+	elif [[ ${url} == gs://* ]]; then
+		echo "Downloading from GCS..."
+		gsutil cp ${url} /tmp/downloaded.tar
+	else
+		curl --fail -L -H "{{.ModelDownloadHeader}}" ${url} --output /tmp/downloaded.tar --progress-bar
+	fi
+	cd {{.ModelDirPath}}
+	echo "Extracting model tar file..."
+	tar -xvf /tmp/downloaded.tar
 fi
-cd {{.ModelDirPath}}
-echo "Extracting model tar file..."
-tar -xvf /tmp/downloaded.tar
 echo "Creating {{.ModelDirPath}}/.exists file..."
 touch {{.ModelDirPath}}/.exists
-echo "Removing model tar file..."
-rm /tmp/downloaded.tar
 echo "Done"
 `)).Execute(&modelSeedCommandOutput, map[string]interface{}{
 		"ModelDirPath":        modelDirPath,
@@ -1782,6 +1803,7 @@ echo "Done"
 		"ModelDownloadHeader": modelDownloadHeader,
 		"ModelRepositoryName": modelRepositoryName,
 		"ModelVersion":        modelVersion,
+		"ModelTag":            modelTag,
 	})
 	if err != nil {
 		err = errors.Wrap(err, "failed to generate download command")
