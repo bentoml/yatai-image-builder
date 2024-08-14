@@ -1,0 +1,131 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  name: bentos.resources.yatai.ai
+spec:
+  group: resources.yatai.ai
+  names:
+    kind: Bento
+    listKind: BentoList
+    plural: bentos
+    singular: bento
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Tag
+      jsonPath: .spec.tag
+      name: Tag
+      type: string
+    - description: Image
+      jsonPath: .spec.image
+      name: Image
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Bento is the Schema for the bentoes API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: BentoSpec defines the desired state of Bento
+            properties:
+              context:
+                properties:
+                  bentomlVersion:
+                    type: string
+                type: object
+              image:
+                type: string
+              imagePullSecrets:
+                items:
+                  description: |-
+                    LocalObjectReference contains enough information to let you locate the
+                    referenced object inside the same namespace.
+                  properties:
+                    name:
+                      description: |-
+                        Name of the referent.
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        TODO: Add other useful fields. apiVersion, kind, uid?
+                      type: string
+                  type: object
+                  x-kubernetes-map-type: atomic
+                type: array
+              models:
+                items:
+                  properties:
+                    downloadUrl:
+                      type: string
+                    size:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    tag:
+                      type: string
+                  required:
+                  - tag
+                  type: object
+                type: array
+              runners:
+                items:
+                  properties:
+                    modelTags:
+                      items:
+                        type: string
+                      type: array
+                    name:
+                      type: string
+                    runnableType:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              serviceName:
+                type: string
+              tag:
+                type: string
+            required:
+            - image
+            - tag
+            type: object
+          status:
+            description: BentoStatus defines the observed state of Bento
+            properties:
+              ready:
+                description: |-
+                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+                  Important: Run "make" to regenerate code after modifying this file
+                type: boolean
+            required:
+            - ready
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

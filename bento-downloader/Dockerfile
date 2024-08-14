@@ -2,6 +2,14 @@ FROM ubuntu:22.04
 
 RUN apt-get update
 RUN apt-get install -y curl jq unzip xz-utils file
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --upgrade pip
+RUN pip3 install -U "huggingface_hub[cli]"
 RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
     && unzip awscliv2.zip \
     && ./aws/install \
