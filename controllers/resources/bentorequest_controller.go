@@ -2609,6 +2609,8 @@ echo "Done"
 		"--cache=true",
 		fmt.Sprintf("--cache-repo=%s", kanikoCacheRepo),
 		"--compressed-caching=false",
+		"--compression=zstd",
+		"--compression-level=-7",
 		fmt.Sprintf("--dockerfile=%s", dockerFilePath),
 		fmt.Sprintf("--insecure=%v", dockerRegistryInsecure),
 		fmt.Sprintf("--destination=%s", inClusterImageName),
