@@ -1829,7 +1829,7 @@ echo "Done"
 		},
 		VolumeMounts: append(volumeMounts, corev1.VolumeMount{
 			Name:      pvcName,
-			MountPath: "/juicefs-workspace",
+			MountPath: modelDirPath,
 		}),
 		Resources: downloaderContainerResources,
 		EnvFrom:   downloaderContainerEnvFrom,
