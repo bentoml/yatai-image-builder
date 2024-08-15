@@ -82,13 +82,15 @@ const (
 	// nolint: gosec
 	YataiImageBuilderAWSAccessKeySecretName = "yatai-image-builder-aws-access-key"
 	// nolint: gosec
-	YataiImageBuilderGCPAccessKeySecretName  = "yatai-image-builder-gcp-access-key"
-	KubeAnnotationBentoRequestHash           = "yatai.ai/bento-request-hash"
-	KubeLabelYataiImageBuilderSeparateModels = "yatai.ai/yatai-image-builder-separate-models"
-	KubeAnnotationBentoStorageNS             = "yatai.ai/bento-storage-namepsace"
-	KubeAnnotationModelStorageNS             = "yatai.ai/model-storage-namepsace"
-	StoreSchemaAWS                           = "aws"
-	StoreSchemaGCP                           = "gcp"
+	YataiImageBuilderGCPAccessKeySecretName   = "yatai-image-builder-gcp-access-key"
+	KubeAnnotationBentoRequestHash            = "yatai.ai/bento-request-hash"
+	KubeAnnotationBentoRequestImageBuiderHash = "yatai.ai/bento-request-image-builder-hash"
+	KubeAnnotationBentoRequestModelSeederHash = "yatai.ai/bento-request-model-seeder-hash"
+	KubeLabelYataiImageBuilderSeparateModels  = "yatai.ai/yatai-image-builder-separate-models"
+	KubeAnnotationBentoStorageNS              = "yatai.ai/bento-storage-namepsace"
+	KubeAnnotationModelStorageNS              = "yatai.ai/model-storage-namepsace"
+	StoreSchemaAWS                            = "aws"
+	StoreSchemaGCP                            = "gcp"
 )
 
 // BentoRequestReconciler reconciles a BentoRequest object
@@ -1842,12 +1844,7 @@ echo "Done"
 	})
 
 	kubeAnnotations := make(map[string]string)
-	hashStr, err := r.getHashStr(opt.BentoRequest)
-	if err != nil {
-		err = errors.Wrap(err, "failed to get hash string")
-		return
-	}
-	kubeAnnotations[KubeAnnotationBentoRequestHash] = hashStr
+	kubeAnnotations[KubeAnnotationBentoRequestModelSeederHash] = opt.BentoRequest.Annotations[KubeAnnotationBentoRequestModelSeederHash]
 
 	pod = &corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
@@ -2605,12 +2602,7 @@ echo "Done"
 	}
 
 	kubeAnnotations := make(map[string]string)
-	hashStr, err := r.getHashStr(opt.BentoRequest)
-	if err != nil {
-		err = errors.Wrap(err, "failed to get hash string")
-		return
-	}
-	kubeAnnotations[KubeAnnotationBentoRequestHash] = hashStr
+	kubeAnnotations[KubeAnnotationBentoRequestImageBuiderHash] = opt.BentoRequest.Annotations[KubeAnnotationBentoRequestImageBuiderHash]
 
 	command := []string{
 		"/kaniko/executor",
