@@ -1842,6 +1842,12 @@ echo "Done"
 	})
 
 	kubeAnnotations := make(map[string]string)
+	hashStr, err := r.getHashStr(opt.BentoRequest)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get hash string")
+		return
+	}
+	kubeAnnotations[KubeAnnotationBentoRequestHash] = hashStr
 
 	pod = &corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
@@ -2599,6 +2605,13 @@ echo "Done"
 	}
 
 	kubeAnnotations := make(map[string]string)
+	hashStr, err := r.getHashStr(opt.BentoRequest)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get hash string")
+		return
+	}
+	kubeAnnotations[KubeAnnotationBentoRequestHash] = hashStr
+
 	command := []string{
 		"/kaniko/executor",
 	}
