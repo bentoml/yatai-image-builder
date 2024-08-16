@@ -204,7 +204,6 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if err != nil {
 			return
 		}
-		bentoAvailableCondition = meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable)
 	}
 
 	separateModels := isSeparateModels(bentoRequest)
