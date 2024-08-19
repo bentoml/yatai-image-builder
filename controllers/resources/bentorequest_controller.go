@@ -142,6 +142,13 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return
 	}
 
+	for _, condition := range bentoRequest.Status.Conditions {
+		if condition.Type == resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable && condition.Status == metav1.ConditionTrue {
+			logs.Info("Skip available bentorequest")
+			return
+		}
+	}
+
 	if bentoRequest.Status.Conditions == nil || len(bentoRequest.Status.Conditions) == 0 {
 		bentoRequest, err = r.setStatusConditions(ctx, req,
 			metav1.Condition{
@@ -1776,7 +1783,8 @@ if [[ ${url} == hf://* ]]; then
 	export HF_ENDPOINT=${endpoint}
 	huggingface-cli download ${model_id} --revision ${revision} --local-dir /tmp/model
 	echo "Moving model to {{.ModelDirPath}}..."
-	mv -f /tmp/model/* {{.ModelDirPath}}
+	rsync -av --delete /tmp/model/ {{.ModelDirPath}}
+	rm -rf /tmp/model
 else
 	echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
 	if [[ ${url} == s3://* ]]; then
