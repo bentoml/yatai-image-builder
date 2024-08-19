@@ -1783,7 +1783,7 @@ if [[ ${url} == hf://* ]]; then
 	export HF_ENDPOINT=${endpoint}
 	huggingface-cli download ${model_id} --revision ${revision} --local-dir /tmp/model
 	echo "Moving model to {{.ModelDirPath}}..."
-	rsync -av --delete /tmp/model/ {{.ModelDirPath}}
+	cp -Rf /tmp/model/* {{.ModelDirPath}}
 	rm -rf /tmp/model
 else
 	echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
