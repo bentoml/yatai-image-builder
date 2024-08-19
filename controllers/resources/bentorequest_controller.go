@@ -1776,7 +1776,7 @@ if [[ ${url} == hf://* ]]; then
 	export HF_ENDPOINT=${endpoint}
 	huggingface-cli download ${model_id} --revision ${revision} --local-dir /tmp/model
 	echo "Moving model to {{.ModelDirPath}}..."
-	mv /tmp/model/* {{.ModelDirPath}}
+	mv -f /tmp/model/* {{.ModelDirPath}}
 else
 	echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
 	if [[ ${url} == s3://* ]]; then
