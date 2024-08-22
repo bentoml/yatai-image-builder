@@ -238,6 +238,17 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	if !imageExists {
 		result = imageExistsResult
+		bentoRequest, err = r.setStatusConditions(ctx, req,
+			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Reconciling",
+				Message: "Bento image is building",
+			},
+		)
+		if err != nil {
+			return
+		}
 		return
 	}
 
@@ -248,6 +259,17 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	if separateModels && !modelsExists {
 		result = modelsExistsResult
+		bentoRequest, err = r.setStatusConditions(ctx, req,
+			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Reconciling",
+				Message: "Model is seeding",
+			},
+		)
+		if err != nil {
+			return
+		}
 		return
 	}
 
