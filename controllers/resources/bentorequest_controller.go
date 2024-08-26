@@ -1539,6 +1539,9 @@ func (r *BentoRequestReconciler) getModelPVCName(bentoRequest *resourcesv1alpha1
 func (r *BentoRequestReconciler) getJuiceFSModelPath(bentoRequest *resourcesv1alpha1.BentoRequest, model *resourcesv1alpha1.BentoModel) string {
 	modelRepositoryName, _, modelVersion := xstrings.Partition(model.Tag, ":")
 	ns := getModelNamespace(bentoRequest)
+	if isHuggingfaceModel(model) {
+		modelVersion = "all"
+	}
 	var path string
 	if ns == "" {
 		path = fmt.Sprintf("models/.shared/%s/%s", modelRepositoryName, modelVersion)
@@ -1546,6 +1549,10 @@ func (r *BentoRequestReconciler) getJuiceFSModelPath(bentoRequest *resourcesv1al
 		path = fmt.Sprintf("models/%s/%s/%s", ns, modelRepositoryName, modelVersion)
 	}
 	return path
+}
+
+func isHuggingfaceModel(model *resourcesv1alpha1.BentoModel) bool {
+	return strings.HasPrefix(model.DownloadURL, "hf://")
 }
 
 type GenerateModelPVCOption struct {
@@ -1803,10 +1810,7 @@ if [[ ${url} == hf://* ]]; then
 	revision=$(echo "{{.ModelTag}}" | cut -d ':' -f 2)
 	echo "Downloading model ${model_id} (endpoint=${endpoint}, revision=${revision}) from Huggingface..."
 	export HF_ENDPOINT=${endpoint}
-	huggingface-cli download ${model_id} --revision ${revision} --local-dir /tmp/model
-	echo "Moving model to {{.ModelDirPath}}..."
-	rsync -av --delete /tmp/model/ {{.ModelDirPath}}
-	rm -rf /tmp/model
+	huggingface-cli download ${model_id} --revision ${revision} --cache-dir {{.ModelDirPath}}
 else
 	echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
 	if [[ ${url} == s3://* ]]; then
@@ -1822,8 +1826,15 @@ else
 	echo "Extracting model tar file..."
 	tar -xvf /tmp/downloaded.tar
 fi
-echo "Creating {{.ModelDirPath}}/.exists file..."
-touch {{.ModelDirPath}}/.exists
+
+if [[ ${url} == hf://* ]]; then
+	echo "Creating {{.ModelDirPath}}/{{.ModelVersion}}.exists file..."
+	touch {{.ModelDirPath}}/{{.ModelVersion}}/.exists
+else
+	echo "Creating {{.ModelDirPath}}/.exists file..."
+	touch {{.ModelDirPath}}/.exists
+fi
+
 echo "Done"
 `)).Execute(&modelSeedCommandOutput, map[string]interface{}{
 		"ModelDirPath":        modelDirPath,
