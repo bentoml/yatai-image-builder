@@ -1654,7 +1654,6 @@ type GenerateModelSeederPodTemplateSpecOption struct {
 }
 
 func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.Context, opt GenerateModelSeederPodTemplateSpecOption) (pod *corev1.PodTemplateSpec, err error) {
-	modelRepositoryName, _, modelVersion := xstrings.Partition(opt.BentoRequest.Spec.BentoTag, ":")
 	kubeLabels := r.getModelSeederPodLabels(opt.BentoRequest, opt.Model)
 
 	volumes := make([]corev1.Volume, 0)
@@ -1734,8 +1733,7 @@ func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.
 	containers := make([]corev1.Container, 0)
 
 	model := opt.Model
-
-	modelTag := model.Tag
+	modelRepositoryName, _, modelVersion := xstrings.Partition(model.Tag, ":")
 	modelDownloadURL := model.DownloadURL
 	modelDownloadHeader := ""
 	if modelDownloadURL == "" {
@@ -1786,9 +1784,16 @@ func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.
 	err = template.Must(template.New("script").Parse(`
 set -e
 
-if [ -f "{{.ModelDirPath}}/.exists" ]; then
-	echo "Model {{.ModelDirPath}} already exists, skip downloading"
-	exit 0
+if [[ ${url} == hf://* ]]; then
+	if [ -f "{{.ModelDirPath}}/{{.ModelVersion}}.exists" ]; then
+		echo "Model {{.ModelDirPath}}/{{.ModelVersion}}.exists already exists, skip downloading"
+		exit 0
+	fi
+else
+	if [ -f "{{.ModelDirPath}}/.exists" ]; then
+		echo "Model {{.ModelDirPath}} already exists, skip downloading"
+		exit 0
+	fi
 fi
 
 mkdir -p {{.ModelDirPath}}
@@ -1805,12 +1810,20 @@ trap cleanup EXIT
 if [[ ${url} == hf://* ]]; then
 	mkdir -p /tmp/model
 	hf_url="${url:5}"
-	model_id=$(echo "${hf_url}" | cut -d '@' -f 1)
 	endpoint=$(echo "${hf_url}" | cut -d '@' -f 2)
-	revision=$(echo "{{.ModelTag}}" | cut -d ':' -f 2)
-	echo "Downloading model ${model_id} (endpoint=${endpoint}, revision=${revision}) from Huggingface..."
+	echo "Downloading model {{.ModelRepositoryName}} (endpoint=${endpoint}, revision={{.ModelVersion}}) from Huggingface..."
 	export HF_ENDPOINT=${endpoint}
-	huggingface-cli download ${model_id} --revision ${revision} --cache-dir {{.ModelDirPath}}
+	huggingface-cli download {{.ModelRepositoryName}} --revision {{.ModelVersion}} --local-dir /tmp/model
+	echo "Moving model to {{.ModelDirPath}}..."
+	rsync -av --include='*/' --exclude='*' /tmp/model/ {{.ModelDirPath}}
+	cd "{{.ModelDirPath}}/{{.HuggingfaceModelDir}}"
+	find . -type f -exec sh -c '
+    target="{{.ModelDirPath}}/{{.HuggingfaceModelDir}}/{}"
+    if [ ! -e "$target" ]; then
+        ln -s "$(pwd)/{}" "$target"
+    fi
+	' \;
+	rm -rf /tmp/model
 else
 	echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
 	if [[ ${url} == s3://* ]]; then
@@ -1829,7 +1842,7 @@ fi
 
 if [[ ${url} == hf://* ]]; then
 	echo "Creating {{.ModelDirPath}}/{{.ModelVersion}}.exists file..."
-	touch {{.ModelDirPath}}/{{.ModelVersion}}/.exists
+	touch {{.ModelDirPath}}/{{.ModelVersion}}.exists
 else
 	echo "Creating {{.ModelDirPath}}/.exists file..."
 	touch {{.ModelDirPath}}/.exists
@@ -1842,7 +1855,7 @@ echo "Done"
 		"ModelDownloadHeader": modelDownloadHeader,
 		"ModelRepositoryName": modelRepositoryName,
 		"ModelVersion":        modelVersion,
-		"ModelTag":            modelTag,
+		"HuggingfaceModelDir": fmt.Sprintf("models--%s", strings.ReplaceAll(modelRepositoryName, "/", "--")),
 	})
 	if err != nil {
 		err = errors.Wrap(err, "failed to generate download command")
