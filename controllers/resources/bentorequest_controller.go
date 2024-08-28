@@ -1785,8 +1785,8 @@ func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.
 set -e
 
 if [[ ${url} == hf://* ]]; then
-	if [ -f "{{.ModelDirPath}}/{{.HuggingfaceModelDir}}/{{.ModelVersion}}.exists" ]; then
-		echo "Model {{.ModelDirPath}}/{{.HuggingfaceModelDir}}/{{.ModelVersion}}.exists already exists, skip downloading"
+	if [ -f "{{.ModelDirPath}}/{{.ModelVersion}}.exists" ]; then
+		echo "Model {{.ModelDirPath}}/{{.ModelVersion}}.exists already exists, skip downloading"
 		exit 0
 	fi
 else
@@ -1841,8 +1841,8 @@ else
 fi
 
 if [[ ${url} == hf://* ]]; then
-	echo "Creating {{.ModelDirPath}}/{{.HuggingfaceModelDir}}/{{.ModelVersion}}.exists file..."
-	touch {{.ModelDirPath}}/{{.HuggingfaceModelDir}}/{{.ModelVersion}}.exists
+	echo "Creating {{.ModelDirPath}}/{{.ModelVersion}}.exists file..."
+	touch {{.ModelDirPath}}/{{.ModelVersion}}.exists
 else
 	echo "Creating {{.ModelDirPath}}/.exists file..."
 	touch {{.ModelDirPath}}/.exists
