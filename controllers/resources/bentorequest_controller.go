@@ -1785,8 +1785,8 @@ func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.
 set -e
 
 if [[ ${url} == hf://* ]]; then
-	if [ -f "{{.ModelDirPath}}/{{.ModelVersion}}.exists" ]; then
-		echo "Model {{.ModelDirPath}}/{{.ModelVersion}}.exists already exists, skip downloading"
+	if [ -f "{{.ModelDirPath}}/{{.HuggingfaceModelDir}}/{{.ModelVersion}}.exists" ]; then
+		echo "Model {{.ModelDirPath}}/{{.HuggingfaceModelDir}}/{{.ModelVersion}}.exists already exists, skip downloading"
 		exit 0
 	fi
 else
@@ -1813,12 +1813,12 @@ if [[ ${url} == hf://* ]]; then
 	endpoint=$(echo "${hf_url}" | cut -d '@' -f 2)
 	echo "Downloading model {{.ModelRepositoryName}} (endpoint=${endpoint}, revision={{.ModelVersion}}) from Huggingface..."
 	export HF_ENDPOINT=${endpoint}
-	huggingface-cli download {{.ModelRepositoryName}} --revision {{.ModelVersion}} --local-dir /tmp/model
+	huggingface-cli download {{.ModelRepositoryName}} --revision {{.ModelVersion}} --cache-dir /tmp/model
 	echo "Moving model to {{.ModelDirPath}}..."
 	rsync -av --include='*/' --exclude='*' /tmp/model/ {{.ModelDirPath}}
-	cd "{{.ModelDirPath}}/{{.HuggingfaceModelDir}}"
+	cd "/{{.ModelDirPath}}/{{.HuggingfaceModelDir}}"
 	find . -type f -exec sh -c '
-    target="{{.ModelDirPath}}/{{.HuggingfaceModelDir}}/{}"
+    target="/{{.ModelDirPath}}/{{.HuggingfaceModelDir}}/{}"
     if [ ! -e "$target" ]; then
         ln -s "$(pwd)/{}" "$target"
     fi
@@ -1841,8 +1841,8 @@ else
 fi
 
 if [[ ${url} == hf://* ]]; then
-	echo "Creating {{.ModelDirPath}}/{{.ModelVersion}}.exists file..."
-	touch {{.ModelDirPath}}/{{.ModelVersion}}.exists
+	echo "Creating {{.ModelDirPath}}/{{.HuggingfaceModelDir}}/{{.ModelVersion}}.exists file..."
+	touch {{.ModelDirPath}}/{{.HuggingfaceModelDir}}/{{.ModelVersion}}.exists
 else
 	echo "Creating {{.ModelDirPath}}/.exists file..."
 	touch {{.ModelDirPath}}/.exists
