@@ -1784,6 +1784,9 @@ func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.
 	err = template.Must(template.New("script").Parse(`
 set -e
 
+mkdir -p {{.ModelDirPath}}
+url="{{.ModelDownloadURL}}"
+
 if [[ ${url} == hf://* ]]; then
 	if [ -f "{{.ModelDirPath}}/{{.ModelVersion}}.exists" ]; then
 		echo "Model {{.ModelDirPath}}/{{.ModelVersion}}.exists already exists, skip downloading"
@@ -1795,9 +1798,6 @@ else
 		exit 0
 	fi
 fi
-
-mkdir -p {{.ModelDirPath}}
-url="{{.ModelDownloadURL}}"
 
 cleanup() {
 	echo "Cleaning up..."
