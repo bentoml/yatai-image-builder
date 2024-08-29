@@ -1811,18 +1811,19 @@ if [[ ${url} == hf://* ]]; then
 	mkdir -p /tmp/model
 	hf_url="${url:5}"
 	endpoint=$(echo "${hf_url}" | cut -d '@' -f 2)
-	echo "Downloading model {{.ModelRepositoryName}} (endpoint=${endpoint}, revision={{.ModelVersion}}) from Huggingface..."
 	export HF_ENDPOINT=${endpoint}
-	huggingface-cli download {{.ModelRepositoryName}} --revision {{.ModelVersion}} --cache-dir /tmp/model
-	echo "Moving model to {{.ModelDirPath}}..."
-	rsync -av --include='*/' --exclude='*' /tmp/model/ {{.ModelDirPath}}
+	mkdir -p "/{{.ModelDirPath}}/{{.HuggingfaceModelDir}}"
+
+	echo "Make sure the model directory is a symbolic link..."
+	rsync -av --include='*/' --exclude='*' "/{{.ModelDirPath}}/{{.HuggingfaceModelDir}}" /tmp/model
 	cd "/{{.ModelDirPath}}/{{.HuggingfaceModelDir}}"
-	find . -type f -exec sh -c '
-    target="/{{.ModelDirPath}}/{{.HuggingfaceModelDir}}/{}"
-    if [ ! -e "$target" ]; then
-        ln -s "$(pwd)/{}" "$target"
-    fi
-	' \;
+	find . -type f -exec ln -s "$(pwd)/{}" "/{{.ModelDirPath}}/{{.HuggingfaceModelDir}}/{}" \;
+
+	echo "Downloading model {{.ModelRepositoryName}} (endpoint=${endpoint}, revision={{.ModelVersion}}) from Huggingface..."
+	huggingface-cli download {{.ModelRepositoryName}} --revision {{.ModelVersion}} --cache-dir /tmp/model
+
+	echo "Moving model to {{.ModelDirPath}}..."
+	rsync -av --ignore-existing /tmp/model/ {{.ModelDirPath}}
 	rm -rf /tmp/model
 else
 	echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
