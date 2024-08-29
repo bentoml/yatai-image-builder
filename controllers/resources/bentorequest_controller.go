@@ -1539,6 +1539,9 @@ func (r *BentoRequestReconciler) getModelPVCName(bentoRequest *resourcesv1alpha1
 func (r *BentoRequestReconciler) getJuiceFSModelPath(bentoRequest *resourcesv1alpha1.BentoRequest, model *resourcesv1alpha1.BentoModel) string {
 	modelRepositoryName, _, modelVersion := xstrings.Partition(model.Tag, ":")
 	ns := getModelNamespace(bentoRequest)
+	if isHuggingfaceModel(model) {
+		modelVersion = "all"
+	}
 	var path string
 	if ns == "" {
 		path = fmt.Sprintf("models/.shared/%s/%s", modelRepositoryName, modelVersion)
@@ -1546,6 +1549,10 @@ func (r *BentoRequestReconciler) getJuiceFSModelPath(bentoRequest *resourcesv1al
 		path = fmt.Sprintf("models/%s/%s/%s", ns, modelRepositoryName, modelVersion)
 	}
 	return path
+}
+
+func isHuggingfaceModel(model *resourcesv1alpha1.BentoModel) bool {
+	return strings.HasPrefix(model.DownloadURL, "hf://")
 }
 
 type GenerateModelPVCOption struct {
@@ -1647,7 +1654,6 @@ type GenerateModelSeederPodTemplateSpecOption struct {
 }
 
 func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.Context, opt GenerateModelSeederPodTemplateSpecOption) (pod *corev1.PodTemplateSpec, err error) {
-	modelRepositoryName, _, modelVersion := xstrings.Partition(opt.BentoRequest.Spec.BentoTag, ":")
 	kubeLabels := r.getModelSeederPodLabels(opt.BentoRequest, opt.Model)
 
 	volumes := make([]corev1.Volume, 0)
@@ -1727,8 +1733,7 @@ func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.
 	containers := make([]corev1.Container, 0)
 
 	model := opt.Model
-
-	modelTag := model.Tag
+	modelRepositoryName, _, modelVersion := xstrings.Partition(model.Tag, ":")
 	modelDownloadURL := model.DownloadURL
 	modelDownloadHeader := ""
 	if modelDownloadURL == "" {
@@ -1779,9 +1784,16 @@ func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.
 	err = template.Must(template.New("script").Parse(`
 set -e
 
-if [ -f "{{.ModelDirPath}}/.exists" ]; then
-	echo "Model {{.ModelDirPath}} already exists, skip downloading"
-	exit 0
+if [[ ${url} == hf://* ]]; then
+	if [ -f "{{.ModelDirPath}}/{{.ModelVersion}}.exists" ]; then
+		echo "Model {{.ModelDirPath}}/{{.ModelVersion}}.exists already exists, skip downloading"
+		exit 0
+	fi
+else
+	if [ -f "{{.ModelDirPath}}/.exists" ]; then
+		echo "Model {{.ModelDirPath}} already exists, skip downloading"
+		exit 0
+	fi
 fi
 
 mkdir -p {{.ModelDirPath}}
@@ -1798,15 +1810,12 @@ trap cleanup EXIT
 if [[ ${url} == hf://* ]]; then
 	mkdir -p /tmp/model
 	hf_url="${url:5}"
-	model_id=$(echo "${hf_url}" | cut -d '@' -f 1)
 	endpoint=$(echo "${hf_url}" | cut -d '@' -f 2)
-	revision=$(echo "{{.ModelTag}}" | cut -d ':' -f 2)
-	echo "Downloading model ${model_id} (endpoint=${endpoint}, revision=${revision}) from Huggingface..."
 	export HF_ENDPOINT=${endpoint}
-	huggingface-cli download ${model_id} --revision ${revision} --local-dir /tmp/model
-	echo "Moving model to {{.ModelDirPath}}..."
-	rsync -av --delete /tmp/model/ {{.ModelDirPath}}
-	rm -rf /tmp/model
+	mkdir -p "/{{.ModelDirPath}}/{{.HuggingfaceModelDir}}"
+
+	echo "Downloading model {{.ModelRepositoryName}} (endpoint=${endpoint}, revision={{.ModelVersion}}) from Huggingface..."
+	huggingface-cli download {{.ModelRepositoryName}} --revision {{.ModelVersion}} --cache-dir {{.ModelDirPath}}
 else
 	echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
 	if [[ ${url} == s3://* ]]; then
@@ -1822,8 +1831,15 @@ else
 	echo "Extracting model tar file..."
 	tar -xvf /tmp/downloaded.tar
 fi
-echo "Creating {{.ModelDirPath}}/.exists file..."
-touch {{.ModelDirPath}}/.exists
+
+if [[ ${url} == hf://* ]]; then
+	echo "Creating {{.ModelDirPath}}/{{.ModelVersion}}.exists file..."
+	touch {{.ModelDirPath}}/{{.ModelVersion}}.exists
+else
+	echo "Creating {{.ModelDirPath}}/.exists file..."
+	touch {{.ModelDirPath}}/.exists
+fi
+
 echo "Done"
 `)).Execute(&modelSeedCommandOutput, map[string]interface{}{
 		"ModelDirPath":        modelDirPath,
@@ -1831,7 +1847,7 @@ echo "Done"
 		"ModelDownloadHeader": modelDownloadHeader,
 		"ModelRepositoryName": modelRepositoryName,
 		"ModelVersion":        modelVersion,
-		"ModelTag":            modelTag,
+		"HuggingfaceModelDir": fmt.Sprintf("models--%s", strings.ReplaceAll(modelRepositoryName, "/", "--")),
 	})
 	if err != nil {
 		err = errors.Wrap(err, "failed to generate download command")
