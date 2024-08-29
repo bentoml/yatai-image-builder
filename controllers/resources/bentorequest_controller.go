@@ -1814,17 +1814,8 @@ if [[ ${url} == hf://* ]]; then
 	export HF_ENDPOINT=${endpoint}
 	mkdir -p "/{{.ModelDirPath}}/{{.HuggingfaceModelDir}}"
 
-	echo "Make sure the model directory is a symbolic link..."
-	rsync -av --include='*/' --exclude='*' "/{{.ModelDirPath}}/{{.HuggingfaceModelDir}}" /tmp/model
-	cd "/{{.ModelDirPath}}/{{.HuggingfaceModelDir}}"
-	find . -type f -exec ln -s "$(pwd)/{}" "/{{.ModelDirPath}}/{{.HuggingfaceModelDir}}/{}" \;
-
 	echo "Downloading model {{.ModelRepositoryName}} (endpoint=${endpoint}, revision={{.ModelVersion}}) from Huggingface..."
-	huggingface-cli download {{.ModelRepositoryName}} --revision {{.ModelVersion}} --cache-dir /tmp/model
-
-	echo "Moving model to {{.ModelDirPath}}..."
-	rsync -av --ignore-existing /tmp/model/ {{.ModelDirPath}}
-	rm -rf /tmp/model
+	huggingface-cli download {{.ModelRepositoryName}} --revision {{.ModelVersion}} --cache-dir {{.ModelDirPath}}
 else
 	echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
 	if [[ ${url} == s3://* ]]; then
