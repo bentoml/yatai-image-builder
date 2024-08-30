@@ -1810,12 +1810,13 @@ trap cleanup EXIT
 if [[ ${url} == hf://* ]]; then
 	mkdir -p /tmp/model
 	hf_url="${url:5}"
-	model_id=$(echo "${hf_url}" | cut -d '@' -f 1)
-	endpoint=$(echo "${hf_url}" | cut -d '@' -f 2)
+	model_id=$(echo "$hf_url" | awk -F '@' '{print $1}')
+	revision=$(echo "$hf_url" | awk -F '@' '{print $2}')
+	endpoint=$(echo "$hf_url" | awk -F '@' '{print $3}')
 	export HF_ENDPOINT=${endpoint}
 
-	echo "Downloading model ${model_id} (endpoint=${endpoint}, revision={{.ModelVersion}}) from Huggingface..."
-	huggingface-cli download ${model_id} --revision {{.ModelVersion}} --cache-dir {{.ModelDirPath}}
+	echo "Downloading model ${model_id} (endpoint=${endpoint}, revision=${revision}) from Huggingface..."
+	huggingface-cli download ${model_id} --revision ${revision} --cache-dir {{.ModelDirPath}}
 else
 	echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
 	if [[ ${url} == s3://* ]]; then
