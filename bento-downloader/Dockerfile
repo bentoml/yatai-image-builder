@@ -19,3 +19,5 @@ RUN curl https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud
     && tar -xf google-cloud-cli-410.tar.gz \
     && ./google-cloud-sdk/install.sh \
     && rm google-cloud-cli-410.tar.gz
+
+ENV PATH $PATH:/google-cloud-sdk/bin
