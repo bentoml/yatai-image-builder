@@ -103,7 +103,7 @@ gcp:
   secretAccessKeyExistingSecretKey: ''
 
 internalImages:
-  bentoDownloader: quay.io/bentoml/bento-downloader:0.0.4
+  bentoDownloader: quay.io/bentoml/bento-downloader:0.0.5
   kaniko: quay.io/bentoml/kaniko:debug
   buildkit: quay.io/bentoml/buildkit:master
   buildkitRootless: quay.io/bentoml/buildkit:master-rootless
