@@ -1,0 +1,15 @@
+{{- range .Values.bentoFunctionNamespaces }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: yatai-with-bento-request
+  namespace: {{ . | quote }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: yatai-with-bento-request
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.yataiSystem.serviceAccountName }}
+  namespace: {{ . | quote }}
+{{- end }}

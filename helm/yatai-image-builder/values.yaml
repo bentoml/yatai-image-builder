@@ -130,3 +130,6 @@ estargz:
 
 serviceMonitor: # need prometheus crd installed
   enabled: false
+
+bentoFunctionNamespaces: ['yatai']
+bentoFunctionAllNamespaces: false

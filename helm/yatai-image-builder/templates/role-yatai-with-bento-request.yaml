@@ -1,8 +1,9 @@
-{{- if .Values.bentoFunctionAllNamespaces }}
+{{- range .Values.bentoFunctionNamespaces }}
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
-  name: yatai-with-bento-request-{{ .Release.Namespace }}
+  name: yatai-with-bento-request
+  namespace: {{ . | quote }}
 rules:
 - apiGroups:
   - ""
