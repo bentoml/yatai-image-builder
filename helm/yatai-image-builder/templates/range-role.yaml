@@ -1,8 +1,9 @@
-{{- if .Values.bentoRequestAllNamespaces }}
+{{- range .Values.bentoRequestNamespaces }}
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
-  name: {{ include "yatai-image-builder.serviceAccountName" . }}-{{ .Release.Namespace }}
+  name: {{ include "yatai-image-builder.serviceAccountName" $ }}
+  namespace: {{ . | quote }}
 rules:
 - apiGroups:
   - resources.yatai.ai
