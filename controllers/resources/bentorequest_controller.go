@@ -18,6 +18,8 @@ package resources
 
 import (
 	"context"
+	"path"
+
 	// nolint: gosec
 	"crypto/md5"
 	"strconv"
@@ -849,18 +851,31 @@ func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ens
 			continue
 		}
 		if job_.Status.Failed > 0 {
-			for _, condition := range job_.Status.Conditions {
-				if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
-					failedJobNames = append(failedJobNames, job_.Name)
-					continue
-				}
-			}
+			failedJobNames = append(failedJobNames, job_.Name)
 		}
 		notReadyJobNames = append(notReadyJobNames, job_.Name)
 	}
 
 	if len(failedJobNames) > 0 {
 		msg := fmt.Sprintf("Model seeder jobs failed: %s", strings.Join(failedJobNames, ", "))
+		pods := &corev1.PodList{}
+		err = r.List(ctx, pods, client.InNamespace(bentoRequest.Namespace), client.MatchingLabels(jobLabels))
+		if err != nil {
+			err = errors.Wrap(err, "list pods")
+			return
+		}
+		hfValidateErr := false
+		for _, pod_ := range pods.Items {
+			for _, condition := range pod_.Status.Conditions {
+				if condition.Type == corev1.PodInitialized && condition.Status == corev1.ConditionFalse {
+					hfValidateErr = true
+					break
+				}
+			}
+		}
+		if hfValidateErr {
+			msg = fmt.Sprintf("%s: no validate HF_TOKEN for seeding huggingface model", msg)
+		}
 		r.Recorder.Event(bentoRequest, corev1.EventTypeNormal, "ModelsExists", msg)
 		bentoRequest, err = r.setStatusConditions(ctx, opt.req,
 			metav1.Condition{
@@ -1779,6 +1794,52 @@ func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.
 		}
 	}
 
+	initContainers := make([]corev1.Container, 0)
+	if strings.HasPrefix(modelDownloadURL, "hf://") {
+		url := strings.TrimPrefix(modelDownloadURL, "hf://")
+		arr := strings.Split(url, "@")
+		if len(arr) != 3 {
+			err = errors.Errorf("invalid Huggingface model download URL %s", modelDownloadURL)
+			return
+		}
+		modelID := arr[0]
+		modelRevsion := arr[1]
+		modelEndpoint := arr[2]
+		modelURL := path.Join(modelEndpoint, modelID, "resolve/main/config.json")
+
+		var hfTokenValidatorCommandOutput bytes.Buffer
+		err = template.Must(template.New("script").Parse(`
+set -e
+
+if curl -XHEAD -sIL -H "Authorization: Bearer $HF_TOKEN" "{{.ModelURL}}" | grep -iq 'x-error-code:.*GatedRepo'; then
+    echo "Error: Model is gated. No access permission."
+    exit 1
+else
+    echo "Model access granted."
+    exit 0
+fi
+`)).Execute(&hfTokenValidatorCommandOutput, map[string]interface{}{
+			"ModelURL": fmt.Sprintf("%s?revision=%s", modelURL, modelRevsion),
+		})
+		if err != nil {
+			err = errors.Wrap(err, "failed to generate huggingface validation command")
+			return
+		}
+
+		initContainers = append(initContainers, corev1.Container{
+			Name:  "hf-token-validator",
+			Image: internalImages.BentoDownloader,
+			Command: []string{
+				"bash",
+				"-c",
+				hfTokenValidatorCommandOutput.String(),
+			},
+			VolumeMounts: volumeMounts,
+			Resources:    downloaderContainerResources,
+			EnvFrom:      downloaderContainerEnvFrom,
+		})
+	}
+
 	modelDirPath := "/juicefs-workspace"
 	var modelSeedCommandOutput bytes.Buffer
 	err = template.Must(template.New("script").Parse(`
@@ -1895,9 +1956,10 @@ echo "Done"
 			Annotations: kubeAnnotations,
 		},
 		Spec: corev1.PodSpec{
-			RestartPolicy: corev1.RestartPolicyNever,
-			Volumes:       volumes,
-			Containers:    containers,
+			RestartPolicy:  corev1.RestartPolicyNever,
+			Volumes:        volumes,
+			Containers:     containers,
+			InitContainers: initContainers,
 		},
 	}
 
