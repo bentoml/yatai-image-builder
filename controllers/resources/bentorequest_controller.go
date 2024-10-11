@@ -1594,6 +1594,9 @@ func (r *BentoRequestReconciler) generateModelPVC(opt GenerateModelPVCOption) (p
 			Annotations: map[string]string{
 				"path": path,
 			},
+			Labels: map[string]string{
+				commonconsts.KubeLabelYataiModel: opt.Model.Tag,
+			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
