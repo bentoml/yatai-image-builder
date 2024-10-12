@@ -1576,6 +1576,7 @@ type GenerateModelPVCOption struct {
 }
 
 func (r *BentoRequestReconciler) generateModelPVC(opt GenerateModelPVCOption) (pvc *corev1.PersistentVolumeClaim) {
+	modelRepositoryName, _, modelVersion := xstrings.Partition(opt.Model.Tag, ":")
 	storageSize := resource.MustParse("100Gi")
 	if opt.Model.Size != nil {
 		storageSize = *opt.Model.Size
@@ -1595,7 +1596,8 @@ func (r *BentoRequestReconciler) generateModelPVC(opt GenerateModelPVCOption) (p
 				"path": path,
 			},
 			Labels: map[string]string{
-				commonconsts.KubeLabelYataiModel: opt.Model.Tag,
+				commonconsts.KubeLabelYataiModelRepository: modelRepositoryName,
+				commonconsts.KubeLabelYataiModel:           modelVersion,
 			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
