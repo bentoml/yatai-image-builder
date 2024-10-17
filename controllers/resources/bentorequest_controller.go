@@ -928,6 +928,13 @@ func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ens
 
 		// Delete PVCs for all seeded models
 		for _, model := range bentoRequest.Spec.Models {
+			// Delete model seeder jobs
+			if err = r.deleteModelSeederJobs(ctx, bentoRequest, &model); err != nil {
+				r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "DeleteModelSeederJobs", "Failed to delete model seeder jobs: %v", err)
+				log.FromContext(ctx).Error(err, "Failed to delete model seeder jobs")
+				// We don't return here to allow the reconciliation to continue
+			}
+
 			err = r.deleteModelPVC(ctx, bentoRequest, &model)
 			if err != nil {
 				r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "DeletePVC", "Failed to delete PVC for model %s: %v", model.Tag, err)
@@ -949,6 +956,24 @@ func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ens
 		}
 	}
 	return
+}
+
+func (r *BentoRequestReconciler) deleteModelSeederJobs(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest, model *resourcesv1alpha1.BentoModel) error {
+	jobLabels := r.getModelSeederJobLabels(bentoRequest, model)
+
+	jobs := &batchv1.JobList{}
+	if err := r.List(ctx, jobs, client.InNamespace(bentoRequest.Namespace), client.MatchingLabels(jobLabels)); err != nil {
+		return errors.Wrap(err, "list model seeder jobs")
+	}
+
+	for _, job := range jobs.Items {
+		if err := r.Delete(ctx, &job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+			return errors.Wrapf(err, "delete model seeder job %s", job.Name)
+		}
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "DeleteModelSeederJob", "Deleted model seeder job %s", job.Name)
+	}
+
+	return nil
 }
 
 // deleteModelPVC deletes the PVC associated with a seeded model
