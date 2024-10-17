@@ -925,6 +925,16 @@ func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ens
 		if err != nil {
 			return
 		}
+
+		// Delete PVCs for all seeded models
+		for _, model := range bentoRequest.Spec.Models {
+			err = r.deleteModelPVC(ctx, bentoRequest, &model)
+			if err != nil {
+				r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "DeletePVC", "Failed to delete PVC for model %s: %v", model.Tag, err)
+				// Log the error but continue with other models
+				log.FromContext(ctx).Error(err, "Failed to delete PVC", "model", model.Tag)
+			}
+		}
 	} else {
 		bentoRequest, err = r.setStatusConditions(ctx, opt.req,
 			metav1.Condition{
@@ -939,6 +949,29 @@ func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ens
 		}
 	}
 	return
+}
+
+// deleteModelPVC deletes the PVC associated with a seeded model
+func (r *BentoRequestReconciler) deleteModelPVC(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest, model *resourcesv1alpha1.BentoModel) error {
+	pvcName := r.getModelPVCName(bentoRequest, model)
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pvcName,
+			Namespace: bentoRequest.Namespace,
+		},
+	}
+
+	err := r.Delete(ctx, pvc)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			// PVC already deleted, ignore the error
+			return nil
+		}
+		return errors.Wrapf(err, "failed to delete PVC %s", pvcName)
+	}
+
+	r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "DeletePVC", "Successfully deleted PVC %s for model %s", pvcName, model.Tag)
+	return nil
 }
 
 func (r *BentoRequestReconciler) setStatusConditions(ctx context.Context, req ctrl.Request, conditions ...metav1.Condition) (bentoRequest *resourcesv1alpha1.BentoRequest, err error) {
