@@ -883,7 +883,7 @@ func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ens
 	}
 
 	if len(failedJobNames) > 0 {
-		msg := fmt.Sprintf("Model seeder jobs failed: %s", strings.Join(failedJobNames, ", "))
+		msg := "Model seeder jobs failed"
 		pods := &corev1.PodList{}
 		err = r.List(ctx, pods, client.InNamespace(bentoRequest.Namespace), client.MatchingLabels(jobLabels))
 		if err != nil {
