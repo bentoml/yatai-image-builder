@@ -2610,26 +2610,39 @@ set -e
 
 mkdir -p {{.ModelDirPath}}
 url="{{.ModelDownloadURL}}"
-echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
-if [[ ${url} == s3://* ]]; then
-	echo "Downloading from s3..."
-	aws s3 cp ${url} /tmp/downloaded.tar
-elif [[ ${url} == gs://* ]]; then
-	echo "Downloading from GCS..."
-	gsutil cp ${url} /tmp/downloaded.tar
+
+if [[ ${url} == hf://* ]]; then
+	mkdir -p /tmp/model
+	hf_url="${url:5}"
+	model_id=$(echo "$hf_url" | awk -F '@' '{print $1}')
+	revision=$(echo "$hf_url" | awk -F '@' '{print $2}')
+	endpoint=$(echo "$hf_url" | awk -F '@' '{print $3}')
+	export HF_ENDPOINT=${endpoint}
+
+	echo "Downloading model ${model_id} (endpoint=${endpoint}, revision=${revision}) from Huggingface..."
+	huggingface-cli download ${model_id} --revision ${revision} --cache-dir {{.ModelDirPath}}
 else
-	curl --fail -L -H "{{.ModelDownloadHeader}}" ${url} --output /tmp/downloaded.tar --progress-bar
+	echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
+	if [[ ${url} == s3://* ]]; then
+		echo "Downloading from s3..."
+		aws s3 cp ${url} /tmp/downloaded.tar
+	elif [[ ${url} == gs://* ]]; then
+		echo "Downloading from GCS..."
+		gsutil cp ${url} /tmp/downloaded.tar
+	else
+		curl --fail -L -H "{{.ModelDownloadHeader}}" ${url} --output /tmp/downloaded.tar --progress-bar
+	fi
+	cd {{.ModelDirPath}}
+	echo "Extracting model tar file..."
+	tar -xvf /tmp/downloaded.tar
+	echo -n '{{.ModelVersion}}' > {{.ModelRepositoryDirPath}}/latest
+	echo "Removing model tar file..."
+	rm /tmp/downloaded.tar
+	{{if not .Privileged}}
+	echo "Changing directory permission..."
+	chown -R 1000:1000 /workspace
+	{{end}}
 fi
-cd {{.ModelDirPath}}
-echo "Extracting model tar file..."
-tar -xvf /tmp/downloaded.tar
-echo -n '{{.ModelVersion}}' > {{.ModelRepositoryDirPath}}/latest
-echo "Removing model tar file..."
-rm /tmp/downloaded.tar
-{{if not .Privileged}}
-echo "Changing directory permission..."
-chown -R 1000:1000 /workspace
-{{end}}
 echo "Done"
 `)).Execute(&modelDownloadCommandOutput, map[string]interface{}{
 			"ModelDirPath":           modelDirPath,
@@ -2639,6 +2652,7 @@ echo "Done"
 			"ModelRepositoryName":    modelRepositoryName,
 			"ModelVersion":           modelVersion,
 			"Privileged":             privileged,
+			"HuggingfaceModelDir":    fmt.Sprintf("models--%s", strings.ReplaceAll(modelRepositoryName, "/", "--")),
 		})
 		if err != nil {
 			err = errors.Wrap(err, "failed to generate download command")
