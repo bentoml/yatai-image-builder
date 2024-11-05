@@ -133,3 +133,8 @@ serviceMonitor: # need prometheus crd installed
 
 bentoRequestNamespaces: ['yatai']
 bentoRequestAllNamespaces: false
+
+largeLayers:
+  storage: gs
+  region: us-west-1
+  bucket: yatai-image-builder-large-layers
