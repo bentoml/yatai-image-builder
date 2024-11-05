@@ -89,10 +89,11 @@ const (
 	KubeAnnotationBentoRequestImageBuiderHash = "yatai.ai/bento-request-image-builder-hash"
 	KubeAnnotationBentoRequestModelSeederHash = "yatai.ai/bento-request-model-seeder-hash"
 	KubeLabelYataiImageBuilderSeparateModels  = "yatai.ai/yatai-image-builder-separate-models"
+	KubeLabelIsBentoLargeLayersBuilder        = "yatai.ai/is-bento-large-layers-builder"
 	KubeAnnotationBentoStorageNS              = "yatai.ai/bento-storage-namepsace"
 	KubeAnnotationModelStorageNS              = "yatai.ai/model-storage-namepsace"
-	StoreSchemaAWS                            = "aws"
-	StoreSchemaGCP                            = "gcp"
+	StoreSchemaS3                             = "s3"
+	StoreSchemaGCS                            = "gs"
 )
 
 // BentoRequestReconciler reconciles a BentoRequest object
@@ -228,6 +229,19 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		})
 	}
 
+	separateLargeLayers := isSeparateLargeLayers(bentoRequest)
+
+	largeLayersExists := false
+	var largeLayersExistsResult ctrl.Result
+	var largeLayersExistsErr error
+
+	if separateLargeLayers {
+		bentoRequest, _, largeLayersExists, largeLayersExistsErr = r.ensureLargeLayersExists(ctx, ensureLargeLayersExistsOption{
+			bentoRequest: bentoRequest,
+			req:          req,
+		})
+	}
+
 	bentoRequest, imageInfo, imageExists, imageExistsResult, err := r.ensureImageExists(ctx, ensureImageExistsOption{
 		bentoRequest: bentoRequest,
 		req:          req,
@@ -301,6 +315,34 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return
 	}
 
+	if largeLayersExistsErr != nil {
+		err = errors.Wrap(largeLayersExistsErr, "ensure large layers exists")
+		return
+	}
+
+	if separateLargeLayers && largeLayersExists {
+		if err = r.deleteLargeLayersBuilderJobs(ctx, bentoRequest); err != nil {
+			r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "DeleteLargeLayersBuilderJobs", "Failed to delete large layers builder jobs: %v", err)
+			log.FromContext(ctx).Error(err, "Failed to delete large layers builder jobs")
+		}
+	}
+
+	if separateLargeLayers && !largeLayersExists {
+		result = largeLayersExistsResult
+		bentoRequest, err = r.setStatusConditions(ctx, req,
+			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Reconciling",
+				Message: "Large layers building job is waiting",
+			},
+		)
+		if err != nil {
+			return
+		}
+		return
+	}
+
 	bentoCR := &resourcesv1alpha1.Bento{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      bentoRequest.Name,
@@ -325,6 +367,13 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			bentoCR.Annotations[commonconsts.KubeAnnotationIsMultiTenancy] = commonconsts.KubeLabelValueTrue
 		}
 		bentoCR.Annotations[KubeAnnotationModelStorageNS] = bentoRequest.Annotations[KubeAnnotationModelStorageNS]
+	}
+
+	if separateLargeLayers {
+		if bentoCR.Annotations == nil {
+			bentoCR.Annotations = map[string]string{}
+		}
+		bentoCR.Annotations[commonconsts.KubeAnnotationYataiImageBuilderSeparateLargeLayers] = commonconsts.KubeLabelValueTrue
 	}
 
 	err = ctrl.SetControllerReference(bentoRequest, bentoCR, r.Scheme)
@@ -703,6 +752,235 @@ func (r *BentoRequestReconciler) ensureImageExists(ctx context.Context, opt ensu
 	return
 }
 
+type ensureLargeLayersExistsOption struct {
+	bentoRequest *resourcesv1alpha1.BentoRequest
+	req          ctrl.Request
+}
+
+func (r *BentoRequestReconciler) ensureLargeLayersExists(ctx context.Context, opt ensureLargeLayersExistsOption) (bentoRequest *resourcesv1alpha1.BentoRequest, imageInfo ImageInfo, largeLayersExists bool, err error) { // nolint: unparam
+	r.Recorder.Eventf(opt.bentoRequest, corev1.EventTypeNormal, "SeparateLargeLayers", "Separate large layers are enabled")
+	logs := log.FromContext(ctx)
+
+	bentoRequest = opt.bentoRequest
+	req := opt.req
+
+	imageInfo, err = r.getImageInfo(ctx, GetImageInfoOption{
+		BentoRequest: bentoRequest,
+	})
+	if err != nil {
+		err = errors.Wrap(err, "get image info")
+		return
+	}
+
+	largeLayersExistsCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeLargeLayersExists)
+
+	var bentoRequestHashStr string
+	bentoRequestHashStr, err = r.getHashStr(bentoRequest)
+	if err != nil {
+		err = errors.Wrapf(err, "get BentoRequest %s/%s hash string", bentoRequest.Namespace, bentoRequest.Name)
+		return
+	}
+
+	largeLayersExists = largeLayersExistsCondition != nil && largeLayersExistsCondition.Status == metav1.ConditionTrue && largeLayersExistsCondition.Message == imageInfo.ImageName
+	if largeLayersExists {
+		return
+	}
+
+	jobLabels := map[string]string{
+		commonconsts.KubeLabelBentoRequest: bentoRequest.Name,
+		KubeLabelIsBentoLargeLayersBuilder: commonconsts.KubeLabelValueTrue,
+	}
+
+	if isSeparateModels(opt.bentoRequest) {
+		jobLabels[KubeLabelYataiImageBuilderSeparateModels] = commonconsts.KubeLabelValueTrue
+	} else {
+		jobLabels[KubeLabelYataiImageBuilderSeparateModels] = commonconsts.KubeLabelValueFalse
+	}
+
+	jobs := &batchv1.JobList{}
+	err = r.List(ctx, jobs, client.InNamespace(req.Namespace), client.MatchingLabels(jobLabels))
+	if err != nil {
+		err = errors.Wrap(err, "list jobs")
+		return
+	}
+
+	reservedJobs := make([]*batchv1.Job, 0)
+	for _, job_ := range jobs.Items {
+		job_ := job_
+
+		oldHash := job_.Annotations[KubeAnnotationBentoRequestHash]
+		if oldHash != bentoRequestHashStr {
+			logs.Info("Because hash changed, delete old job", "job", job_.Name, "oldHash", oldHash, "newHash", bentoRequestHashStr)
+			// --cascade=foreground
+			err = r.Delete(ctx, &job_, &client.DeleteOptions{
+				PropagationPolicy: &[]metav1.DeletionPropagation{metav1.DeletePropagationForeground}[0],
+			})
+			if err != nil {
+				err = errors.Wrapf(err, "delete job %s", job_.Name)
+				return
+			}
+			return
+		} else {
+			reservedJobs = append(reservedJobs, &job_)
+		}
+	}
+
+	var job *batchv1.Job
+	if len(reservedJobs) > 0 {
+		job = reservedJobs[0]
+	}
+
+	if len(reservedJobs) > 1 {
+		for _, job_ := range reservedJobs[1:] {
+			logs.Info("Because has more than one job, delete old job", "job", job_.Name)
+			// --cascade=foreground
+			err = r.Delete(ctx, job_, &client.DeleteOptions{
+				PropagationPolicy: &[]metav1.DeletionPropagation{metav1.DeletePropagationForeground}[0],
+			})
+			if err != nil {
+				err = errors.Wrapf(err, "delete job %s", job_.Name)
+				return
+			}
+		}
+	}
+
+	if job == nil {
+		job, err = r.generateLargeLayersBuilderJob(ctx, GenerateLargeLayersBuilderJobOption{
+			ImageInfo:    imageInfo,
+			BentoRequest: bentoRequest,
+		})
+		if err != nil {
+			err = errors.Wrap(err, "generate large layer builder job")
+			return
+		}
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "GenerateLargeLayersBuilderJob", "Creating large layers builder job: %s", job.Name)
+		err = r.Create(ctx, job)
+		if err != nil {
+			err = errors.Wrapf(err, "create large layer builder job %s", job.Name)
+			return
+		}
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "GenerateLargeLayersBuilderJob", "Created large layers builder job: %s", job.Name)
+		return
+	}
+
+	r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingLargeLayersBuilderJob", "Found large layers builder job: %s", job.Name)
+
+	err = r.Get(ctx, req.NamespacedName, bentoRequest)
+	if err != nil {
+		logs.Error(err, "Failed to re-fetch BentoRequest")
+		return
+	}
+	largeLayersBuildingCondition := meta.FindStatusCondition(bentoRequest.Status.Conditions, resourcesv1alpha1.BentoRequestConditionTypeLargeLayersBuilding)
+
+	isJobFailed := false
+	isJobRunning := true
+
+	if job.Spec.Completions != nil {
+		if job.Status.Succeeded != *job.Spec.Completions {
+			if job.Status.Failed > 0 {
+				for _, condition := range job.Status.Conditions {
+					if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
+						isJobFailed = true
+						break
+					}
+				}
+			}
+			isJobRunning = !isJobFailed
+		} else {
+			isJobRunning = false
+		}
+	}
+
+	if isJobRunning {
+		conditions := make([]metav1.Condition, 0)
+		if job.Status.Active > 0 {
+			conditions = append(conditions, metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Reconciling",
+				Message: fmt.Sprintf("Large layers building job %s is running", job.Name),
+			})
+		} else {
+			conditions = append(conditions, metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Reconciling",
+				Message: fmt.Sprintf("Large layers building job %s is waiting", job.Name),
+			})
+		}
+		if bentoRequest.Spec.ImageBuildTimeout != nil {
+			if largeLayersBuildingCondition != nil && largeLayersBuildingCondition.LastTransitionTime.Add(*bentoRequest.Spec.ImageBuildTimeout).Before(time.Now()) {
+				conditions = append(conditions, metav1.Condition{
+					Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+					Status:  metav1.ConditionFalse,
+					Reason:  "Timeout",
+					Message: fmt.Sprintf("Large layers building job %s is timeout", job.Name),
+				})
+				if _, err = r.setStatusConditions(ctx, req, conditions...); err != nil {
+					return
+				}
+				err = errors.New("large layers build timeout")
+				return
+			}
+		}
+
+		if bentoRequest, err = r.setStatusConditions(ctx, req, conditions...); err != nil {
+			return
+		}
+
+		if largeLayersBuildingCondition != nil && largeLayersBuildingCondition.Status != metav1.ConditionTrue && isJobRunning {
+			r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoLargeLayersBuilder", "Large layers are building now")
+		}
+
+		return
+	}
+
+	if isJobFailed {
+		bentoRequest, err = r.setStatusConditions(ctx, req,
+			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageBuilding,
+				Status:  metav1.ConditionFalse,
+				Reason:  "Reconciling",
+				Message: fmt.Sprintf("Large layers building job %s is failed.", job.Name),
+			},
+			metav1.Condition{
+				Type:    resourcesv1alpha1.BentoRequestConditionTypeBentoAvailable,
+				Status:  metav1.ConditionFalse,
+				Reason:  "Reconciling",
+				Message: fmt.Sprintf("Large layers building job %s is failed.", job.Name),
+			},
+		)
+		if err != nil {
+			return
+		}
+		return
+	}
+
+	bentoRequest, err = r.setStatusConditions(ctx, req,
+		metav1.Condition{
+			Type:    resourcesv1alpha1.BentoRequestConditionTypeLargeLayersBuilding,
+			Status:  metav1.ConditionFalse,
+			Reason:  "Reconciling",
+			Message: fmt.Sprintf("Large layers building job %s is successed.", job.Name),
+		},
+		metav1.Condition{
+			Type:    resourcesv1alpha1.BentoRequestConditionTypeLargeLayersExists,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Reconciling",
+			Message: imageInfo.ImageName,
+		},
+	)
+	if err != nil {
+		return
+	}
+
+	r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "BentoLargeLayersBuilder", "Large layers has been built successfully")
+
+	largeLayersExists = true
+
+	return
+}
+
 type ensureModelsExistsOption struct {
 	bentoRequest *resourcesv1alpha1.BentoRequest
 	req          ctrl.Request
@@ -965,6 +1243,25 @@ func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ens
 		}
 	}
 	return
+}
+
+func (r *BentoRequestReconciler) deleteLargeLayersBuilderJobs(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest) (err error) {
+	jobLabels := r.getLargeLayersBuilderJobLabels(bentoRequest)
+
+	jobs := &batchv1.JobList{}
+	if err := r.List(ctx, jobs, client.InNamespace(bentoRequest.Namespace), client.MatchingLabels(jobLabels)); err != nil {
+		return errors.Wrap(err, "list large layers builder jobs")
+	}
+
+	for _, job := range jobs.Items {
+		job := job
+		if err := r.Delete(ctx, &job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+			return errors.Wrapf(err, "delete large layers builder job %s", job.Name)
+		}
+		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "DeleteLargeLayersBuilderJob", "Deleted large layers builder job %s", job.Name)
+	}
+
+	return nil
 }
 
 func (r *BentoRequestReconciler) deleteImageBuilderJobs(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest) error {
@@ -1410,6 +1707,9 @@ func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegis
 	if isEstargzEnabled() {
 		tail += ".esgz"
 	}
+	if isSeparateLargeLayers(bentoRequest) {
+		tail += ".nolargelayers"
+	}
 
 	tag = fmt.Sprintf("yatai.%s%s", getBentoImagePrefix(bentoRequest), tail)
 
@@ -1425,6 +1725,10 @@ func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegis
 
 func isSeparateModels(bentoRequest *resourcesv1alpha1.BentoRequest) (separateModels bool) {
 	return bentoRequest.Annotations[commonconsts.KubeAnnotationYataiImageBuilderSeparateModels] == commonconsts.KubeLabelValueTrue
+}
+
+func isSeparateLargeLayers(bentoRequest *resourcesv1alpha1.BentoRequest) (separateModels bool) {
+	return bentoRequest.Annotations[commonconsts.KubeAnnotationYataiImageBuilderSeparateLargeLayers] == commonconsts.KubeLabelValueTrue
 }
 
 func checkImageExists(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegistry modelschemas.DockerRegistrySchema, imageName string) (bool, error) {
@@ -1556,6 +1860,11 @@ func (r *BentoRequestReconciler) getImageBuilderJobName() string {
 	return fmt.Sprintf("yatai-bento-image-builder-%s", guid.String())
 }
 
+func (r *BentoRequestReconciler) getLargeLayersBuilderJobName() string {
+	guid := xid.New()
+	return fmt.Sprintf("yatai-bento-large-layers-builder-%s", guid.String())
+}
+
 func (r *BentoRequestReconciler) getModelSeederJobName() string {
 	guid := xid.New()
 	return fmt.Sprintf("yatai-model-seeder-%s", guid.String())
@@ -1592,9 +1901,26 @@ func (r *BentoRequestReconciler) getImageBuilderJobLabels(bentoRequest *resource
 	bentoRepositoryName, _, bentoVersion := xstrings.Partition(bentoRequest.Spec.BentoTag, ":")
 	labels := map[string]string{
 		commonconsts.KubeLabelBentoRequest:         bentoRequest.Name,
-		commonconsts.KubeLabelIsBentoImageBuilder:  "true",
+		commonconsts.KubeLabelIsBentoImageBuilder:  commonconsts.KubeLabelValueTrue,
 		commonconsts.KubeLabelYataiBentoRepository: bentoRepositoryName,
 		commonconsts.KubeLabelYataiBento:           bentoVersion,
+	}
+
+	if isSeparateModels(bentoRequest) {
+		labels[KubeLabelYataiImageBuilderSeparateModels] = commonconsts.KubeLabelValueTrue
+	} else {
+		labels[KubeLabelYataiImageBuilderSeparateModels] = commonconsts.KubeLabelValueFalse
+	}
+	return labels
+}
+
+func (r *BentoRequestReconciler) getLargeLayersBuilderJobLabels(bentoRequest *resourcesv1alpha1.BentoRequest) map[string]string {
+	bentoRepositoryName, _, bentoVersion := xstrings.Partition(bentoRequest.Spec.BentoTag, ":")
+	labels := map[string]string{
+		commonconsts.KubeLabelBentoRequest:         bentoRequest.Name,
+		commonconsts.KubeLabelYataiBentoRepository: bentoRepositoryName,
+		commonconsts.KubeLabelYataiBento:           bentoVersion,
+		KubeLabelIsBentoLargeLayersBuilder:         commonconsts.KubeLabelValueTrue,
 	}
 
 	if isSeparateModels(bentoRequest) {
@@ -1609,9 +1935,19 @@ func (r *BentoRequestReconciler) getImageBuilderPodLabels(bentoRequest *resource
 	bentoRepositoryName, _, bentoVersion := xstrings.Partition(bentoRequest.Spec.BentoTag, ":")
 	return map[string]string{
 		commonconsts.KubeLabelBentoRequest:         bentoRequest.Name,
-		commonconsts.KubeLabelIsBentoImageBuilder:  "true",
+		commonconsts.KubeLabelIsBentoImageBuilder:  commonconsts.KubeLabelValueTrue,
 		commonconsts.KubeLabelYataiBentoRepository: bentoRepositoryName,
 		commonconsts.KubeLabelYataiBento:           bentoVersion,
+	}
+}
+
+func (r *BentoRequestReconciler) getLargeLayersBuilderPodLabels(bentoRequest *resourcesv1alpha1.BentoRequest) map[string]string {
+	bentoRepositoryName, _, bentoVersion := xstrings.Partition(bentoRequest.Spec.BentoTag, ":")
+	return map[string]string{
+		commonconsts.KubeLabelBentoRequest:         bentoRequest.Name,
+		commonconsts.KubeLabelYataiBentoRepository: bentoRepositoryName,
+		commonconsts.KubeLabelYataiBento:           bentoVersion,
+		KubeLabelIsBentoLargeLayersBuilder:         commonconsts.KubeLabelValueTrue,
 	}
 }
 
@@ -1769,38 +2105,6 @@ func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.
 
 	yataiAPITokenSecretName := ""
 
-	// nolint: gosec
-	awsAccessKeySecretName := opt.BentoRequest.Annotations[commonconsts.KubeAnnotationAWSAccessKeySecretName]
-	if awsAccessKeySecretName == "" {
-		awsAccessKeyID := os.Getenv(commonconsts.EnvAWSAccessKeyID)
-		awsSecretAccessKey := os.Getenv(commonconsts.EnvAWSSecretAccessKey)
-		if awsAccessKeyID != "" && awsSecretAccessKey != "" {
-			// nolint: gosec
-			awsAccessKeySecretName = YataiImageBuilderAWSAccessKeySecretName
-			stringData := map[string]string{
-				commonconsts.EnvAWSAccessKeyID:     awsAccessKeyID,
-				commonconsts.EnvAWSSecretAccessKey: awsSecretAccessKey,
-			}
-			awsAccessKeySecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      awsAccessKeySecretName,
-					Namespace: opt.BentoRequest.Namespace,
-				},
-				StringData: stringData,
-			}
-			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Creating or updating secret %s in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
-			_, err = controllerutil.CreateOrUpdate(ctx, r.Client, awsAccessKeySecret, func() error {
-				awsAccessKeySecret.StringData = stringData
-				return nil
-			})
-			if err != nil {
-				err = errors.Wrapf(err, "failed to create or update secret %s", awsAccessKeySecretName)
-				return
-			}
-			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is created or updated in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
-		}
-	}
-
 	internalImages := commonconfig.GetInternalImages()
 	logrus.Infof("Model seeder is using the images %v", *internalImages)
 
@@ -1827,21 +2131,101 @@ func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.
 		})
 	}
 
-	if awsAccessKeySecretName != "" {
-		downloaderContainerEnvFrom = append(downloaderContainerEnvFrom, corev1.EnvFromSource{
-			SecretRef: &corev1.SecretEnvSource{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: awsAccessKeySecretName,
+	modelDownloadURL := opt.Model.DownloadURL
+	storeSchema := StoreSchemaS3
+	if strings.HasPrefix(modelDownloadURL, "gs") {
+		storeSchema = StoreSchemaGCS
+	}
+	var awsAccessKeySecretName, gcpAccessKeySecretName string
+	if storeSchema == StoreSchemaS3 {
+		// nolint: gosec
+		awsAccessKeySecretName = opt.BentoRequest.Annotations[commonconsts.KubeAnnotationAWSAccessKeySecretName]
+		if awsAccessKeySecretName == "" {
+			awsAccessKeyID := os.Getenv(commonconsts.EnvAWSAccessKeyID)
+			awsSecretAccessKey := os.Getenv(commonconsts.EnvAWSSecretAccessKey)
+			if awsAccessKeyID != "" && awsSecretAccessKey != "" {
+				// nolint: gosec
+				awsAccessKeySecretName = YataiImageBuilderAWSAccessKeySecretName
+				stringData := map[string]string{
+					commonconsts.EnvAWSAccessKeyID:     awsAccessKeyID,
+					commonconsts.EnvAWSSecretAccessKey: awsSecretAccessKey,
+				}
+				awsAccessKeySecret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      awsAccessKeySecretName,
+						Namespace: opt.BentoRequest.Namespace,
+					},
+					StringData: stringData,
+				}
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateModelSeederPod", "Creating or updating secret %s in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
+				_, err = controllerutil.CreateOrUpdate(ctx, r.Client, awsAccessKeySecret, func() error {
+					awsAccessKeySecret.StringData = stringData
+					return nil
+				})
+				if err != nil {
+					err = errors.Wrapf(err, "failed to create or update secret %s", awsAccessKeySecretName)
+					return
+				}
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateModelSeederPod", "Secret %s is created or updated in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
+			}
+		}
+		if awsAccessKeySecretName != "" {
+			downloaderContainerEnvFrom = append(downloaderContainerEnvFrom, corev1.EnvFromSource{
+				SecretRef: &corev1.SecretEnvSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: awsAccessKeySecretName,
+					},
 				},
-			},
-		})
+			})
+		}
+	}
+	if storeSchema == StoreSchemaGCS {
+		// nolint: gosec
+		gcpAccessKeySecretName = opt.BentoRequest.Annotations[commonconsts.KubeAnnotationGCPAccessKeySecretName]
+		if gcpAccessKeySecretName == "" {
+			gcpAccessKeyID := os.Getenv(commonconsts.EnvGCPAccessKeyID)
+			gcpSecretAccessKey := os.Getenv(commonconsts.EnvGCPSecretAccessKey)
+			if gcpAccessKeyID != "" && gcpSecretAccessKey != "" {
+				// nolint: gosec
+				gcpAccessKeySecretName = YataiImageBuilderGCPAccessKeySecretName
+				stringData := map[string]string{
+					commonconsts.EnvGCPAccessKeyID:     gcpAccessKeyID,
+					commonconsts.EnvGCPSecretAccessKey: gcpSecretAccessKey,
+				}
+				gcpAccessKeySecret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      gcpAccessKeySecretName,
+						Namespace: opt.BentoRequest.Namespace,
+					},
+					StringData: stringData,
+				}
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateModelSeederPod", "Creating or updating secret %s in namespace %s", gcpAccessKeySecretName, opt.BentoRequest.Namespace)
+				_, err = controllerutil.CreateOrUpdate(ctx, r.Client, gcpAccessKeySecret, func() error {
+					gcpAccessKeySecret.StringData = stringData
+					return nil
+				})
+				if err != nil {
+					err = errors.Wrapf(err, "failed to create or update secret %s", gcpAccessKeySecretName)
+					return
+				}
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateModelSeederPod", "Secret %s is created or updated in namespace %s", gcpAccessKeySecretName, opt.BentoRequest.Namespace)
+			}
+		}
+		if gcpAccessKeySecretName != "" {
+			downloaderContainerEnvFrom = append(downloaderContainerEnvFrom, corev1.EnvFromSource{
+				SecretRef: &corev1.SecretEnvSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: gcpAccessKeySecretName,
+					},
+				},
+			})
+		}
 	}
 
 	containers := make([]corev1.Container, 0)
 
 	model := opt.Model
 	modelRepositoryName, _, modelVersion := xstrings.Partition(model.Tag, ":")
-	modelDownloadURL := model.DownloadURL
 	modelDownloadHeader := ""
 	if modelDownloadURL == "" {
 		var yataiClient_ **yataiclient.YataiClient
@@ -2167,6 +2551,62 @@ func (r *BentoRequestReconciler) generateImageBuilderJob(ctx context.Context, op
 	return
 }
 
+type GenerateLargeLayersBuilderJobOption struct {
+	ImageInfo    ImageInfo
+	BentoRequest *resourcesv1alpha1.BentoRequest
+}
+
+func (r *BentoRequestReconciler) generateLargeLayersBuilderJob(ctx context.Context, opt GenerateLargeLayersBuilderJobOption) (job *batchv1.Job, err error) {
+	// nolint: gosimple
+	podTemplateSpec, err := r.generateImageBuilderPodTemplateSpec(ctx, GenerateImageBuilderPodTemplateSpecOption{
+		ImageInfo:        opt.ImageInfo,
+		BentoRequest:     opt.BentoRequest,
+		IsLargeLayersPod: true,
+	})
+	if err != nil {
+		err = errors.Wrap(err, "generate image builder pod template spec")
+		return
+	}
+	kubeAnnotations := make(map[string]string)
+	hashStr, err := r.getHashStr(opt.BentoRequest)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get hash string")
+		return
+	}
+	kubeAnnotations[KubeAnnotationBentoRequestHash] = hashStr
+	job = &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        r.getLargeLayersBuilderJobName(),
+			Namespace:   opt.BentoRequest.Namespace,
+			Labels:      r.getLargeLayersBuilderJobLabels(opt.BentoRequest),
+			Annotations: kubeAnnotations,
+		},
+		Spec: batchv1.JobSpec{
+			Completions: pointer.Int32Ptr(1),
+			Parallelism: pointer.Int32Ptr(1),
+			PodFailurePolicy: &batchv1.PodFailurePolicy{
+				Rules: []batchv1.PodFailurePolicyRule{
+					{
+						Action: batchv1.PodFailurePolicyActionFailJob,
+						OnExitCodes: &batchv1.PodFailurePolicyOnExitCodesRequirement{
+							ContainerName: pointer.StringPtr(BuilderContainerName),
+							Operator:      batchv1.PodFailurePolicyOnExitCodesOpIn,
+							Values:        []int32{BuilderJobFailedExitCode},
+						},
+					},
+				},
+			},
+			Template: *podTemplateSpec,
+		},
+	}
+	err = ctrl.SetControllerReference(opt.BentoRequest, job, r.Scheme)
+	if err != nil {
+		err = errors.Wrapf(err, "set controller reference for job %s", job.Name)
+		return
+	}
+	return
+}
+
 func injectPodAffinity(podSpec *corev1.PodSpec, bentoRequest *resourcesv1alpha1.BentoRequest) {
 	if podSpec.Affinity == nil {
 		podSpec.Affinity = &corev1.Affinity{}
@@ -2195,13 +2635,20 @@ const ModelSeederContainerName = "seeder"
 const ModelSeederJobFailedExitCode = 42
 
 type GenerateImageBuilderPodTemplateSpecOption struct {
-	ImageInfo    ImageInfo
-	BentoRequest *resourcesv1alpha1.BentoRequest
+	ImageInfo        ImageInfo
+	BentoRequest     *resourcesv1alpha1.BentoRequest
+	IsLargeLayersPod bool
 }
 
 func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context.Context, opt GenerateImageBuilderPodTemplateSpecOption) (pod *corev1.PodTemplateSpec, err error) {
+	largeLayersS3EndpointURL := os.Getenv("LARGE_LAYERS_S3_ENDPOINT_URL")
+	largeLayersS3Bucket := os.Getenv("LARGE_LAYERS_S3_BUCKET")
+	separateLargeLayers := isSeparateLargeLayers(opt.BentoRequest)
 	bentoRepositoryName, _, bentoVersion := xstrings.Partition(opt.BentoRequest.Spec.BentoTag, ":")
 	kubeLabels := r.getImageBuilderPodLabels(opt.BentoRequest)
+	if separateLargeLayers && opt.IsLargeLayersPod {
+		kubeLabels = r.getLargeLayersBuilderPodLabels(opt.BentoRequest)
+	}
 
 	inClusterImageName := opt.ImageInfo.InClusterImageName
 
@@ -2261,6 +2708,11 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 	bentoDownloadURL := opt.BentoRequest.Spec.DownloadURL
 	bentoDownloadHeader := ""
 
+	eventtype := "GenerateImageBuilderPod"
+	if opt.IsLargeLayersPod {
+		eventtype = "GenerateLargeLayersImageBuilderPod"
+	}
+
 	if bentoDownloadURL == "" {
 		var yataiClient_ **yataiclient.YataiClient
 		var yataiConf_ **commonconfig.YataiConfig
@@ -2279,23 +2731,23 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 		yataiClient := *yataiClient_
 		yataiConf := *yataiConf_
 
-		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting bento %s from yatai service", opt.BentoRequest.Spec.BentoTag)
+		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Getting bento %s from yatai service", opt.BentoRequest.Spec.BentoTag)
 		bento, err = yataiClient.GetBento(ctx, bentoRepositoryName, bentoVersion)
 		if err != nil {
 			err = errors.Wrap(err, "get bento")
 			return
 		}
-		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Got bento %s from yatai service", opt.BentoRequest.Spec.BentoTag)
+		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Got bento %s from yatai service", opt.BentoRequest.Spec.BentoTag)
 
 		if bento.TransmissionStrategy != nil && *bento.TransmissionStrategy == modelschemas.TransmissionStrategyPresignedURL {
 			var bento_ *schemasv1.BentoSchema
-			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting presigned url for bento %s from yatai service", opt.BentoRequest.Spec.BentoTag)
+			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Getting presigned url for bento %s from yatai service", opt.BentoRequest.Spec.BentoTag)
 			bento_, err = yataiClient.PresignBentoDownloadURL(ctx, bentoRepositoryName, bentoVersion)
 			if err != nil {
 				err = errors.Wrap(err, "presign bento download url")
 				return
 			}
-			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Got presigned url for bento %s from yatai service", opt.BentoRequest.Spec.BentoTag)
+			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Got presigned url for bento %s from yatai service", opt.BentoRequest.Spec.BentoTag)
 			bentoDownloadURL = bento_.PresignedDownloadUrl
 		} else {
 			bentoDownloadURL = fmt.Sprintf("%s/api/v1/bento_repositories/%s/bentos/%s/download", yataiConf.Endpoint, bentoRepositoryName, bentoVersion)
@@ -2315,7 +2767,7 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 			},
 		}
 
-		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting secret %s in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
+		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Getting secret %s in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
 		_yataiAPITokenSecret := &corev1.Secret{}
 		err = r.Get(ctx, types.NamespacedName{Namespace: opt.BentoRequest.Namespace, Name: yataiAPITokenSecretName}, _yataiAPITokenSecret)
 		isNotFound := k8serrors.IsNotFound(err)
@@ -2325,22 +2777,22 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 		}
 
 		if isNotFound {
-			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is not found, so creating it in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
+			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Secret %s is not found, so creating it in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
 			err = r.Create(ctx, yataiAPITokenSecret)
 			isExists := k8serrors.IsAlreadyExists(err)
 			if err != nil && !isExists {
 				err = errors.Wrapf(err, "failed to create secret %s", yataiAPITokenSecretName)
 				return
 			}
-			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is created in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
+			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Secret %s is created in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
 		} else {
-			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is found in namespace %s, so updating it", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
+			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Secret %s is found in namespace %s, so updating it", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
 			err = r.Update(ctx, yataiAPITokenSecret)
 			if err != nil {
 				err = errors.Wrapf(err, "failed to update secret %s", yataiAPITokenSecretName)
 				return
 			}
-			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is updated in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
+			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Secret %s is updated in namespace %s", yataiAPITokenSecretName, opt.BentoRequest.Namespace)
 		}
 	}
 	internalImages := commonconfig.GetInternalImages()
@@ -2351,7 +2803,7 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 	privileged := buildEngine != BentoImageBuildEngineBuildkitRootless
 
 	bentoDownloadCommandTemplate, err := template.New("downloadCommand").Parse(`
-set -e
+set -ex
 
 mkdir -p /workspace/buildcontext
 url="{{.BentoDownloadURL}}"
@@ -2375,6 +2827,45 @@ echo "Changing directory permission..."
 chown -R 1000:1000 /workspace
 {{end}}
 echo "Done"
+{{if .SeparateLargeLayers}}
+original_dockerfile="{{.OriginalDockerfilePath}}"
+without_large_layers_dockerfile="{{.WithoutLargeLayersDockerfilePath}}"
+large_layers_dockerfile="{{.LargeLayersDockerfilePath}}"
+
+base_image=$(grep -m 1 '^FROM' "$original_dockerfile")
+
+has_uv=$(grep -E 'UV_SYSTEM_PYTHON|uv/install.sh' "$original_dockerfile")
+
+sed '/pip install\|python\/install.sh/d' "$original_dockerfile" > "$without_large_layers_dockerfile"
+
+echo "$base_image" > "$large_layers_dockerfile"
+echo "" >> "$large_layers_dockerfile"
+if [[ -n "$has_uv" ]]; then
+  echo -e "ENV UV_SYSTEM_PYTHON=1\nRUN curl -LO https://astral.sh/uv/install.sh && \ \n sh install.sh && rm install.sh && mv \$HOME/.cargo/bin/uv /usr/local/bin/" >> "$large_layers_dockerfile"
+fi
+{
+  echo ""
+  echo "ARG BENTO_USER=bentoml"
+  echo "ARG BENTO_USER_UID=1034"
+  echo "ARG BENTO_USER_GID=1034"
+  echo "RUN groupadd -g \$BENTO_USER_GID -o \$BENTO_USER && useradd -m -u \$BENTO_USER_UID -g \$BENTO_USER_GID -o -r \$BENTO_USER"
+  echo "ARG BENTO_PATH=/home/bentoml/bento"
+  echo "ENV BENTO_PATH=\$BENTO_PATH"
+  echo "ENV BENTOML_HOME=/home/bentoml/"
+  echo "ENV BENTOML_HF_CACHE_DIR=/home/bentoml/bento/hf-models"
+  echo ""
+  echo "RUN mkdir \$BENTO_PATH && chown bentoml:bentoml \$BENTO_PATH -R"
+  echo "WORKDIR \$BENTO_PATH"
+  echo ""
+  grep -E 'pip install' "$original_dockerfile" || true
+  echo ""
+  echo "COPY --chown=bentoml:bentoml ./env/python ./env/python/"
+  grep -E 'python/install.sh' "$original_dockerfile"
+} >> "$large_layers_dockerfile"
+
+cat "$large_layers_dockerfile"
+cat "$without_large_layers_dockerfile"
+{{end}}
 	`)
 
 	if err != nil {
@@ -2382,14 +2873,23 @@ echo "Done"
 		return
 	}
 
+	dockerFilePath := "/workspace/buildcontext/env/docker/Dockerfile"
+	withoutLargeLayersDockerFilePath := "/workspace/buildcontext/env/docker/Dockerfile.without-large-layers"
+	largeLayersDockerFilePath := "/workspace/buildcontext/env/docker/Dockerfile.large-layers"
+	largeLayersTarPath := "/workspace/buildcontext/large_layers.tar"
+
 	var bentoDownloadCommandBuffer bytes.Buffer
 
 	err = bentoDownloadCommandTemplate.Execute(&bentoDownloadCommandBuffer, map[string]interface{}{
-		"BentoDownloadURL":    bentoDownloadURL,
-		"BentoDownloadHeader": bentoDownloadHeader,
-		"BentoRepositoryName": bentoRepositoryName,
-		"BentoVersion":        bentoVersion,
-		"Privileged":          privileged,
+		"BentoDownloadURL":                 bentoDownloadURL,
+		"BentoDownloadHeader":              bentoDownloadHeader,
+		"BentoRepositoryName":              bentoRepositoryName,
+		"BentoVersion":                     bentoVersion,
+		"Privileged":                       privileged,
+		"SeparateLargeLayers":              separateLargeLayers,
+		"OriginalDockerfilePath":           dockerFilePath,
+		"WithoutLargeLayersDockerfilePath": withoutLargeLayersDockerFilePath,
+		"LargeLayersDockerfilePath":        largeLayersDockerFilePath,
 	})
 	if err != nil {
 		err = errors.Wrap(err, "failed to execute download command template")
@@ -2421,12 +2921,12 @@ echo "Done"
 		})
 	}
 
-	storeSchema := StoreSchemaAWS
+	storeSchema := StoreSchemaS3
 	if strings.HasPrefix(bentoDownloadURL, "gs") {
-		storeSchema = StoreSchemaGCP
+		storeSchema = StoreSchemaGCS
 	}
 	var awsAccessKeySecretName, gcpAccessKeySecretName string
-	if storeSchema == StoreSchemaAWS {
+	if storeSchema == StoreSchemaS3 || (separateLargeLayers && largeLayersS3EndpointURL != "") {
 		// nolint: gosec
 		awsAccessKeySecretName = opt.BentoRequest.Annotations[commonconsts.KubeAnnotationAWSAccessKeySecretName]
 		if awsAccessKeySecretName == "" {
@@ -2446,7 +2946,7 @@ echo "Done"
 					},
 					StringData: stringData,
 				}
-				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Creating or updating secret %s in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Creating or updating secret %s in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
 				_, err = controllerutil.CreateOrUpdate(ctx, r.Client, awsAccessKeySecret, func() error {
 					awsAccessKeySecret.StringData = stringData
 					return nil
@@ -2455,9 +2955,10 @@ echo "Done"
 					err = errors.Wrapf(err, "failed to create or update secret %s", awsAccessKeySecretName)
 					return
 				}
-				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is created or updated in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Secret %s is created or updated in namespace %s", awsAccessKeySecretName, opt.BentoRequest.Namespace)
 			}
-		} else {
+		}
+		if awsAccessKeySecretName != "" {
 			downloaderContainerEnvFrom = append(downloaderContainerEnvFrom, corev1.EnvFromSource{
 				SecretRef: &corev1.SecretEnvSource{
 					LocalObjectReference: corev1.LocalObjectReference{
@@ -2466,7 +2967,8 @@ echo "Done"
 				},
 			})
 		}
-	} else {
+	}
+	if storeSchema == StoreSchemaGCS {
 		// nolint: gosec
 		gcpAccessKeySecretName = opt.BentoRequest.Annotations[commonconsts.KubeAnnotationGCPAccessKeySecretName]
 		if gcpAccessKeySecretName == "" {
@@ -2486,7 +2988,7 @@ echo "Done"
 					},
 					StringData: stringData,
 				}
-				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Creating or updating secret %s in namespace %s", gcpAccessKeySecretName, opt.BentoRequest.Namespace)
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Creating or updating secret %s in namespace %s", gcpAccessKeySecretName, opt.BentoRequest.Namespace)
 				_, err = controllerutil.CreateOrUpdate(ctx, r.Client, gcpAccessKeySecret, func() error {
 					gcpAccessKeySecret.StringData = stringData
 					return nil
@@ -2495,9 +2997,10 @@ echo "Done"
 					err = errors.Wrapf(err, "failed to create or update secret %s", gcpAccessKeySecretName)
 					return
 				}
-				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is created or updated in namespace %s", gcpAccessKeySecretName, opt.BentoRequest.Namespace)
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Secret %s is created or updated in namespace %s", gcpAccessKeySecretName, opt.BentoRequest.Namespace)
 			}
-		} else {
+		}
+		if gcpAccessKeySecretName != "" {
 			downloaderContainerEnvFrom = append(downloaderContainerEnvFrom, corev1.EnvFromSource{
 				SecretRef: &corev1.SecretEnvSource{
 					LocalObjectReference: corev1.LocalObjectReference{
@@ -2579,23 +3082,23 @@ echo "Done"
 			yataiConf := *yataiConf_
 
 			var model_ *schemasv1.ModelFullSchema
-			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting model %s from yatai service", model.Tag)
+			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Getting model %s from yatai service", model.Tag)
 			model_, err = yataiClient.GetModel(ctx, modelRepositoryName, modelVersion)
 			if err != nil {
 				err = errors.Wrap(err, "get model")
 				return
 			}
-			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Model %s is got from yatai service", model.Tag)
+			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Model %s is got from yatai service", model.Tag)
 
 			if model_.TransmissionStrategy != nil && *model_.TransmissionStrategy == modelschemas.TransmissionStrategyPresignedURL {
 				var model0 *schemasv1.ModelSchema
-				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting presigned url for model %s from yatai service", model.Tag)
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Getting presigned url for model %s from yatai service", model.Tag)
 				model0, err = yataiClient.PresignModelDownloadURL(ctx, modelRepositoryName, modelVersion)
 				if err != nil {
 					err = errors.Wrap(err, "presign model download url")
 					return
 				}
-				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Presigned url for model %s is got from yatai service", model.Tag)
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Presigned url for model %s is got from yatai service", model.Tag)
 				modelDownloadURL = model0.PresignedDownloadUrl
 			} else {
 				modelDownloadURL = fmt.Sprintf("%s/api/v1/model_repositories/%s/models/%s/download", yataiConf.Endpoint, modelRepositoryName, modelVersion)
@@ -2686,7 +3189,7 @@ echo "Done"
 	}
 
 	configCmName := "yatai-image-builder-config"
-	r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting configmap %s from namespace %s", configCmName, configNamespace)
+	r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Getting configmap %s from namespace %s", configCmName, configNamespace)
 	configCm := &corev1.ConfigMap{}
 	err = r.Get(ctx, types.NamespacedName{Name: configCmName, Namespace: configNamespace}, configCm)
 	configCmIsNotFound := k8serrors.IsNotFound(err)
@@ -2697,7 +3200,7 @@ echo "Done"
 	err = nil // nolint: ineffassign
 
 	if !configCmIsNotFound {
-		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Configmap %s is got from namespace %s", configCmName, configNamespace)
+		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Configmap %s is got from namespace %s", configCmName, configNamespace)
 
 		globalExtraPodMetadata = &resourcesv1alpha1.ExtraPodMetadata{}
 
@@ -2769,9 +3272,26 @@ echo "Done"
 		buildArgs = append(buildArgs, opt.BentoRequest.Spec.BuildArgs...)
 	}
 
-	dockerFilePath := "/workspace/buildcontext/env/docker/Dockerfile"
-
 	builderContainerEnvFrom := make([]corev1.EnvFromSource, 0)
+	if awsAccessKeySecretName != "" {
+		builderContainerEnvFrom = append(builderContainerEnvFrom, corev1.EnvFromSource{
+			SecretRef: &corev1.SecretEnvSource{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: awsAccessKeySecretName,
+				},
+			},
+		})
+	}
+
+	if gcpAccessKeySecretName != "" {
+		builderContainerEnvFrom = append(builderContainerEnvFrom, corev1.EnvFromSource{
+			SecretRef: &corev1.SecretEnvSource{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: gcpAccessKeySecretName,
+				},
+			},
+		})
+	}
 	builderContainerEnvs := []corev1.EnvVar{
 		{
 			Name:  "DOCKER_CONFIG",
@@ -2813,9 +3333,21 @@ echo "Done"
 		"--compressed-caching=false",
 		"--compression=zstd",
 		"--compression-level=-7",
-		fmt.Sprintf("--dockerfile=%s", dockerFilePath),
 		fmt.Sprintf("--insecure=%v", dockerRegistryInsecure),
 		fmt.Sprintf("--destination=%s", inClusterImageName),
+	}
+
+	if separateLargeLayers {
+		if opt.IsLargeLayersPod {
+			args = append(args, "--dockerfile", largeLayersDockerFilePath)
+			args = append(args, "--no-push")
+			args = append(args, "--tar-path", largeLayersTarPath)
+			args = append(args, "--force")
+		} else {
+			args = append(args, "--dockerfile", withoutLargeLayersDockerFilePath)
+		}
+	} else {
+		args = append(args, "--dockerfile", dockerFilePath)
 	}
 
 	kanikoSnapshotMode := os.Getenv("KANIKO_SNAPSHOT_MODE")
@@ -2879,23 +3411,6 @@ echo "Done"
 			cachedImageName := fmt.Sprintf("%s%s", getBentoImagePrefix(opt.BentoRequest), bentoRepositoryName)
 			args = append(args, "--import-cache", fmt.Sprintf("type=s3,region=%s,bucket=%s,name=%s", buildkitS3CacheRegion, buildkitS3CacheBucket, cachedImageName))
 			args = append(args, "--export-cache", fmt.Sprintf("type=s3,region=%s,bucket=%s,name=%s,mode=max,compression=zstd,ignore-error=true", buildkitS3CacheRegion, buildkitS3CacheBucket, cachedImageName))
-			if storeSchema == StoreSchemaAWS && awsAccessKeySecretName != "" {
-				builderContainerEnvFrom = append(builderContainerEnvFrom, corev1.EnvFromSource{
-					SecretRef: &corev1.SecretEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: awsAccessKeySecretName,
-						},
-					},
-				})
-			} else if gcpAccessKeySecretName != "" {
-				builderContainerEnvFrom = append(builderContainerEnvFrom, corev1.EnvFromSource{
-					SecretRef: &corev1.SecretEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: gcpAccessKeySecretName,
-						},
-					},
-				})
-			}
 		} else {
 			cacheRepo := os.Getenv("BUILDKIT_CACHE_REPO")
 			if cacheRepo == "" {
@@ -2938,7 +3453,7 @@ echo "Done"
 
 	// nolint: gosec
 	buildArgsSecretName := "yatai-image-builder-build-args"
-	r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting secret %s from namespace %s", buildArgsSecretName, configNamespace)
+	r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Getting secret %s from namespace %s", buildArgsSecretName, configNamespace)
 	buildArgsSecret := &corev1.Secret{}
 	err = r.Get(ctx, types.NamespacedName{Name: buildArgsSecretName, Namespace: configNamespace}, buildArgsSecret)
 	buildArgsSecretIsNotFound := k8serrors.IsNotFound(err)
@@ -2948,7 +3463,7 @@ echo "Done"
 	}
 
 	if !buildArgsSecretIsNotFound {
-		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is got from namespace %s", buildArgsSecretName, configNamespace)
+		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Secret %s is got from namespace %s", buildArgsSecretName, configNamespace)
 		if configNamespace != opt.BentoRequest.Namespace {
 			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is in namespace %s, but BentoRequest is in namespace %s, so we need to copy the secret to BentoRequest namespace", buildArgsSecretName, configNamespace, opt.BentoRequest.Namespace)
 			r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting secret %s in namespace %s", buildArgsSecretName, opt.BentoRequest.Namespace)
@@ -2960,7 +3475,7 @@ echo "Done"
 				return
 			}
 			if localBuildArgsSecretIsNotFound {
-				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Copying secret %s from namespace %s to namespace %s", buildArgsSecretName, configNamespace, opt.BentoRequest.Namespace)
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Copying secret %s from namespace %s to namespace %s", buildArgsSecretName, configNamespace, opt.BentoRequest.Namespace)
 				err = r.Create(ctx, &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      buildArgsSecretName,
@@ -2973,8 +3488,8 @@ echo "Done"
 					return
 				}
 			} else {
-				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is already in namespace %s", buildArgsSecretName, opt.BentoRequest.Namespace)
-				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Updating secret %s in namespace %s", buildArgsSecretName, opt.BentoRequest.Namespace)
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Secret %s is already in namespace %s", buildArgsSecretName, opt.BentoRequest.Namespace)
+				r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Updating secret %s in namespace %s", buildArgsSecretName, opt.BentoRequest.Namespace)
 				err = r.Update(ctx, &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      buildArgsSecretName,
@@ -3010,12 +3525,18 @@ echo "Done"
 			}
 		}
 	} else {
-		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is not found in namespace %s", buildArgsSecretName, configNamespace)
+		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, eventtype, "Secret %s is not found in namespace %s", buildArgsSecretName, configNamespace)
+	}
+
+	cmd := shquot.POSIXShell(append(command, args...))
+
+	if separateLargeLayers && opt.IsLargeLayersPod {
+		cmd = fmt.Sprintf("%s && pzstd -c -7 %s | aws s3 cp - s3://%s/%s --endpoint-url=%s", cmd, largeLayersTarPath, largeLayersS3Bucket, inClusterImageName, largeLayersS3EndpointURL)
 	}
 
 	builderContainerArgs := []string{
 		"-c",
-		fmt.Sprintf("%s && exit 0 || exit %d", shquot.POSIXShell(append(command, args...)), BuilderJobFailedExitCode),
+		fmt.Sprintf("%s && exit 0 || exit %d", cmd, BuilderJobFailedExitCode),
 	}
 
 	container := corev1.Container{
