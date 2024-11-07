@@ -17,7 +17,10 @@ limitations under the License.
 package resources
 
 import (
+	"archive/tar"
 	"context"
+	"io"
+	"net/http"
 	"path"
 
 	// nolint: gosec
@@ -42,7 +45,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -70,6 +72,8 @@ import (
 	"github.com/bentoml/yatai-schemas/modelschemas"
 	"github.com/bentoml/yatai-schemas/schemasv1"
 
+	"github.com/bentoml/yatai-image-builder/common"
+
 	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
 	"github.com/bentoml/yatai-image-builder/version"
 	yataiclient "github.com/bentoml/yatai-image-builder/yatai-client"
@@ -81,6 +85,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ecr"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -94,8 +99,11 @@ const (
 	KubeLabelYataiImageBuilderSeparateModels  = "yatai.ai/yatai-image-builder-separate-models"
 	KubeAnnotationBentoStorageNS              = "yatai.ai/bento-storage-namepsace"
 	KubeAnnotationModelStorageNS              = "yatai.ai/model-storage-namepsace"
+	KubeAnnotationImageInfo                   = "yatai.ai/image-info"
 	StoreSchemaAWS                            = "aws"
 	StoreSchemaGCP                            = "gcp"
+
+	configCmName = "yatai-image-builder-config"
 )
 
 // BentoRequestReconciler reconciles a BentoRequest object
@@ -255,12 +263,12 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return
 		}
 		return
-	} else {
-		if err = r.deleteImageBuilderJobs(ctx, bentoRequest); err != nil {
-			r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "DeleteImageBuilderJobs", "Failed to delete image builder jobs: %v", err)
-			log.FromContext(ctx).Error(err, "Failed to delete image builder jobs")
-			// We don't return here to allow the reconciliation to continue
-		}
+		// } else {
+		// 	if err = r.deleteImageBuilderJobs(ctx, bentoRequest); err != nil {
+		// 		r.Recorder.Eventf(bentoRequest, corev1.EventTypeWarning, "DeleteImageBuilderJobs", "Failed to delete image builder jobs: %v", err)
+		// 		log.FromContext(ctx).Error(err, "Failed to delete image builder jobs")
+		// 		// We don't return here to allow the reconciliation to continue
+		// 	}
 	}
 
 	if modelsExistsErr != nil {
@@ -335,6 +343,13 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			bentoCR.Annotations = map[string]string{}
 		}
 		bentoCR.Annotations[commonconsts.KubeAnnotationImageStoredInS3] = commonconsts.KubeLabelValueTrue
+		var newImageInfo *common.ImageInfo
+		newImageInfo, err = r.getBentoImageInfo(ctx, bentoRequest)
+		if err != nil {
+			return
+		}
+		bentoCR.Annotations["yatai.ai/image-object-key"] = getContainerImageS3ObjectKey(newImageInfo)
+		bentoCR.Annotations[KubeAnnotationImageInfo] = bentoRequest.Annotations[KubeAnnotationImageInfo]
 	}
 
 	err = ctrl.SetControllerReference(bentoRequest, bentoCR, r.Scheme)
@@ -455,7 +470,7 @@ func (r *BentoRequestReconciler) ensureImageExists(ctx context.Context, opt ensu
 			return
 		}
 		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImage", "Checking image exists: %s", imageInfo.ImageName)
-		imageExists, err = checkImageExists(ctx, bentoRequest, imageInfo)
+		imageExists, err = r.checkImageExists(ctx, bentoRequest, imageInfo)
 		if err != nil {
 			err = errors.Wrapf(err, "check image %s exists", imageInfo.ImageName)
 			return
@@ -987,7 +1002,7 @@ func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ens
 	return
 }
 
-func (r *BentoRequestReconciler) deleteImageBuilderJobs(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest) error {
+func (r *BentoRequestReconciler) deleteImageBuilderJobs(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest) error { // nolint:unused
 	jobLabels := r.getImageBuilderJobLabels(bentoRequest)
 
 	jobs := &batchv1.JobList{}
@@ -1496,12 +1511,193 @@ func getContainerImageS3Bucket() string {
 	return os.Getenv("CONTAINER_IMAGE_S3_BUCKET")
 }
 
-func getContainerImageS3ObjectName(imageInfo ImageInfo) string {
-	return imageInfo.ImageName
+func getContainerImageS3ObjectKey(imageInfo *common.ImageInfo) string {
+	return imageInfo.Hash
 }
 
-func checkImageExists(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest, imageInfo ImageInfo) (bool, error) {
+func (r *BentoRequestReconciler) downloadBentoImageInfo(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest) (imageInfo *common.ImageInfo, err error) {
+	downloadURL := bentoRequest.Spec.DownloadURL
+	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
+	if err != nil {
+		err = errors.Wrap(err, "create request")
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		err = errors.Wrap(err, "download bento tar")
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		err = errors.New("download bento tar failed")
+		return
+	}
+
+	tmpDir, err := os.MkdirTemp("", "bento-files")
+	if err != nil {
+		err = errors.Wrap(err, "create temp dir")
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// untar resp body
+	tarReader := tar.NewReader(resp.Body)
+
+	var dockerfileContent []byte
+
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			err = errors.Wrap(err, "read tar header")
+			return imageInfo, err
+		}
+
+		// Skip if not a file
+		if header.Typeflag != tar.TypeReg {
+			continue
+		}
+
+		// Create directory structure
+		targetDir := filepath.Join(tmpDir, filepath.Dir(header.Name))
+		if err = os.MkdirAll(targetDir, 0755); err != nil {
+			err = errors.Wrap(err, "create target directory")
+			return imageInfo, err
+		}
+
+		// Create file
+		targetPath := filepath.Join(tmpDir, header.Name) // nolint:gosec
+		f, err := os.Create(targetPath)
+		if err != nil {
+			err = errors.Wrap(err, "create target file")
+			return imageInfo, err
+		}
+		defer f.Close()
+
+		// Copy file contents
+		if _, err = io.Copy(f, tarReader); err != nil { // nolint: gosec
+			err = errors.Wrap(err, "copy file contents")
+			return imageInfo, err
+		}
+
+		// Look for Dockerfile
+		if strings.HasSuffix(header.Name, "Dockerfile") {
+			// Get image info from Dockerfile
+			dockerfileContent, err = os.ReadFile(targetPath)
+			if err != nil {
+				err = errors.Wrap(err, "read dockerfile")
+				return imageInfo, err
+			}
+		}
+	}
+
+	buildArgs, err := r.getBuildArgs(ctx, bentoRequest)
+	if err != nil {
+		err = errors.Wrap(err, "get build args")
+		return
+	}
+
+	newBuildArgs := make(map[string]string)
+	for _, buildArg := range buildArgs {
+		k, v, _ := strings.Cut(buildArg, "=")
+		newBuildArgs[k] = v
+	}
+
+	imageInfo, err = common.GetImageInfo(ctx, string(dockerfileContent), tmpDir, newBuildArgs)
+	if err != nil {
+		err = errors.Wrap(err, "get image info")
+		return imageInfo, err
+	}
+
+	return imageInfo, nil
+}
+
+func (r *BentoRequestReconciler) getBuildArgs(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest) (buildArgs []string, err error) {
+	buildArgs = []string{}
+
+	configNamespace, err := commonconfig.GetYataiImageBuilderNamespace(ctx, func(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
+		secret := &corev1.Secret{}
+		err := r.Get(ctx, types.NamespacedName{
+			Namespace: namespace,
+			Name:      name,
+		}, secret)
+		return secret, errors.Wrap(err, "get secret")
+	})
+	if err != nil {
+		err = errors.Wrap(err, "failed to get Yatai image builder namespace")
+		return
+	}
+
+	configCm := &corev1.ConfigMap{}
+	err = r.Get(ctx, types.NamespacedName{Name: configCmName, Namespace: configNamespace}, configCm)
+	configCmIsNotFound := k8serrors.IsNotFound(err)
+	if err != nil && !configCmIsNotFound {
+		err = errors.Wrap(err, "failed to get configmap")
+		return
+	}
+
+	if !configCmIsNotFound {
+		if val, ok := configCm.Data["build_args"]; ok {
+			err = yaml.Unmarshal([]byte(val), &buildArgs)
+			if err != nil {
+				err = errors.Wrapf(err, "failed to yaml unmarshal build_args, please check the configmap %s in namespace %s", configCmName, configNamespace)
+				return
+			}
+		}
+	}
+
+	if bentoRequest.Spec.BuildArgs != nil {
+		buildArgs = append(buildArgs, bentoRequest.Spec.BuildArgs...)
+	}
+
+	return
+}
+
+func (r *BentoRequestReconciler) getBentoImageInfo(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest) (*common.ImageInfo, error) {
+	cachedValue := bentoRequest.Annotations[KubeAnnotationImageInfo]
+	if cachedValue != "" {
+		imageInfo := &common.ImageInfo{}
+		err := json.Unmarshal([]byte(cachedValue), imageInfo)
+		if err != nil {
+			err = errors.Wrap(err, "unmarshal dockerfile content")
+			return nil, err
+		}
+		return imageInfo, nil
+	}
+
+	imageInfo, err := r.downloadBentoImageInfo(ctx, bentoRequest)
+	if err != nil {
+		err = errors.Wrap(err, "download bento image info")
+		return nil, err
+	}
+
+	imageInfoBytes, err := json.Marshal(imageInfo)
+	if err != nil {
+		return nil, errors.Wrap(err, "marshal image info")
+	}
+
+	bentoRequest.Annotations[KubeAnnotationImageInfo] = string(imageInfoBytes)
+	newBentoRequest := &resourcesv1alpha1.BentoRequest{}
+	err = r.Get(ctx, types.NamespacedName{Namespace: bentoRequest.Namespace, Name: bentoRequest.Name}, newBentoRequest)
+	if err != nil {
+		return nil, errors.Wrap(err, "get bento request")
+	}
+	newBentoRequest.Annotations[KubeAnnotationImageInfo] = string(imageInfoBytes)
+	err = r.Update(ctx, newBentoRequest)
+	if err != nil {
+		return nil, errors.Wrap(err, "update bento request")
+	}
+	return imageInfo, nil
+}
+
+func (r *BentoRequestReconciler) checkImageExists(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest, imageInfo ImageInfo) (bool, error) {
 	if isImageStoredInS3(bentoRequest) {
+		newImageInfo, err := r.getBentoImageInfo(ctx, bentoRequest)
+		if err != nil {
+			return false, errors.Wrap(err, "get image info")
+		}
 		containerImageS3EndpointURL := getContainerImageS3EndpointURL()
 		containerImageS3Bucket := getContainerImageS3Bucket()
 		scheme, _, endpoint := xstrings.Partition(containerImageS3EndpointURL, "://")
@@ -1524,7 +1720,7 @@ func checkImageExists(ctx context.Context, bentoRequest *resourcesv1alpha1.Bento
 		if err != nil {
 			return false, errors.Wrap(err, "create minio client")
 		}
-		objectName := getContainerImageS3ObjectName(imageInfo)
+		objectName := getContainerImageS3ObjectKey(newImageInfo)
 		_, err = minioClient.StatObject(ctx, containerImageS3Bucket, objectName, minio.StatObjectOptions{})
 		if err != nil {
 			if minio.ToErrorResponse(err).Code == "NoSuchKey" {
@@ -1801,7 +1997,7 @@ func (r *BentoRequestReconciler) generateModelPVC(opt GenerateModelPVCOption) (p
 					corev1.ResourceStorage: storageSize,
 				},
 			},
-			StorageClassName: pointer.StringPtr(getJuiceFSStorageClassName()),
+			StorageClassName: ptr.To(getJuiceFSStorageClassName()),
 		},
 	}
 	return
@@ -1837,15 +2033,15 @@ func (r *BentoRequestReconciler) generateModelSeederJob(ctx context.Context, opt
 			Annotations: kubeAnnotations,
 		},
 		Spec: batchv1.JobSpec{
-			Completions:  pointer.Int32Ptr(1),
-			Parallelism:  pointer.Int32Ptr(1),
-			BackoffLimit: pointer.Int32Ptr(1),
+			Completions:  ptr.To(int32(1)),
+			Parallelism:  ptr.To(int32(1)),
+			BackoffLimit: ptr.To(int32(1)),
 			PodFailurePolicy: &batchv1.PodFailurePolicy{
 				Rules: []batchv1.PodFailurePolicyRule{
 					{
 						Action: batchv1.PodFailurePolicyActionFailJob,
 						OnExitCodes: &batchv1.PodFailurePolicyOnExitCodesRequirement{
-							ContainerName: pointer.StringPtr(ModelSeederContainerName),
+							ContainerName: ptr.To(ModelSeederContainerName),
 							Operator:      batchv1.PodFailurePolicyOnExitCodesOpIn,
 							Values:        []int32{ModelSeederJobFailedExitCode},
 						},
@@ -2178,7 +2374,6 @@ echo "Done"
 		return
 	}
 
-	configCmName := "yatai-image-builder-config"
 	r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateModelSeederPod", "Getting configmap %s from namespace %s", configCmName, configNamespace)
 	configCm := &corev1.ConfigMap{}
 	err = r.Get(ctx, types.NamespacedName{Name: configCmName, Namespace: configNamespace}, configCm)
@@ -2250,14 +2445,14 @@ func (r *BentoRequestReconciler) generateImageBuilderJob(ctx context.Context, op
 			Annotations: kubeAnnotations,
 		},
 		Spec: batchv1.JobSpec{
-			Completions: pointer.Int32Ptr(1),
-			Parallelism: pointer.Int32Ptr(1),
+			Completions: ptr.To(int32(1)),
+			Parallelism: ptr.To(int32(1)),
 			PodFailurePolicy: &batchv1.PodFailurePolicy{
 				Rules: []batchv1.PodFailurePolicyRule{
 					{
 						Action: batchv1.PodFailurePolicyActionFailJob,
 						OnExitCodes: &batchv1.PodFailurePolicyOnExitCodesRequirement{
-							ContainerName: pointer.StringPtr(BuilderContainerName),
+							ContainerName: ptr.To(BuilderContainerName),
 							Operator:      batchv1.PodFailurePolicyOnExitCodesOpIn,
 							Values:        []int32{BuilderJobFailedExitCode},
 						},
@@ -2461,8 +2656,6 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 	buildEngine := getBentoImageBuildEngine()
 
 	privileged := buildEngine != BentoImageBuildEngineBuildkitRootless
-
-	imageTarPath := "/workspace/buildcontext/image.tar"
 
 	bentoDownloadCommandTemplate, err := template.New("downloadCommand").Parse(`
 set -e
@@ -2745,7 +2938,6 @@ echo "Done"
 	var globalExtraPodSpec *resourcesv1alpha1.ExtraPodSpec
 	var globalExtraContainerEnv []corev1.EnvVar
 	var globalDefaultImageBuilderContainerResources *corev1.ResourceRequirements
-	var buildArgs []string
 	var builderArgs []string
 
 	configNamespace, err := commonconfig.GetYataiImageBuilderNamespace(ctx, func(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
@@ -2761,7 +2953,6 @@ echo "Done"
 		return
 	}
 
-	configCmName := "yatai-image-builder-config"
 	r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Getting configmap %s from namespace %s", configCmName, configNamespace)
 	configCm := &corev1.ConfigMap{}
 	err = r.Get(ctx, types.NamespacedName{Name: configCmName, Namespace: configNamespace}, configCm)
@@ -2814,16 +3005,6 @@ echo "Done"
 			}
 		}
 
-		buildArgs = []string{}
-
-		if val, ok := configCm.Data["build_args"]; ok {
-			err = yaml.Unmarshal([]byte(val), &buildArgs)
-			if err != nil {
-				err = errors.Wrapf(err, "failed to yaml unmarshal build_args, please check the configmap %s in namespace %s", configCmName, configNamespace)
-				return
-			}
-		}
-
 		builderArgs = []string{}
 		if val, ok := configCm.Data["builder_args"]; ok {
 			err = yaml.Unmarshal([]byte(val), &builderArgs)
@@ -2837,12 +3018,10 @@ echo "Done"
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Configmap %s is not found in namespace %s", configCmName, configNamespace)
 	}
 
-	if buildArgs == nil {
-		buildArgs = make([]string, 0)
-	}
-
-	if opt.BentoRequest.Spec.BuildArgs != nil {
-		buildArgs = append(buildArgs, opt.BentoRequest.Spec.BuildArgs...)
+	buildArgs, err := r.getBuildArgs(ctx, opt.BentoRequest)
+	if err != nil {
+		err = errors.Wrap(err, "get build args")
+		return
 	}
 
 	dockerFilePath := "/workspace/buildcontext/env/docker/Dockerfile"
@@ -2887,11 +3066,13 @@ echo "Done"
 	kubeAnnotations := make(map[string]string)
 	kubeAnnotations[KubeAnnotationBentoRequestImageBuiderHash] = opt.BentoRequest.Annotations[KubeAnnotationBentoRequestImageBuiderHash]
 
+	buildContextPath := "/workspace/buildcontext"
+
 	command := []string{
 		"/kaniko/executor",
 	}
 	args := []string{
-		"--context=/workspace/buildcontext",
+		fmt.Sprintf("--context=%s", buildContextPath),
 		"--verbosity=info",
 		"--image-fs-extract-retry=3",
 		"--cache=true",
@@ -2907,10 +3088,6 @@ echo "Done"
 	kanikoSnapshotMode := os.Getenv("KANIKO_SNAPSHOT_MODE")
 	if kanikoSnapshotMode != "" {
 		args = append(args, fmt.Sprintf("--snapshot-mode=%s", kanikoSnapshotMode))
-	}
-
-	if imageStoredInS3 {
-		args = append(args, "--no-push", "--tar-path", imageTarPath, "--force")
 	}
 
 	var builderImage string
@@ -2992,7 +3169,7 @@ echo "Done"
 
 	if buildEngine == BentoImageBuildEngineBuildkit {
 		builderContainerSecurityContext = &corev1.SecurityContext{
-			Privileged: pointer.BoolPtr(true),
+			Privileged: ptr.To(true),
 		}
 	} else if buildEngine == BentoImageBuildEngineBuildkitRootless {
 		kubeAnnotations["container.apparmor.security.beta.kubernetes.io/builder"] = "unconfined"
@@ -3000,8 +3177,8 @@ echo "Done"
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeUnconfined,
 			},
-			RunAsUser:  pointer.Int64Ptr(1000),
-			RunAsGroup: pointer.Int64Ptr(1000),
+			RunAsUser:  ptr.To(int64(1000)),
+			RunAsGroup: ptr.To(int64(1000)),
 		}
 	}
 
@@ -3098,7 +3275,22 @@ echo "Done"
 	cmd := shquot.POSIXShell(append(command, args...))
 
 	if imageStoredInS3 {
-		cmd = fmt.Sprintf("%s && pzstd -c -7 %s | aws s3 cp - s3://%s/%s --endpoint-url=%s", cmd, imageTarPath, containerImageS3Bucket, getContainerImageS3ObjectName(opt.ImageInfo), containerImageS3EndpointURL)
+		newImageInfo, err := r.getBentoImageInfo(ctx, opt.BentoRequest)
+		if err != nil {
+			return nil, errors.Wrap(err, "get image info")
+		}
+		builderImage = "quay.io/bentoml/bento-image-builder:0.0.1"
+		tarFilePath := filepath.Join(buildContextPath, "img.tar.zst")
+		buildArgsOpt := ""
+		for _, buildArg := range buildArgs {
+			buildArgsOpt = fmt.Sprintf("%s --build-arg %s", buildArgsOpt, strings.Replace(buildArg, "=", ":", 1))
+		}
+		cmd = fmt.Sprintf("set -ex; bash /usr/local/bin/entrypoint.sh && cd %s && tar --use-compress-program='pzstd -7' -cvf - . | s5cmd --endpoint-url=%s pipe s3://%s/%s && bento-image-builder %s --context %s --dockerfile %s --output %s && s5cmd --endpoint-url=%s cp --show-progress %s s3://%s/%s", buildContextPath, containerImageS3EndpointURL, containerImageS3Bucket, opt.ImageInfo.ImageName, buildArgsOpt, buildContextPath, dockerFilePath, tarFilePath, containerImageS3EndpointURL, tarFilePath, containerImageS3Bucket, getContainerImageS3ObjectKey(newImageInfo))
+		// fmt.Printf("cmd: %s\n", cmd)
+		// cmd = "sleep infinity"
+		builderContainerSecurityContext = &corev1.SecurityContext{
+			Privileged: ptr.To(true),
+		}
 	}
 
 	builderContainerArgs := []string{
