@@ -11,10 +11,9 @@ import (
 	"sort"
 	"strings"
 
-	"crypto/md5" // nolint:gosec
-
 	"github.com/asottile/dockerfile"
 	"github.com/pkg/errors"
+	"github.com/zeebo/blake3"
 )
 
 var (
@@ -33,61 +32,72 @@ var (
 	}))
 )
 
-func md5Dir(path string) (string, error) {
-	files, err := os.ReadDir(path)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to read directory")
-	}
+func HashDir(dirPath string) (string, error) {
+	hasher := blake3.New()
 
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].Name() < files[j].Name()
+	var filePaths []string
+	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			filePaths = append(filePaths, path)
+		}
+		return nil
 	})
 
-	hash := md5.New() // nolint:gosec
-	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-		filePath := filepath.Join(path, file.Name())
-		fileMd5, err := md5File(filePath)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to walk directory")
+	}
+
+	sort.Strings(filePaths)
+
+	for _, path := range filePaths {
+		fileHash, err := HashFile(path)
 		if err != nil {
 			return "", err
 		}
-		hash.Write([]byte(fileMd5))
+
+		hasher.Write([]byte(path))
+		hasher.Write([]byte(fileHash))
 	}
 
-	return hex.EncodeToString(hash.Sum(nil)), nil
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-func md5File(path string) (string, error) {
-	// if is directory, then hash the directory content
-	stat, err := os.Stat(path)
+func HashFile(filePath string) (string, error) {
+	stat, err := os.Stat(filePath)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to stat file")
 	}
 	if stat.IsDir() {
-		return md5Dir(path)
+		return HashDir(filePath)
 	}
-	file, err := os.Open(path)
+	file, err := os.Open(filePath)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to open file")
 	}
 	defer file.Close()
 
-	hash := md5.New() // nolint:gosec
-	if _, err := io.Copy(hash, file); err != nil {
+	hasher := blake3.New()
+
+	// Add file mode (permissions)
+	hasher.Write([]byte(fmt.Sprintf("%d", stat.Mode())))
+
+	if _, err := io.Copy(hasher, file); err != nil {
 		return "", errors.Wrap(err, "failed to copy file")
 	}
 
-	return hex.EncodeToString(hash.Sum(nil)), nil
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 type ImageInfo struct {
-	BaseImage string            `json:"base_image"` // nolint:tagliatelle
-	Commands  []string          `json:"commands"`
-	Env       []string          `json:"env"`
-	Args      map[string]string `json:"args"`
-	Hash      string            `json:"hash"`
+	BaseImage  string            `json:"base_image"` // nolint:tagliatelle
+	Commands   []string          `json:"commands"`
+	Env        []string          `json:"env"`
+	Args       map[string]string `json:"args"`
+	Hash       string            `json:"hash"`
+	WorkingDir string            `json:"working_dir"` // nolint:tagliatelle
 }
 
 func GetImageInfo(ctx context.Context, dockerfileContent string, contextPath string, buildArgs map[string]string) (*ImageInfo, error) {
@@ -98,12 +108,13 @@ func GetImageInfo(ctx context.Context, dockerfileContent string, contextPath str
 		os.Exit(1)
 	}
 
-	originalFileMd5s := make([]string, 0)
+	originalFileHashes := make([]string, 0)
 
 	baseImage := ""
 	commands := make([]string, 0)
 	env := make([]string, 0)
 	args := make(map[string]string)
+	workingDir := ""
 
 	for _, dockerfileCommand := range dockerfileCommands {
 		if dockerfileCommand.Cmd == "FROM" {
@@ -133,7 +144,11 @@ func GetImageInfo(ctx context.Context, dockerfileContent string, contextPath str
 			env = append(env, fmt.Sprintf("%s=%s", k, v))
 		}
 		if dockerfileCommand.Cmd == "WORKDIR" {
-			commands = append(commands, fmt.Sprintf("cd %s", dockerfileCommand.Value[0]))
+			workingDir = dockerfileCommand.Value[0]
+			if strings.HasPrefix(workingDir, "$") {
+				workingDir = args[strings.TrimPrefix(workingDir, "$")]
+			}
+			commands = append(commands, fmt.Sprintf("cd %s", workingDir))
 		}
 		if dockerfileCommand.Cmd == "COPY" {
 			orginalFilePath := dockerfileCommand.Value[0]
@@ -146,12 +161,12 @@ func GetImageInfo(ctx context.Context, dockerfileContent string, contextPath str
 				orginalFilePath = filepath.Join(contextPath, orginalFilePath)
 				contextPathJoined = true
 			}
-			md5Str, err := md5File(orginalFilePath)
+			hashStr, err := HashFile(orginalFilePath)
 			if err != nil {
-				logger.ErrorContext(ctx, "failed to get md5 of file", slog.String("error", err.Error()))
+				logger.ErrorContext(ctx, "failed to get hash of file", slog.String("error", err.Error()))
 				return nil, err
 			}
-			originalFileMd5s = append(originalFileMd5s, md5Str)
+			originalFileHashes = append(originalFileHashes, hashStr)
 			targetFileDir := filepath.Dir(targetFilePath)
 			if strings.HasSuffix(targetFilePath, "/") {
 				targetFileDir = filepath.Dir(targetFileDir)
@@ -169,18 +184,18 @@ func GetImageInfo(ctx context.Context, dockerfileContent string, contextPath str
 		}
 	}
 
-	hashBaseStr := baseImage + "__" + strings.Join(originalFileMd5s, ":") + "__" + strings.Join(commands, ":") + "__" + strings.Join(env, ":")
+	hashBaseStr := baseImage + "__" + strings.Join(originalFileHashes, ":") + "__" + strings.Join(commands, ":") + "__" + strings.Join(env, ":")
 
-	// nolint: gosec
-	hasher := md5.New()
+	hasher := blake3.New()
 	hasher.Write([]byte(hashBaseStr))
 	hashStr := hex.EncodeToString(hasher.Sum(nil))
 
 	return &ImageInfo{
-		BaseImage: baseImage,
-		Commands:  commands,
-		Env:       env,
-		Args:      args,
-		Hash:      hashStr,
+		BaseImage:  baseImage,
+		Commands:   commands,
+		Env:        env,
+		Args:       args,
+		Hash:       hashStr,
+		WorkingDir: workingDir,
 	}, nil
 }

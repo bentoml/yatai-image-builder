@@ -1,0 +1,169 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "bento-image-snapshotter.fullname" . }}
+  labels:
+    {{- include "bento-image-snapshotter.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "bento-image-snapshotter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "bento-image-snapshotter.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.hostAliases }}
+      hostAliases:
+{{ toYaml .Values.hostAliases | indent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "bento-image-snapshotter.serviceAccountName" . }}
+      hostNetwork: {{ .Values.hostNetwork }}
+      hostPID: {{ .Values.hostPid }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+      {{- if .Values.containerRuntime.containerd.enable }}
+      - name: update-containerd
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: {{ template "bento-image-snapshotter.initContainer.image" . }}
+        imagePullPolicy: {{ .Values.containerRuntime.initContainer.image.pullPolicy }}
+        resources:
+{{ toYaml .Values.resources | indent 12 }}
+        command:
+        - /bin/sh
+        - -cx
+        - |-
+          set -x
+          etcContainerd={{ .Values.containerRuntime.containerd.configFile }}
+
+          toml check $etcContainerd proxy_plugins.bento
+          if [ $? -eq 0 ]; then
+            echo "containerd has already configured."
+          else
+            toml set --overwrite $etcContainerd plugins.\"io.containerd.grpc.v1.cri\".containerd.disable_snapshot_annotations false
+            toml set --overwrite $etcContainerd plugins.\"io.containerd.grpc.v1.cri\".containerd.snapshotter bento
+
+            # Check if [proxy_plugins] exists
+            toml check $etcContainerd proxy_plugins
+            if [ $? -ne 0 ]; then
+              echo "Add [proxy_plugins] and [proxy_plugins.bento]"
+              cat << EOF >> $etcContainerd
+          [proxy_plugins]
+            [proxy_plugins.bento]
+              type = "snapshot"
+              address = "/run/bento-image-snapshotter/grpc.sock"
+          EOF
+            else
+              # Add only [proxy_plugins.bento] if [proxy_plugins] exists
+              toml set --overwrite $etcContainerd proxy_plugins.bento.type "snapshot"
+              toml set --overwrite $etcContainerd proxy_plugins.bento.address "/run/bento-image-snapshotter/grpc.sock"
+            fi
+          fi
+          echo "Updated containerd config:"
+          cat $etcContainerd
+        volumeMounts:
+        - name: containerd-conf
+          mountPath: {{ .Values.containerRuntime.containerd.configFile }}
+      {{- end }}
+      containers:
+      - name: bento-image-snapshotter
+        image: {{ template "bento-image-snapshotter.image" . }}
+        env:
+          - name: S3_ENDPOINT_URL
+            value: {{ .Values.s3.endpoint_url }}
+          - name: AWS_ACCESS_KEY_ID
+            value: {{ .Values.s3.access_key_id }}
+          - name: AWS_SECRET_ACCESS_KEY
+            value: {{ .Values.s3.secret_access_key }}
+        resources:
+{{ toYaml .Values.resources | indent 12 }}
+        command:
+        - /usr/bin/bento-image-snapshotter
+        {{- if .Values.containerRuntime.containerd.enable }}
+        lifecycle:
+          postStart:
+            exec:
+              command:
+              - "/bin/sh"
+              - "-c"
+              - |
+                # currently, without host pid in container, we can not nsenter with pid and can not invoke systemctl correctly.
+                {{- if .Values.isK3s }}
+                nsenter -t 1 -m systemctl -- restart k3s-agent.service || nsenter -t 1 -m systemctl -- restart k3s.service
+                {{- else }}
+                nsenter -t 1 -m systemctl -- restart containerd.service
+                {{- end }}
+          preStop:
+            exec:
+              command:
+              - "/bin/sh"
+              - "-c"
+              - |
+                set -ex
+                etcContainerd={{ .Values.containerRuntime.containerd.configFile }}
+                # Reset snapshotter back to overlayfs
+                toml set --overwrite $etcContainerd plugins."io.containerd.grpc.v1.cri".containerd.snapshotter overlayfs
+                # Remove bento proxy plugin config
+                toml del $etcContainerd proxy_plugins.bento
+                echo "Updated containerd config:"
+                cat $etcContainerd
+                # Restart containerd service
+                {{- if .Values.isK3s }}
+                nsenter -t 1 -m systemctl -- restart k3s-agent.service || nsenter -t 1 -m systemctl -- restart k3s.service
+                {{- else }}
+                nsenter -t 1 -m systemctl -- restart containerd.service
+                {{- end }}
+        {{- end }}
+        volumeMounts:
+        - name: bento-image-lib
+          mountPath: "/var/lib/containerd/io.containerd.snapshotter.v1.bento"
+          mountPropagation: Bidirectional
+        - name: bento-image-run
+          mountPath: "/run/bento-image-snapshotter"
+          mountPropagation: Bidirectional
+        - name: fuse
+          mountPath: "/dev/fuse"
+        securityContext:
+          privileged: true
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: config
+        configMap:
+          name: {{ template "bento-image-snapshotter.fullname" . }}
+      - name: bento-image-run
+        hostPath:
+          path: /run/bento-image-snapshotter
+          type: DirectoryOrCreate
+      - name: bento-image-lib
+        hostPath:
+          path: /var/lib/containerd/io.containerd.snapshotter.v1.bento
+          type: DirectoryOrCreate
+      - name: fuse
+        hostPath:
+          path: /dev/fuse
+      {{- if .Values.containerRuntime.containerd.enable }}
+      - name: containerd-conf
+        hostPath:
+          path: {{ .Values.containerRuntime.containerd.configFile }}
+      {{- end }}
