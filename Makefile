@@ -260,4 +260,7 @@ build-kaniko-image:
 	docker buildx build --platform linux/amd64,linux/arm64 -t quay.io/bentoml/kaniko:debug -f Dockerfile-kaniko --push .
 
 build-bento-image-builder-image:
-	docker buildx build --platform linux/amd64 -t quay.io/bentoml/bento-image-builder:0.0.1 -f bento-image-builder/Dockerfile --push .
+	docker buildx build --platform linux/amd64 -t quay.io/bentoml/bento-image-builder:$(VERSION) -f bento-image-builder/Dockerfile --push .
+
+build-bento-image-snapshotter-image:
+	docker buildx build --platform linux/amd64 -t quay.io/bentoml/bento-image-snapshotter:$(VERSION) -f bento-image-snapshotter/Dockerfile --push .

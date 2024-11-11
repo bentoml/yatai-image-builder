@@ -1,0 +1,93 @@
+# Default values for stargz-snapshotter.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+global:
+  # -- Global Docker image registry.
+  imageRegistry: ""
+  # -- Global Docker registry secret names as an array.
+  imagePullSecrets: []
+  # -- Global node labels for pod assignment.
+  nodeSelector: {}
+
+image:
+  registry: quay.io
+  repository: bentoml/bento-image-snapshotter
+  pullSecrets: []
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+# -- Let stargz-snapshotter run in host network
+hostNetwork: true
+# -- Let stargz-snapshotter use the host's pid namespace
+hostPid: true
+# -- Host Aliases
+hostAliases: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext:
+  privileged: true
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+resources:
+  requests:
+    cpu: "0"
+    memory: "0"
+  limits:
+    cpu: "2"
+    memory: "2Gi"
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+isK3s: false
+
+s3:
+  endpoint_url: ""
+  access_key_id: ""
+  secret_access_key: ""
+
+containerRuntime:
+  initContainer:
+    image:
+      # -- Image registry.
+      registry: ghcr.io
+      # -- Image repository.
+      repository: liubin/toml-cli
+      # -- Image tag.
+      tag: v0.0.7
+      # -- Image pull policy.
+      pullPolicy: Always
+
+  # -- [Experimental] Containerd support
+  containerd:
+    # -- Enable containerd support
+    # Inject stargz-snapshotter config into ${containerRuntime.containerd.configFile},
+    enable: true
+    # -- Custom config path directory, default is /etc/containerd/config.toml
+    configFile: "/etc/containerd/config.toml"

@@ -1,3 +1,5 @@
+FROM ghcr.io/liubin/toml-cli:v0.0.7 as toml
+
 FROM golang:1.23 as builder
 
 WORKDIR /workspace
@@ -10,15 +12,15 @@ RUN go mod download
 
 # Copy the go source
 COPY common/ common/
-COPY bento-image-builder/ bento-image-builder/
+COPY bento-image-snapshotter/ bento-image-snapshotter/
 
 # Build
 ARG VERSION_BUILDFLAGS
 
 RUN echo "Building with flags: "${VERSION_BUILDFLAGS}" ..."
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "${VERSION_BUILDFLAGS}" -a -o /usr/bin/bento-image-builder bento-image-builder/main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "${VERSION_BUILDFLAGS}" -a -o /usr/bin/bento-image-snapshotter bento-image-snapshotter/main.go
 
-FROM cruizba/ubuntu-dind
+FROM ubuntu:22.04
 
 RUN apt-get update && apt-get install -y \
     curl \
@@ -30,4 +32,5 @@ RUN apt-get update && apt-get install -y \
 
 RUN curl -L https://github.com/peak/s5cmd/releases/download/v2.2.2/s5cmd_2.2.2_Linux-64bit.tar.gz | tar zxv && mv ./s5cmd /usr/bin
 
-COPY --from=builder /usr/bin/bento-image-builder /usr/bin/bento-image-builder
+COPY --from=builder /usr/bin/bento-image-snapshotter /usr/bin/bento-image-snapshotter
+COPY --from=toml /bin/toml /usr/bin/toml
