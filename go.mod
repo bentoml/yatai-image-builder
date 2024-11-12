@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/apparentlymart/go-shquot v0.0.1
 	github.com/aws/aws-sdk-go v1.44.152
-	github.com/bentoml/yatai-common v0.0.0-20240603095308-e19a9540dc30
+	github.com/bentoml/yatai-common v0.0.0-20241105071410-75a4b3a18812
 	github.com/bentoml/yatai-schemas v0.0.0-20230418023541-71c74442a90f
 	github.com/huandu/xstrings v1.3.2
 	github.com/iancoleman/strcase v0.2.0
