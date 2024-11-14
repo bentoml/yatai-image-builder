@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bento-image-snapshotter.fullname" . }}
+  labels:
+    {{- include "bento-image-snapshotter.labels" . | nindent 4 }}
+data:
+  bento-image-snapshotter.service.env: |-
+    S3_ENDPOINT_URL={{ .Values.s3.endpoint_url }}
+    AWS_ACCESS_KEY_ID={{ .Values.s3.access_key_id }}
+    AWS_SECRET_ACCESS_KEY={{ .Values.s3.secret_access_key }}
+
+  bento-image-snapshotter.service: |-
+    [Unit]
+    Description=bento image snapshotter
+    After=network.target
+    Before=containerd.service
+
+    [Service]
+    Type=notify
+    EnvironmentFile=-/etc/systemd/system/bento-image-snapshotter.service.env
+    ExecStart=/usr/bin/bento-image-snapshotter
+    Restart=always
+    RestartSec=1
+
+    [Install]
+    WantedBy=multi-user.target
