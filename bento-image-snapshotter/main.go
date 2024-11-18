@@ -73,7 +73,7 @@ func main() {
 			root := ctx.String("root-dir")
 			sn, err := snapshot.NewSnapshotter(ctx_, root)
 			if err != nil {
-				return err
+				return errors.Wrap(err, "failed to create snapshotter")
 			}
 			service := snapshotservice.FromSnapshotter(sn)
 			rpc := grpc.NewServer()
@@ -90,9 +90,9 @@ func main() {
 			}
 			l, err := net.Listen("unix", socksPath)
 			if err != nil {
-				return nil
+				return errors.Wrapf(rpc.Serve(l), "failed to serve: %s", socksPath)
 			}
-			return errors.Wrapf(rpc.Serve(l), "failed to serve: %s", socksPath)
+			return nil
 		},
 	}
 

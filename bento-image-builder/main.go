@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -38,8 +39,10 @@ import (
 	"github.com/regclient/regclient/types/ref"
 )
 
+type CtxKey string
+
 const (
-	loggerCtxKey = "logger"
+	loggerCtxKey CtxKey = "logger"
 )
 
 var (
@@ -92,15 +95,15 @@ type OCIConfig struct {
 
 type RootFS struct {
 	Type    string   `json:"type"`
-	DiffIDs []string `json:"diff_ids"`
+	DiffIDs []string `json:"diff_ids"` // nolint:tagliatelle
 }
 
 type Config struct {
-	Env          []string            `json:"Env,omitempty"`
-	Cmd          []string            `json:"Cmd,omitempty"`
-	WorkingDir   string              `json:"WorkingDir,omitempty"`
-	Labels       map[string]string   `json:"Labels,omitempty"`
-	ExposedPorts map[string]struct{} `json:"ExposedPorts,omitempty"`
+	Env          []string            `json:"Env,omitempty"`          // nolint:tagliatelle
+	Cmd          []string            `json:"Cmd,omitempty"`          // nolint:tagliatelle
+	WorkingDir   string              `json:"WorkingDir,omitempty"`   // nolint:tagliatelle
+	Labels       map[string]string   `json:"Labels,omitempty"`       // nolint:tagliatelle
+	ExposedPorts map[string]struct{} `json:"ExposedPorts,omitempty"` // nolint:tagliatelle
 }
 
 func streamingCompressAndUpload(ctx context.Context, bucketName, objectKey string, reader io.Reader) error {
@@ -180,7 +183,6 @@ func uploadToS3(ctx context.Context, bucketName, objectKey string, reader io.Rea
 	if s3EndpointURL != "" {
 		logger.InfoContext(ctx, "using S3 endpoint URL", slog.String("url", s3EndpointURL))
 		baseArgs = append(baseArgs, "--endpoint-url", s3EndpointURL)
-		logger = logger.With(slog.String("endpoint-url", s3EndpointURL))
 	}
 
 	s3Uri := fmt.Sprintf("s3://%s/%s", bucketName, objectKey)
@@ -203,7 +205,7 @@ func uploadToS3(ctx context.Context, bucketName, objectKey string, reader io.Rea
 	return nil
 }
 
-func createTarReader(srcDir, prefix string) (io.ReadCloser, error) {
+func createTarReader(srcDir, prefix string) io.ReadCloser {
 	pr, pw := io.Pipe()
 
 	go func() {
@@ -219,7 +221,7 @@ func createTarReader(srcDir, prefix string) (io.ReadCloser, error) {
 
 			relPath, err := filepath.Rel(srcDir, file)
 			if err != nil {
-				return err
+				return errors.Wrap(err, "failed to get relative path")
 			}
 
 			tarPath := filepath.Join(prefix, relPath)
@@ -228,11 +230,11 @@ func createTarReader(srcDir, prefix string) (io.ReadCloser, error) {
 				if file != srcDir {
 					hdr, err := tar.FileInfoHeader(fi, "")
 					if err != nil {
-						return err
+						return errors.Wrap(err, "failed to get tar header")
 					}
 					hdr.Name = tarPath + "/"
 					if err := tw.WriteHeader(hdr); err != nil {
-						return err
+						return errors.Wrap(err, "failed to write tar header")
 					}
 				}
 				return nil
@@ -240,22 +242,22 @@ func createTarReader(srcDir, prefix string) (io.ReadCloser, error) {
 
 			f, err := os.Open(file)
 			if err != nil {
-				return err
+				return errors.Wrap(err, "failed to open file")
 			}
 			defer f.Close()
 
 			hdr, err := tar.FileInfoHeader(fi, "")
 			if err != nil {
-				return err
+				return errors.Wrap(err, "failed to get tar header")
 			}
 			hdr.Name = tarPath
 
 			if err := tw.WriteHeader(hdr); err != nil {
-				return err
+				return errors.Wrap(err, "failed to write tar header")
 			}
 
 			if _, err := io.Copy(tw, f); err != nil {
-				return err
+				return errors.Wrap(err, "failed to copy file")
 			}
 
 			return nil
@@ -267,7 +269,7 @@ func createTarReader(srcDir, prefix string) (io.ReadCloser, error) {
 		}
 	}()
 
-	return pr, nil
+	return pr
 }
 
 func getLayerDesc(digestStr, s3BucketName, objectKey, baseImage string, isBentoLayer bool) (descriptor.Descriptor, ocispecv1.Descriptor) {
@@ -281,7 +283,7 @@ func getLayerDesc(digestStr, s3BucketName, objectKey, baseImage string, isBentoL
 			"containerd.io/snapshot/bento-image-object-key":     objectKey,
 			"containerd.io/snapshot/bento-image-compression":    "zstd",
 			"containerd.io/snapshot/bento-image-base":           baseImage,
-			"containerd.io/snapshot/bento-image-is-bento-layer": fmt.Sprintf("%t", isBentoLayer),
+			"containerd.io/snapshot/bento-image-is-bento-layer": strconv.FormatBool(isBentoLayer),
 		},
 	}
 
@@ -316,7 +318,7 @@ func build(ctx context.Context, opts buildOptions) error {
 		return err
 	}
 
-	bentoLayerObjectKey := fmt.Sprintf("layers/%s", bentoHash)
+	bentoLayerObjectKey := "layers/" + bentoHash
 
 	bentoLayerExists, err := checkS3ObjectExists(ctx, opts.S3Bucket, bentoLayerObjectKey)
 	if err != nil {
@@ -328,13 +330,7 @@ func build(ctx context.Context, opts buildOptions) error {
 			logger := logger.With(slog.String("object-key", bentoLayerObjectKey))
 			logger.InfoContext(ctx, "bento layer does not exist, building bento layer...")
 			logger.InfoContext(ctx, "compressing and streaming upload of bento layer to S3...")
-			bentoTarReader, err := createTarReader(opts.ContextPath, "home/bentoml/bento")
-			if err != nil {
-				logger.ErrorContext(ctx, "failed to create tar reader", slog.String("error", err.Error()))
-				err = errors.Wrap(err, "failed to create tar reader")
-				bentoLayerUploadErrCh <- err
-				return
-			}
+			bentoTarReader := createTarReader(opts.ContextPath, "home/bentoml/bento")
 			defer bentoTarReader.Close()
 			err = streamingCompressAndUpload(ctx, opts.S3Bucket, bentoLayerObjectKey, bentoTarReader)
 			if err != nil {
@@ -362,7 +358,7 @@ func build(ctx context.Context, opts buildOptions) error {
 		return err
 	}
 
-	baseLayerObjectKey := fmt.Sprintf("layers/%s", imageInfo.Hash)
+	baseLayerObjectKey := "layers/" + imageInfo.Hash
 
 	logger.InfoContext(ctx, "checking if base layer exists...", slog.String("object-key", baseLayerObjectKey))
 
@@ -413,7 +409,7 @@ func build(ctx context.Context, opts buildOptions) error {
 		resp, err := cli.ContainerCreate(ctx, &container.Config{
 			Image:      imageInfo.BaseImage,
 			Cmd:        cmd,
-			Env:        append(imageInfo.Env, fmt.Sprintf("CONTEXT=%s", opts.ContextPath)),
+			Env:        append(imageInfo.Env, "CONTEXT="+opts.ContextPath),
 			WorkingDir: workDir,
 			Tty:        true,
 			OpenStdin:  true,
@@ -527,7 +523,7 @@ func build(ctx context.Context, opts buildOptions) error {
 		var bentoLayerObjectKey string
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return errors.Wrap(ctx.Err(), "context canceled")
 		case err := <-bentoLayerUploadErrCh:
 			return err
 		case bentoLayerObjectKey_ := <-bentoLayerObjectKeyCh:

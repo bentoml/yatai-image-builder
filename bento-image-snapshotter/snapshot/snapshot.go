@@ -18,7 +18,6 @@ package snapshot
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -178,7 +177,9 @@ func (o *snapshotter) Stat(ctx context.Context, key string) (snapshots.Info, err
 	if err != nil {
 		return snapshots.Info{}, errors.Wrap(err, "failed to get transaction")
 	}
-	defer t.Rollback()
+	defer func() {
+		_ = t.Rollback()
+	}()
 	_, info, _, err := storage.GetInfo(ctx, key)
 	if err != nil {
 		return snapshots.Info{}, errors.Wrap(err, "failed to get info")
@@ -210,7 +211,7 @@ func (o *snapshotter) Update(ctx context.Context, info snapshots.Info, fieldpath
 //
 // For active snapshots, this will scan the usage of the overlay "diff" (aka
 // "upper") directory and may take some time.
-// for remote snapshots, no scan will be held and recognise the number of inodes
+// for remote snapshots, no scan will be held and recognize the number of inodes
 // and these sizes as "zero".
 //
 // For committed snapshots, the value is returned from the metadata database.
@@ -374,7 +375,7 @@ func (o *snapshotter) Remove(ctx context.Context, key string) (err error) {
 	if !o.asyncRemove {
 		var removals []string
 		const cleanupCommitted = false
-		removals, err = o.getCleanupDirectories(ctx, t, cleanupCommitted)
+		removals, err = o.getCleanupDirectories(ctx, cleanupCommitted)
 		if err != nil {
 			return errors.Wrap(err, "failed to get directories for removal")
 		}
@@ -391,7 +392,6 @@ func (o *snapshotter) Remove(ctx context.Context, key string) (err error) {
 				}
 			}
 		}()
-
 	}
 
 	return errors.Wrap(t.Commit(), "failed to commit transaction")
@@ -401,7 +401,7 @@ func (o *snapshotter) Remove(ctx context.Context, key string) (err error) {
 func (o *snapshotter) Walk(ctx context.Context, fn snapshots.WalkFunc, fs ...string) error {
 	ctx, t, err := o.ms.TransactionContext(ctx, false)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to get transaction")
 	}
 	defer func() {
 		_ = t.Rollback()
@@ -436,16 +436,16 @@ func (o *snapshotter) cleanupDirectories(ctx context.Context, cleanupCommitted b
 	// while the cleanup is scanning.
 	ctx, t, err := o.ms.TransactionContext(ctx, true)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get transaction")
 	}
 
 	defer func() {
 		_ = t.Rollback()
 	}()
-	return o.getCleanupDirectories(ctx, t, cleanupCommitted)
+	return o.getCleanupDirectories(ctx, cleanupCommitted)
 }
 
-func (o *snapshotter) getCleanupDirectories(ctx context.Context, t storage.Transactor, cleanupCommitted bool) ([]string, error) {
+func (o *snapshotter) getCleanupDirectories(ctx context.Context, cleanupCommitted bool) ([]string, error) {
 	ids, err := storage.IDMap(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get ID map")
@@ -478,7 +478,6 @@ func (o *snapshotter) getCleanupDirectories(ctx context.Context, t storage.Trans
 }
 
 func (o *snapshotter) cleanupSnapshotDirectory(ctx context.Context, dir string) error {
-
 	// On a remote snapshot, the layer is mounted on the "fs" directory.
 	// We use Filesystem's Unmount API so that it can do necessary finalization
 	// before/after the unmount.
@@ -495,7 +494,7 @@ func (o *snapshotter) cleanupSnapshotDirectory(ctx context.Context, dir string) 
 func (o *snapshotter) createSnapshot(ctx context.Context, kind snapshots.Kind, key, parent string, opts []snapshots.Opt) (_ storage.Snapshot, err error) {
 	ctx, t, err := o.ms.TransactionContext(ctx, true)
 	if err != nil {
-		return storage.Snapshot{}, err
+		return storage.Snapshot{}, errors.Wrap(err, "failed to get transaction")
 	}
 
 	var td, path string
@@ -516,7 +515,7 @@ func (o *snapshotter) createSnapshot(ctx context.Context, kind snapshots.Kind, k
 	}()
 
 	snapshotDir := filepath.Join(o.root, "snapshots")
-	td, err = o.prepareDirectory(ctx, snapshotDir, kind)
+	td, err = o.prepareDirectory(snapshotDir, kind)
 	if err != nil {
 		if rerr := t.Rollback(); rerr != nil {
 			log.G(ctx).WithError(rerr).Warn("failed to rollback transaction")
@@ -567,7 +566,7 @@ func (o *snapshotter) createSnapshot(ctx context.Context, kind snapshots.Kind, k
 	return s, nil
 }
 
-func (o *snapshotter) prepareDirectory(ctx context.Context, snapshotDir string, kind snapshots.Kind) (string, error) {
+func (o *snapshotter) prepareDirectory(snapshotDir string, kind snapshots.Kind) (string, error) {
 	td, err := os.MkdirTemp(snapshotDir, "new-")
 	if err != nil {
 		return "", errors.Wrap(err, "failed to create temp dir")
@@ -615,8 +614,8 @@ func (o *snapshotter) mounts(ctx context.Context, s storage.Snapshot, checkKey s
 
 	if s.Kind == snapshots.KindActive {
 		options = append(options,
-			fmt.Sprintf("workdir=%s", o.workPath(s.ID)),
-			fmt.Sprintf("upperdir=%s", o.upperPath(s.ID)),
+			"workdir="+o.workPath(s.ID),
+			"upperdir="+o.upperPath(s.ID),
 		)
 	} else if len(s.ParentIDs) == 1 {
 		return []mount.Mount{
@@ -636,7 +635,7 @@ func (o *snapshotter) mounts(ctx context.Context, s storage.Snapshot, checkKey s
 		parentPaths[i] = o.upperPath(s.ParentIDs[i])
 	}
 
-	options = append(options, fmt.Sprintf("lowerdir=%s", strings.Join(parentPaths, ":")))
+	options = append(options, "lowerdir="+strings.Join(parentPaths, ":"))
 	if o.userxattr {
 		options = append(options, "userxattr")
 	}
@@ -647,7 +646,6 @@ func (o *snapshotter) mounts(ctx context.Context, s storage.Snapshot, checkKey s
 			Options: options,
 		},
 	}, nil
-
 }
 
 func (o *snapshotter) upperPath(id string) string {
@@ -676,7 +674,9 @@ func (o *snapshotter) prepareRemoteSnapshot(ctx context.Context, key string, lab
 	if err != nil {
 		return errors.Wrap(err, "failed to get transaction")
 	}
-	defer t.Rollback()
+	defer func() {
+		_ = t.Rollback()
+	}()
 	id, _, _, err := storage.GetInfo(ctx, key)
 	if err != nil {
 		return errors.Wrap(err, "failed to get info")
@@ -698,7 +698,9 @@ func (o *snapshotter) checkAvailability(ctx context.Context, key string) bool {
 		log.G(ctx).WithError(err).Warn("failed to get transaction")
 		return false
 	}
-	defer t.Rollback()
+	defer func() {
+		_ = t.Rollback()
+	}()
 
 	eg, egCtx := errgroup.WithContext(ctx)
 	for cKey := key; cKey != ""; {

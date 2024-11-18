@@ -1,18 +1,14 @@
 package fs
 
 import (
-	"archive/tar"
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/containerd/log"
-	"github.com/klauspost/compress/zstd"
 	"github.com/pkg/errors"
 )
 
@@ -104,7 +100,7 @@ func pipeline(cmds ...*exec.Cmd) error {
 	for i := 0; i < len(cmds)-1; i++ {
 		stdout, err := cmds[i].StdoutPipe()
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed to get stdout pipe")
 		}
 		cmds[i+1].Stdin = stdout
 	}
@@ -113,7 +109,7 @@ func pipeline(cmds ...*exec.Cmd) error {
 
 	for _, cmd := range cmds {
 		if err := cmd.Start(); err != nil {
-			return err
+			return errors.Wrap(err, "failed to start command")
 		}
 	}
 
@@ -201,129 +197,5 @@ func fileExists(path string) (bool, error) {
 	if os.IsNotExist(err) {
 		return false, nil
 	}
-	return false, err
-}
-
-// streamExtractTar extracts a tar stream (potentially compressed) to a destination path
-func streamExtractTar(ctx context.Context, reader io.Reader, destPath string) error {
-	logger := log.G(ctx).WithField("destPath", destPath)
-
-	var tr *tar.Reader
-
-	zr, err := zstd.NewReader(reader)
-	if err != nil {
-		return errors.Wrap(err, "failed to create zstd reader")
-	}
-	defer zr.Close()
-	tr = tar.NewReader(zr)
-
-	// Track created directories
-	createdDirs := make(map[string]struct{})
-
-	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return errors.Wrap(err, "failed to read tar header")
-		}
-
-		// Clean path to prevent directory traversal attacks
-		target := filepath.Join(destPath, filepath.Clean(header.Name))
-		if !strings.HasPrefix(target, destPath) {
-			return errors.New("invalid tar path")
-		}
-
-		// Get parent directory
-		dir := filepath.Dir(target)
-		if _, exists := createdDirs[dir]; !exists {
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				return errors.Wrap(err, "failed to create directory")
-			}
-			createdDirs[dir] = struct{}{}
-		}
-
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := handleDirectory(target, header.Mode); err != nil {
-				return err
-			}
-			createdDirs[target] = struct{}{}
-
-		case tar.TypeReg:
-			if err := handleRegularFile(target, tr, header.Mode); err != nil {
-				return err
-			}
-
-		case tar.TypeSymlink:
-			if err := handleSymlink(target, header.Linkname); err != nil {
-				return err
-			}
-
-		case tar.TypeLink:
-			if err := handleHardLink(target, filepath.Join(destPath, header.Linkname)); err != nil {
-				return err
-			}
-
-		case tar.TypeChar:
-			// Skip character devices
-			logger.Warnf("Skipping character device: %s", header.Name)
-			continue
-
-		case tar.TypeBlock:
-			// Skip block devices
-			logger.Warnf("Skipping block device: %s", header.Name)
-			continue
-
-		case tar.TypeFifo:
-			// Skip named pipes
-			logger.Warnf("Skipping named pipe: %s", header.Name)
-			continue
-
-		default:
-			logger.Warnf("Skipping unknown type %d for %s", header.Typeflag, header.Name)
-			continue
-		}
-	}
-
-	return nil
-}
-
-// Handle directory creation
-func handleDirectory(path string, mode int64) error {
-	if err := os.MkdirAll(path, os.FileMode(mode)); err != nil {
-		return errors.Wrap(err, "failed to create directory")
-	}
-	return nil
-}
-
-// Handle regular file creation and content copying
-func handleRegularFile(path string, reader io.Reader, mode int64) error {
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(mode))
-	if err != nil {
-		return errors.Wrap(err, "failed to create file")
-	}
-	defer file.Close()
-
-	if _, err := io.Copy(file, reader); err != nil {
-		return errors.Wrap(err, "failed to write file")
-	}
-	return nil
-}
-
-// Handle symbolic link creation
-func handleSymlink(path, linkname string) error {
-	if err := os.Symlink(linkname, path); err != nil {
-		return errors.Wrap(err, "failed to create symlink")
-	}
-	return nil
-}
-
-// Handle hard link creation
-func handleHardLink(path, linkname string) error {
-	if err := os.Link(linkname, path); err != nil {
-		return errors.Wrap(err, "failed to create hard link")
-	}
-	return nil
+	return false, errors.Wrap(err, "failed to stat file")
 }

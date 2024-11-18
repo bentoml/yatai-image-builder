@@ -58,8 +58,8 @@ func HashDir(dirPath string) (string, error) {
 			return "", err
 		}
 
-		hasher.Write([]byte(path))
-		hasher.Write([]byte(fileHash))
+		_, _ = hasher.Write([]byte(path))
+		_, _ = hasher.Write([]byte(fileHash))
 	}
 
 	return hex.EncodeToString(hasher.Sum(nil)), nil
@@ -82,7 +82,7 @@ func HashFile(filePath string) (string, error) {
 	hasher := blake3.New()
 
 	// Add file mode (permissions)
-	hasher.Write([]byte(fmt.Sprintf("%d", stat.Mode())))
+	_, _ = hasher.Write([]byte(fmt.Sprintf("%d", stat.Mode())))
 
 	if _, err := io.Copy(hasher, file); err != nil {
 		return "", errors.Wrap(err, "failed to copy file")
@@ -148,7 +148,7 @@ func GetImageInfo(ctx context.Context, dockerfileContent string, contextPath str
 			if strings.HasPrefix(workingDir, "$") {
 				workingDir = args[strings.TrimPrefix(workingDir, "$")]
 			}
-			commands = append(commands, fmt.Sprintf("cd %s", workingDir))
+			commands = append(commands, "cd "+workingDir)
 		}
 		if dockerfileCommand.Cmd == "COPY" {
 			orginalFilePath := dockerfileCommand.Value[0]
@@ -172,14 +172,14 @@ func GetImageInfo(ctx context.Context, dockerfileContent string, contextPath str
 				targetFileDir = filepath.Dir(targetFileDir)
 			}
 			if targetFileDir != "" && targetFileDir != "." {
-				commands = append(commands, fmt.Sprintf("mkdir -p %s", targetFileDir))
+				commands = append(commands, "mkdir -p "+targetFileDir)
 			}
 			if contextPathJoined {
 				orginalFilePath = strings.Replace(orginalFilePath, contextPath, "${CONTEXT}", 1)
 			}
 			commands = append(commands, fmt.Sprintf("cp -a %s %s", orginalFilePath, targetFilePath))
 			if dockerfileCommand.Flags[0] == "--chown=bentoml:bentoml" {
-				commands = append(commands, fmt.Sprintf("chown -R bentoml:bentoml %s", targetFilePath))
+				commands = append(commands, "chown -R bentoml:bentoml "+targetFilePath)
 			}
 		}
 	}
@@ -187,7 +187,7 @@ func GetImageInfo(ctx context.Context, dockerfileContent string, contextPath str
 	hashBaseStr := baseImage + "__" + strings.Join(originalFileHashes, ":") + "__" + strings.Join(commands, ":") + "__" + strings.Join(env, ":")
 
 	hasher := blake3.New()
-	hasher.Write([]byte(hashBaseStr))
+	_, _ = hasher.Write([]byte(hashBaseStr))
 	hashStr := hex.EncodeToString(hasher.Sum(nil))
 
 	return &ImageInfo{

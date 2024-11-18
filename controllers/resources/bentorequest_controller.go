@@ -154,7 +154,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	if bentoRequest.Status.Conditions == nil || len(bentoRequest.Status.Conditions) == 0 {
+	if len(bentoRequest.Status.Conditions) == 0 {
 		bentoRequest, err = r.setStatusConditions(ctx, req,
 			metav1.Condition{
 				Type:    resourcesv1alpha1.BentoRequestConditionTypeModelsSeeding,
@@ -455,7 +455,7 @@ func (r *BentoRequestReconciler) ensureImageExists(ctx context.Context, opt ensu
 			return
 		}
 		r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "CheckingImage", "Checking image exists: %s", imageInfo.ImageName)
-		imageExists, err = r.checkImageExists(ctx, bentoRequest, imageInfo)
+		imageExists, err = r.checkImageExists(bentoRequest, imageInfo)
 		if err != nil {
 			err = errors.Wrapf(err, "check image %s exists", imageInfo.ImageName)
 			return
@@ -491,7 +491,7 @@ func (r *BentoRequestReconciler) ensureImageExists(ctx context.Context, opt ensu
 				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExistsChecked,
 				Status:  metav1.ConditionFalse,
 				Reason:  "Reconciling",
-				Message: fmt.Sprintf("Image not exists: %s", imageInfo.ImageName),
+				Message: "Image not exists: " + imageInfo.ImageName,
 			}
 			imageExistsCondition = &metav1.Condition{
 				Type:    resourcesv1alpha1.BentoRequestConditionTypeImageExists,
@@ -903,7 +903,7 @@ func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ens
 	}
 
 	if len(failedJobNames) > 0 {
-		msg := fmt.Sprintf("Model seeder jobs failed: %s", strings.Join(failedJobNames, ", "))
+		msg := "Model seeder jobs failed: " + strings.Join(failedJobNames, ", ")
 		pods := &corev1.PodList{}
 		err = r.List(ctx, pods, client.InNamespace(bentoRequest.Namespace), client.MatchingLabels(jobLabels))
 		if err != nil {
@@ -920,7 +920,7 @@ func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ens
 			}
 		}
 		if hfValidateErr {
-			msg = fmt.Sprintf("%s: no validate HF_TOKEN for seeding huggingface model", msg)
+			msg += ": no validate HF_TOKEN for seeding huggingface model"
 		}
 		r.Recorder.Event(bentoRequest, corev1.EventTypeNormal, "ModelsExists", msg)
 		bentoRequest, err = r.setStatusConditions(ctx, opt.req,
@@ -1387,8 +1387,8 @@ func (r *BentoRequestReconciler) getDockerRegistry(ctx context.Context, bentoReq
 	bentoRepositoryURI := fmt.Sprintf("%s/%s", strings.TrimRight(dockerRegistryConfig.Server, "/"), bentoRepositoryName)
 	modelRepositoryURI := fmt.Sprintf("%s/%s", strings.TrimRight(dockerRegistryConfig.Server, "/"), modelRepositoryName)
 	if strings.Contains(dockerRegistryConfig.Server, "docker.io") {
-		bentoRepositoryURI = fmt.Sprintf("docker.io/%s", bentoRepositoryName)
-		modelRepositoryURI = fmt.Sprintf("docker.io/%s", modelRepositoryName)
+		bentoRepositoryURI = "docker.io/" + bentoRepositoryName
+		modelRepositoryURI = "docker.io/" + modelRepositoryName
 	}
 	bentoRepositoryInClusterURI := bentoRepositoryURI
 	modelRepositoryInClusterURI := modelRepositoryURI
@@ -1396,8 +1396,8 @@ func (r *BentoRequestReconciler) getDockerRegistry(ctx context.Context, bentoReq
 		bentoRepositoryInClusterURI = fmt.Sprintf("%s/%s", strings.TrimRight(dockerRegistryConfig.InClusterServer, "/"), bentoRepositoryName)
 		modelRepositoryInClusterURI = fmt.Sprintf("%s/%s", strings.TrimRight(dockerRegistryConfig.InClusterServer, "/"), modelRepositoryName)
 		if strings.Contains(dockerRegistryConfig.InClusterServer, "docker.io") {
-			bentoRepositoryInClusterURI = fmt.Sprintf("docker.io/%s", bentoRepositoryName)
-			modelRepositoryInClusterURI = fmt.Sprintf("docker.io/%s", modelRepositoryName)
+			bentoRepositoryInClusterURI = "docker.io/" + bentoRepositoryName
+			modelRepositoryInClusterURI = "docker.io/" + modelRepositoryName
 		}
 	}
 	dockerRegistry = modelschemas.DockerRegistrySchema{
@@ -1424,10 +1424,10 @@ func getBentoImagePrefix(bentoRequest *resourcesv1alpha1.BentoRequest) string {
 	}
 	prefix, exist := bentoRequest.Annotations[KubeAnnotationBentoStorageNS]
 	if exist && prefix != "" {
-		return fmt.Sprintf("%s.", prefix)
+		return prefix + "."
 	}
 	if isAddNamespacePrefix() {
-		return fmt.Sprintf("%s.", bentoRequest.Namespace)
+		return bentoRequest.Namespace + "."
 	}
 	return ""
 }
@@ -1474,7 +1474,7 @@ func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegis
 		hashStr := hash(tail)
 		tag = fmt.Sprintf("yatai.%s%s", getBentoImagePrefix(bentoRequest), hashStr)
 		if len(tag) > 128 {
-			tag = fmt.Sprintf("yatai.%s", hash(fmt.Sprintf("%s%s", getBentoImagePrefix(bentoRequest), tail)))[:128]
+			tag = "yatai." + hash(fmt.Sprintf("%s%s", getBentoImagePrefix(bentoRequest), tail))[:128]
 		}
 	}
 	return fmt.Sprintf("%s:%s", uri, tag)
@@ -1537,7 +1537,7 @@ func (r *BentoRequestReconciler) getBuildArgs(ctx context.Context, bentoRequest 
 	return
 }
 
-func (r *BentoRequestReconciler) checkImageExists(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest, imageInfo ImageInfo) (bool, error) {
+func (r *BentoRequestReconciler) checkImageExists(bentoRequest *resourcesv1alpha1.BentoRequest, imageInfo ImageInfo) (bool, error) {
 	if bentoRequest.Annotations["yatai.ai/force-build-image"] == commonconsts.KubeLabelValueTrue {
 		return false, nil
 	}
@@ -1551,9 +1551,9 @@ func (r *BentoRequestReconciler) checkImageExists(ctx context.Context, bentoRequ
 		server = "index.docker.io"
 	}
 	if imageInfo.DockerRegistry.Secure {
-		server = fmt.Sprintf("https://%s", server)
+		server = "https://" + server
 	} else {
-		server = fmt.Sprintf("http://%s", server)
+		server = "http://" + server
 	}
 	hub, err := registry.New(server, imageInfo.DockerRegistry.Username, imageInfo.DockerRegistry.Password, logrus.Debugf)
 	if err != nil {
@@ -1663,12 +1663,12 @@ func (r *BentoRequestReconciler) getBento(ctx context.Context, bentoRequest *res
 
 func (r *BentoRequestReconciler) getImageBuilderJobName() string {
 	guid := xid.New()
-	return fmt.Sprintf("yatai-bento-image-builder-%s", guid.String())
+	return "yatai-bento-image-builder-" + guid.String()
 }
 
 func (r *BentoRequestReconciler) getModelSeederJobName() string {
 	guid := xid.New()
-	return fmt.Sprintf("yatai-model-seeder-%s", guid.String())
+	return "yatai-model-seeder-" + guid.String()
 }
 
 func (r *BentoRequestReconciler) getModelSeederJobLabels(bentoRequest *resourcesv1alpha1.BentoRequest, model *resourcesv1alpha1.BentoModel) map[string]string {
@@ -1741,7 +1741,7 @@ func (r *BentoRequestReconciler) getModelPVCName(bentoRequest *resourcesv1alpha1
 	} else {
 		hashStr = hash(fmt.Sprintf("%s:%s:%s", storageClassName, ns, model.Tag))
 	}
-	pvcName := fmt.Sprintf("model-seeder-%s", hashStr)
+	pvcName := "model-seeder-" + hashStr
 	if len(pvcName) > 63 {
 		pvcName = pvcName[:63]
 	}
@@ -2112,7 +2112,7 @@ echo "Done"
 		"ModelDownloadHeader": modelDownloadHeader,
 		"ModelRepositoryName": modelRepositoryName,
 		"ModelVersion":        modelVersion,
-		"HuggingfaceModelDir": fmt.Sprintf("models--%s", strings.ReplaceAll(modelRepositoryName, "/", "--")),
+		"HuggingfaceModelDir": "models--" + strings.ReplaceAll(modelRepositoryName, "/", "--"),
 	})
 	if err != nil {
 		err = errors.Wrap(err, "failed to generate download command")
@@ -2678,7 +2678,7 @@ echo "Done"
 				modelDownloadHeader = fmt.Sprintf("%s: %s:%s:$%s", commonconsts.YataiApiTokenHeaderName, commonconsts.YataiImageBuilderComponentName, yataiConf.ClusterName, commonconsts.EnvYataiApiToken)
 			}
 		}
-		modelRepositoryDirPath := fmt.Sprintf("/workspace/buildcontext/models/%s", modelRepositoryName)
+		modelRepositoryDirPath := "/workspace/buildcontext/models/" + modelRepositoryName
 		modelDirPath := filepath.Join(modelRepositoryDirPath, modelVersion)
 		var modelDownloadCommandOutput bytes.Buffer
 		err = template.Must(template.New("script").Parse(`
@@ -2879,22 +2879,22 @@ echo "Done"
 		"/kaniko/executor",
 	}
 	args := []string{
-		fmt.Sprintf("--context=%s", buildContextPath),
+		"--context=" + buildContextPath,
 		"--verbosity=info",
 		"--image-fs-extract-retry=3",
 		"--cache=true",
-		fmt.Sprintf("--cache-repo=%s", kanikoCacheRepo),
+		"--cache-repo=" + kanikoCacheRepo,
 		"--compressed-caching=false",
 		"--compression=zstd",
 		"--compression-level=-7",
-		fmt.Sprintf("--dockerfile=%s", dockerFilePath),
-		fmt.Sprintf("--insecure=%v", dockerRegistryInsecure),
-		fmt.Sprintf("--destination=%s", inClusterImageName),
+		"--dockerfile=" + dockerFilePath,
+		"--insecure=" + strconv.FormatBool(dockerRegistryInsecure),
+		"--destination=" + inClusterImageName,
 	}
 
 	kanikoSnapshotMode := os.Getenv("KANIKO_SNAPSHOT_MODE")
 	if kanikoSnapshotMode != "" {
-		args = append(args, fmt.Sprintf("--snapshot-mode=%s", kanikoSnapshotMode))
+		args = append(args, "--snapshot-mode="+kanikoSnapshotMode)
 	}
 
 	var builderImage string
@@ -2942,7 +2942,7 @@ echo "Done"
 			"--local",
 			"context=/workspace/buildcontext",
 			"--local",
-			fmt.Sprintf("dockerfile=%s", filepath.Dir(dockerFilePath)),
+			"dockerfile=" + filepath.Dir(dockerFilePath),
 			"--output",
 			output,
 		}
@@ -2993,9 +2993,9 @@ echo "Done"
 	for _, buildArg := range buildArgs {
 		quotedBuildArg := unix.SingleQuote.Quote(buildArg)
 		if isBuildkit {
-			args = append(args, "--opt", fmt.Sprintf("build-arg:%s", quotedBuildArg))
+			args = append(args, "--opt", "build-arg:"+quotedBuildArg)
 		} else {
-			args = append(args, fmt.Sprintf("--build-arg=%s", quotedBuildArg))
+			args = append(args, "--build-arg="+quotedBuildArg)
 		}
 	}
 	// add other arguments to builder
@@ -3056,7 +3056,7 @@ echo "Done"
 		}
 
 		for key := range buildArgsSecret.Data {
-			envName := fmt.Sprintf("BENTOML_BUILD_ARG_%s", strings.ReplaceAll(strings.ToUpper(strcase.ToKebab(key)), "-", "_"))
+			envName := "BENTOML_BUILD_ARG_" + strings.ReplaceAll(strings.ToUpper(strcase.ToKebab(key)), "-", "_")
 			builderContainerEnvs = append(builderContainerEnvs, corev1.EnvVar{
 				Name: envName,
 				ValueFrom: &corev1.EnvVarSource{
@@ -3088,7 +3088,7 @@ echo "Done"
 			extraFlags = fmt.Sprintf("%s --build-arg %s", extraFlags, strings.Replace(buildArg, "=", ":", 1))
 		}
 		if !opt.ImageInfo.DockerRegistry.Secure {
-			extraFlags = fmt.Sprintf("%s --image-registry-insecure", extraFlags)
+			extraFlags += " --image-registry-insecure"
 		}
 		var cmdOutput bytes.Buffer
 		err = template.Must(template.New("script").Parse(`
