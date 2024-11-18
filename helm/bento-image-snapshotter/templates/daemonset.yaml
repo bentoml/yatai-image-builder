@@ -97,6 +97,7 @@ spec:
               - "/bin/sh"
               - "-c"
               - |
+                set -ex
                 # currently, without host pid in container, we can not nsenter with pid and can not invoke systemctl correctly.
                 {{- if .Values.isK3s }}
                 nsenter -t 1 -m systemctl -- restart k3s-agent.service || nsenter -t 1 -m systemctl -- restart k3s.service
