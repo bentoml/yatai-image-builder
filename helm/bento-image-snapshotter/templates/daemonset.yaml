@@ -46,28 +46,23 @@ spec:
           set -x
           etcContainerd={{ .Values.containerRuntime.containerd.configFile }}
 
-          toml check $etcContainerd proxy_plugins.bento
-          if [ $? -eq 0 ]; then
-            echo "containerd has already configured."
-          else
-            toml set --overwrite $etcContainerd plugins.\"io.containerd.grpc.v1.cri\".containerd.disable_snapshot_annotations false
-            toml set --overwrite $etcContainerd plugins.\"io.containerd.grpc.v1.cri\".containerd.snapshotter bento
+          toml set --overwrite $etcContainerd plugins.\"io.containerd.grpc.v1.cri\".containerd.disable_snapshot_annotations false
+          toml set --overwrite $etcContainerd plugins.\"io.containerd.grpc.v1.cri\".containerd.snapshotter bento
 
-            # Check if [proxy_plugins] exists
-            toml check $etcContainerd proxy_plugins
-            if [ $? -ne 0 ]; then
-              echo "Add [proxy_plugins] and [proxy_plugins.bento]"
-              cat << EOF >> $etcContainerd
+          # Check if [proxy_plugins] exists
+          toml check $etcContainerd proxy_plugins
+          if [ $? -ne 0 ]; then
+            echo "Add [proxy_plugins] and [proxy_plugins.bento]"
+            cat << EOF >> $etcContainerd
           [proxy_plugins]
             [proxy_plugins.bento]
               type = "snapshot"
               address = "/run/bento-image-snapshotter/grpc.sock"
           EOF
-            else
-              # Add only [proxy_plugins.bento] if [proxy_plugins] exists
-              toml set --overwrite $etcContainerd proxy_plugins.bento.type "snapshot"
-              toml set --overwrite $etcContainerd proxy_plugins.bento.address "/run/bento-image-snapshotter/grpc.sock"
-            fi
+          else
+            # Add only [proxy_plugins.bento] if [proxy_plugins] exists
+            toml set --overwrite $etcContainerd proxy_plugins.bento.type "snapshot"
+            toml set --overwrite $etcContainerd proxy_plugins.bento.address "/run/bento-image-snapshotter/grpc.sock"
           fi
           echo "Updated containerd config:"
           cat $etcContainerd
