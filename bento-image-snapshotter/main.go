@@ -90,9 +90,9 @@ func main() {
 			}
 			l, err := net.Listen("unix", socksPath)
 			if err != nil {
-				return errors.Wrapf(rpc.Serve(l), "failed to serve: %s", socksPath)
+				return errors.Wrapf(err, "failed to listen on socket: %s", socksPath)
 			}
-			return nil
+			return errors.Wrap(rpc.Serve(l), "failed to serve")
 		},
 	}
 
