@@ -1,12 +1,12 @@
 package fs
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/containerd/log"
 	"github.com/pkg/errors"
@@ -36,15 +36,7 @@ func (o S3FileSystem) Mount(ctx context.Context, mountpoint string, labels map[s
 	if err := o.downloadLayerFromS3(ctx, bucketName, objectKey, mountpoint); err != nil {
 		return errors.Wrap(err, "failed to download layer from S3")
 	}
-	isBentoLayer := labels[IsBentoLayerLabel] == "true"
-	if isBentoLayer {
-		logger.Info("chmoding entrypoint.sh")
-		err := os.Chmod(filepath.Join(mountpoint, "home/bentoml/bento/env/docker/entrypoint.sh"), 0755)
-		if err != nil {
-			return errors.Wrap(err, "failed to chmod entrypoint.sh")
-		}
-		logger.Info("chmoding entrypoint.sh done")
-	}
+	logger.Info("layer downloaded from S3")
 	return nil
 }
 
@@ -77,84 +69,6 @@ func stringifyCmd(cmd *exec.Cmd) string {
 	return cmdStr
 }
 
-func pipeline(cmds ...*exec.Cmd) error {
-	if len(cmds) == 0 {
-		return nil
-	}
-
-	stderrs := make([]*bytes.Buffer, len(cmds))
-	for i := 0; i < len(cmds); i++ {
-		stderrs[i] = bytes.NewBuffer(nil)
-		cmds[i].Stderr = stderrs[i]
-	}
-
-	collectStderrs := func() string {
-		var stderrsStr string
-		for idx, stderr := range stderrs {
-			stderrsStr += fmt.Sprintf("stderr of %s:\n%s\n", stringifyCmd(cmds[idx]), stderr.String())
-		}
-
-		return stderrsStr
-	}
-
-	for i := 0; i < len(cmds)-1; i++ {
-		stdout, err := cmds[i].StdoutPipe()
-		if err != nil {
-			return errors.Wrap(err, "failed to get stdout pipe")
-		}
-		cmds[i+1].Stdin = stdout
-	}
-
-	cmds[len(cmds)-1].Stdout = os.Stdout
-
-	for _, cmd := range cmds {
-		if err := cmd.Start(); err != nil {
-			return errors.Wrap(err, "failed to start command")
-		}
-	}
-
-	for _, cmd := range cmds {
-		if err := cmd.Wait(); err != nil {
-			return errors.Wrapf(err, "failed to execute command: %s; %s", stringifyCmd(cmd), collectStderrs())
-		}
-	}
-
-	return nil
-}
-
-func streamingDownloadAndExtractTar(ctx context.Context, s3Path string, destPath string) error {
-	s5cmdPath, err := exec.LookPath("s5cmd")
-	if err != nil || s5cmdPath == "" {
-		return errors.Wrap(err, "s5cmd not found in PATH")
-	}
-	pzstdPath, err := exec.LookPath("pzstd")
-	if err != nil || pzstdPath == "" {
-		return errors.Wrap(err, "pzstd not found in PATH")
-	}
-	tarPath, err := exec.LookPath("tar")
-	if err != nil || tarPath == "" {
-		return errors.Wrap(err, "tar not found in PATH")
-	}
-
-	s3EndpointURL := os.Getenv("S3_ENDPOINT_URL")
-	if s3EndpointURL == "" {
-		return errors.New("S3_ENDPOINT_URL not set")
-	}
-
-	s5cmdCmd := exec.CommandContext(ctx, s5cmdPath, "--endpoint-url", s3EndpointURL, "cat", s3Path)
-	s5cmdCmd.Dir = destPath
-	pzstdCmd := exec.CommandContext(ctx, pzstdPath, "-d")
-	pzstdCmd.Dir = destPath
-	tarCmd := exec.CommandContext(ctx, tarPath, "-xf", "-")
-	tarCmd.Dir = destPath
-
-	err = pipeline(s5cmdCmd, pzstdCmd, tarCmd)
-	if err != nil {
-		return errors.Wrap(err, "failed to start s5cmd")
-	}
-	return nil
-}
-
 func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, layerKey string, destinationPath string) error {
 	baseName := filepath.Base(destinationPath)
 	dirName := filepath.Dir(destinationPath)
@@ -168,14 +82,24 @@ func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, laye
 	logger.Info("downloading and streaming decompression of the layer from S3...")
 
 	s3Path := fmt.Sprintf("s3://%s/%s", bucketName, layerKey)
-	err := streamingDownloadAndExtractTar(ctx, s3Path, tempName)
+
+	startTime := time.Now()
+	cmd := exec.CommandContext(ctx, "sh", "-c", fmt.Sprintf("s5cmd cat %s | pzstd -d | tar -xf -", s3Path)) // nolint:gosec
+	cmd.Dir = tempName
+
+	err := cmd.Run()
 	if err != nil {
-		return errors.Wrap(err, "failed to download layer from S3")
+		return errors.Wrapf(err, "failed to run command: %s", stringifyCmd(cmd))
 	}
 
-	logger.Info("the layer has been downloaded and decompressed")
+	duration := time.Since(startTime)
 
-	_ = os.RemoveAll(destinationPath)
+	logger.WithField("duration", duration).Info("the layer has been downloaded and decompressed")
+
+	err = os.RemoveAll(destinationPath)
+	if err != nil && !os.IsNotExist(err) {
+		return errors.Wrapf(err, "failed to remove destination path: %s", destinationPath)
+	}
 
 	logger = log.G(ctx).WithField("key", layerKey).WithField("destinationPath", destinationPath).WithField("oldPath", tempName)
 	logger.Info("renaming the layer...")

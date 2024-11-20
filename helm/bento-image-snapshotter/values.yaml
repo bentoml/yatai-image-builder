@@ -53,11 +53,11 @@ securityContext:
 
 resources:
   requests:
-    cpu: "0"
-    memory: "0"
+    cpu: "1"
+    memory: "1Gi"
   limits:
-    cpu: "2"
-    memory: "2Gi"
+    cpu: "4"
+    memory: "8Gi"
 
 nodeSelector: {}
 
