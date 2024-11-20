@@ -1,3 +1,4 @@
+{{- if not .Values.useSystemd }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -163,3 +164,4 @@ spec:
         hostPath:
           path: {{ .Values.containerRuntime.containerd.configFile }}
       {{- end }}
+{{- end }}

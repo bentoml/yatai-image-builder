@@ -1,0 +1,161 @@
+{{- if .Values.useSystemd }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "bento-image-snapshotter.fullname" . }}-systemd
+  labels:
+    {{- include "bento-image-snapshotter.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "bento-image-snapshotter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "bento-image-snapshotter.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.hostAliases }}
+      hostAliases:
+{{ toYaml .Values.hostAliases | indent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "bento-image-snapshotter.serviceAccountName" . }}
+      hostNetwork: {{ .Values.hostNetwork }}
+      hostPID: {{ .Values.hostPid }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+      {{- if .Values.containerRuntime.containerd.enable }}
+      - name: update-containerd
+        env:
+          - name: HOST_MOUNT_DIR
+            value: /host
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: {{ template "bento-image-snapshotter.image" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        resources:
+{{ toYaml .Values.resources | indent 12 }}
+        command:
+        - /bin/sh
+        - -cx
+        - |-
+          set -x
+          etcContainerd=${HOST_MOUNT_DIR}{{ .Values.containerRuntime.containerd.configFile }}
+
+          toml set --overwrite $etcContainerd plugins.\"io.containerd.grpc.v1.cri\".containerd.disable_snapshot_annotations false
+          toml set --overwrite $etcContainerd plugins.\"io.containerd.grpc.v1.cri\".containerd.snapshotter bento
+
+          # Check if [proxy_plugins] exists
+          toml check $etcContainerd proxy_plugins
+          if [ $? -ne 0 ]; then
+            echo "Add [proxy_plugins] and [proxy_plugins.bento]"
+            cat << EOF >> $etcContainerd
+          [proxy_plugins]
+            [proxy_plugins.bento]
+              type = "snapshot"
+              address = "/run/bento-image-snapshotter/grpc.sock"
+          EOF
+          else
+            # Add only [proxy_plugins.bento-image] if [proxy_plugins] exists
+            toml set --overwrite $etcContainerd proxy_plugins.bento.type "snapshot"
+            toml set --overwrite $etcContainerd proxy_plugins.bento.address "/run/bento-image-snapshotter/grpc.sock"
+          fi
+
+          nsenter -t 1 -m modprobe fuse
+          service_env_file=${HOST_MOUNT_DIR}/etc/systemd/system/bento-image-snapshotter.service.env
+          cp /config/bento-image-snapshotter.service.env $service_env_file
+          service_file=${HOST_MOUNT_DIR}/etc/systemd/system/bento-image-snapshotter.service
+          if [ ! -f "$service_file" ]; then
+            cp /config/bento-image-snapshotter.service $service_file
+          else
+            echo "$service_file exists!"
+          fi
+          bento_image_bin_file=${HOST_MOUNT_DIR}/usr/bin/bento-image-snapshotter
+          if [ -f "$bento_image_bin_file" ]; then
+            echo "file $bento_image_bin_file exists, stopping bento-image-snapshotter service..."
+            nsenter -t 1 -m systemctl -- stop bento-image-snapshotter.service
+          fi
+          cp /usr/bin/bento-image-snapshotter $bento_image_bin_file
+          s5cmd_bin_file=${HOST_MOUNT_DIR}/usr/bin/s5cmd
+          if [ ! -f "$s5cmd_bin_file" ]; then
+            cp /usr/bin/s5cmd $s5cmd_bin_file
+          fi
+          nsenter -t 1 -m systemctl daemon-reload
+          nsenter -t 1 -m systemctl enable --now bento-image-snapshotter.service
+          echo "restarting containerd..."
+          nsenter -t 1 -m systemctl restart containerd.service
+          echo "containerd has been restarted."
+          nsenter -t 1 -m systemctl status containerd.service
+          echo "bento-image snapshotter has been started."
+          nsenter -t 1 -m systemctl status bento-image-snapshotter.service
+
+        volumeMounts:
+        - name: config
+          mountPath: "/config/"
+        - name: host-bento-image-run
+          mountPath: "/run/containerd-bento-image-grpc"
+          mountPropagation: Bidirectional
+        - name: host
+          mountPath: "/host"
+        - name: fuse
+          mountPath: "/dev/fuse"
+      {{- end }}
+      containers:
+      - name: pause
+        image: quay.io/bentoml/busybox:1.33
+        securityContext:
+          privileged: true
+        command:
+        - sleep
+        - infinity
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - nsenter -t 1 -m systemctl is-active --quiet containerd && nsenter -t 1 -m systemctl is-active --quiet bento-image-snapshotter
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - nsenter -t 1 -m systemctl is-active --quiet containerd && nsenter -t 1 -m systemctl is-active --quiet bento-image-snapshotter
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: config
+        configMap:
+          name: {{ template "bento-image-snapshotter.fullname" . }}
+      - name: host-bento-image-run
+        hostPath:
+          path: /run/bento-image-snapshotter
+          type: DirectoryOrCreate
+      - name: host
+        hostPath:
+          path: /
+      - name: fuse
+        hostPath:
+          path: /dev/fuse
+{{- end }}
