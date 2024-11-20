@@ -160,8 +160,11 @@ func NewSnapshotter(ctx context.Context, root string, opts ...Opt) (snapshots.Sn
 		allowInvalidMountsOnRestart: config.allowInvalidMountsOnRestart,
 	}
 
+	log.G(ctx).Info("restoring remote snapshot...")
 	if err := o.restoreRemoteSnapshot(ctx); err != nil {
 		log.G(ctx).WithError(err).Warn("failed to restore remote snapshot")
+	} else {
+		log.G(ctx).Info("restored remote snapshot")
 	}
 
 	return o, nil

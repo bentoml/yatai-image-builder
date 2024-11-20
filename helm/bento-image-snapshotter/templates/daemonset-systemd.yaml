@@ -81,7 +81,7 @@ spec:
           bento_image_bin_file=${HOST_MOUNT_DIR}/usr/bin/bento-image-snapshotter
           if [ -f "$bento_image_bin_file" ]; then
             echo "file $bento_image_bin_file exists, stopping bento-image-snapshotter service..."
-            nsenter -t 1 -m systemctl -- stop bento-image-snapshotter.service
+            nsenter -t 1 -m systemctl stop bento-image-snapshotter.service
           fi
           cp /usr/bin/bento-image-snapshotter $bento_image_bin_file
           s5cmd_bin_file=${HOST_MOUNT_DIR}/usr/bin/s5cmd
@@ -109,13 +109,14 @@ spec:
           mountPath: "/dev/fuse"
       {{- end }}
       containers:
-      - name: pause
+      - name: main
         image: quay.io/bentoml/busybox:1.33
         securityContext:
           privileged: true
         command:
-        - sleep
-        - infinity
+        - sh
+        - -c
+        - nsenter -t 1 -m journalctl -u bento-image-snapshotter.service -f
         livenessProbe:
           exec:
             command:

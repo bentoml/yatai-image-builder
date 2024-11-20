@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 
 	"github.com/pkg/errors"
+	"golang.org/x/sys/unix"
 
 	"github.com/urfave/cli/v2"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/containerd/log"
 	"github.com/containerd/plugin"
 	"github.com/containerd/plugin/registry"
+	sddaemon "github.com/coreos/go-systemd/v22/daemon"
 	"google.golang.org/grpc"
 
 	"github.com/bentoml/yatai-image-builder/bento-image-snapshotter/snapshot"
@@ -92,7 +95,34 @@ func main() {
 			if err != nil {
 				return errors.Wrapf(err, "failed to listen on socket: %s", socksPath)
 			}
-			return errors.Wrap(rpc.Serve(l), "failed to serve")
+			errCh := make(chan error, 1)
+			go func() {
+				if err := rpc.Serve(l); err != nil {
+					errCh <- errors.Wrap(err, "failed to serve")
+				}
+			}()
+
+			if os.Getenv("NOTIFY_SOCKET") != "" {
+				notified, notifyErr := sddaemon.SdNotify(false, sddaemon.SdNotifyReady)
+				log.G(ctx_).Debugf("SdNotifyReady notified=%v, err=%v", notified, notifyErr)
+			}
+			defer func() {
+				if os.Getenv("NOTIFY_SOCKET") != "" {
+					notified, notifyErr := sddaemon.SdNotify(false, sddaemon.SdNotifyStopping)
+					log.G(ctx_).Debugf("SdNotifyStopping notified=%v, err=%v", notified, notifyErr)
+				}
+			}()
+
+			var s os.Signal
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, unix.SIGINT, unix.SIGTERM)
+			select {
+			case s = <-sigCh:
+				log.G(ctx_).Infof("Got %v", s)
+			case err := <-errCh:
+				return err
+			}
+			return nil
 		},
 	}
 
