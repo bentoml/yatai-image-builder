@@ -133,3 +133,7 @@ serviceMonitor: # need prometheus crd installed
 
 bentoRequestNamespaces: ['yatai']
 bentoRequestAllNamespaces: false
+
+containerImageS3Storage:
+  endpoint_url: ''
+  bucket: ''

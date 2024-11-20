@@ -3,6 +3,7 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -35,15 +36,15 @@ var _ = Describe("yatai-image-builder", Ordered, func() {
 			return
 		}
 		By("Showing image builder pod events")
-		cmd := exec.Command("kubectl", "-n", "yatai", "describe", "pod", "-l", fmt.Sprintf("%s=true", commonconsts.KubeLabelIsBentoImageBuilder))
+		cmd := exec.Command("kubectl", "-n", "yatai", "describe", "pod", "-l", commonconsts.KubeLabelIsBentoImageBuilder+"=true")
 		logs, _ := utils.Run(cmd)
 		fmt.Println(string(logs))
 		By("Showing image builder pod bento-downloader container logs")
-		cmd = exec.Command("kubectl", "-n", "yatai", "logs", "-c", "bento-downloader", "--tail", "200", "-l", fmt.Sprintf("%s=true", commonconsts.KubeLabelIsBentoImageBuilder))
+		cmd = exec.Command("kubectl", "-n", "yatai", "logs", "-c", "bento-downloader", "--tail", "200", "-l", commonconsts.KubeLabelIsBentoImageBuilder+"=true")
 		logs, _ = utils.Run(cmd)
 		fmt.Println(string(logs))
 		By("Showing image builder pod builder container logs")
-		cmd = exec.Command("kubectl", "-n", "yatai", "logs", "-c", "builder", "--tail", "200", "-l", fmt.Sprintf("%s=true", commonconsts.KubeLabelIsBentoImageBuilder))
+		cmd = exec.Command("kubectl", "-n", "yatai", "logs", "-c", "builder", "--tail", "200", "-l", commonconsts.KubeLabelIsBentoImageBuilder+"=true")
 		logs, _ = utils.Run(cmd)
 		fmt.Println(string(logs))
 		By("Showing yatai-image-builder events")
@@ -76,7 +77,7 @@ var _ = Describe("yatai-image-builder", Ordered, func() {
 			By("Checking the generated image builder pod")
 			EventuallyWithOffset(1, func() error {
 				pods, err := cliset.CoreV1().Pods("yatai").List(context.Background(), metav1.ListOptions{
-					LabelSelector: fmt.Sprintf("%s=true", commonconsts.KubeLabelIsBentoImageBuilder),
+					LabelSelector: commonconsts.KubeLabelIsBentoImageBuilder + "=true",
 				})
 				if err != nil {
 					return err
@@ -89,7 +90,7 @@ var _ = Describe("yatai-image-builder", Ordered, func() {
 					Fail(fmt.Sprintf("pod %s failed", pod.Name))
 				}
 				if pod.Status.Phase != corev1.PodSucceeded {
-					return fmt.Errorf("pod not finished yet")
+					return errors.New("pod not finished yet")
 				}
 				return nil
 			}, 10*time.Minute, time.Second).Should(Succeed())
