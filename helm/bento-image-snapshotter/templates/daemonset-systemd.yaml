@@ -29,8 +29,10 @@ spec:
       serviceAccountName: {{ include "bento-image-snapshotter.serviceAccountName" . }}
       hostNetwork: {{ .Values.hostNetwork }}
       hostPID: {{ .Values.hostPid }}
+      {{- if .Values.podSecurityContext }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
       initContainers:
       {{- if .Values.containerRuntime.containerd.enable }}
       - name: update-containerd
