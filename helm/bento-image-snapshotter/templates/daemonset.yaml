@@ -73,7 +73,7 @@ spec:
       {{- end }}
       containers:
       - name: bento-image-snapshotter
-        image: {{ template "bento-image-snapshotter.image" . }}
+        image: "{{ .Values.image.registry | default .Values.global.imageRegistry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         env:
           - name: S3_ENDPOINT_URL
             value: {{ .Values.s3.endpoint_url }}
