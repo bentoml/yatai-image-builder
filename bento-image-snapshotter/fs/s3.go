@@ -24,6 +24,21 @@ func NewS3FileSystem() S3FileSystem {
 	return S3FileSystem{}
 }
 
+func chownRecursive(ctx context.Context, root string, uid, gid int) error {
+	return errors.Wrap(filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return errors.Wrap(err, "failed to walk the directory")
+		}
+		// Change ownership of the file/directory
+		err = os.Chown(path, uid, gid)
+		if err != nil {
+			log.G(ctx).Errorf("failed to chown %s: %v", path, err)
+			return errors.Wrap(err, "failed to chown the file/directory")
+		}
+		return nil
+	}), "failed to walk the directory")
+}
+
 func (o S3FileSystem) Mount(ctx context.Context, mountpoint string, labels map[string]string) error {
 	if err := os.MkdirAll(mountpoint, 0755); err != nil {
 		return errors.Wrap(err, "failed to create mountpoint")
@@ -35,6 +50,14 @@ func (o S3FileSystem) Mount(ctx context.Context, mountpoint string, labels map[s
 	logger.Info("downloading layer from S3")
 	if err := o.downloadLayerFromS3(ctx, bucketName, objectKey, mountpoint); err != nil {
 		return errors.Wrap(err, "failed to download layer from S3")
+	}
+	isBentoLayer := labels[IsBentoLayerLabel] == "true"
+	if isBentoLayer {
+		logger.Info("chowning the /home/bentoml directory")
+		if err := chownRecursive(ctx, filepath.Join(mountpoint, "home", "bentoml"), 1034, 1034); err != nil {
+			return errors.Wrap(err, "failed to chown /home/bentoml directory")
+		}
+		logger.Info("successfully chowned the /home/bentoml directory")
 	}
 	logger.Info("layer downloaded from S3")
 	return nil
