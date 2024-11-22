@@ -8,10 +8,9 @@ import (
 	"os/signal"
 	"path/filepath"
 
+	"github.com/jessevdk/go-flags"
 	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"
-
-	"github.com/urfave/cli/v2"
 
 	snapshotsapi "github.com/containerd/containerd/api/services/snapshots/v1"
 	"github.com/containerd/containerd/v2/contrib/snapshotservice"
@@ -57,76 +56,93 @@ func init() {
 	fmt.Println("Bento snapshotter registered")
 }
 
+type runOptions struct {
+	RootDir    string `short:"r" long:"root-dir" description:"Root directory for the snapshotter" required:"false"`
+	SocketAddr string `short:"s" long:"socket-addr" description:"Socket address for the snapshotter" required:"false"`
+	Debug      bool   `short:"d" long:"debug" description:"Enable debug logging" required:"false"`
+}
+
+func run(ctx context.Context, opts *runOptions) error {
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithCancel(ctx)
+	defer cancel()
+
+	root := opts.RootDir
+	if root == "" {
+		root = snapshot.DefaultRootDir
+	}
+	sn, err := snapshot.NewSnapshotter(ctx, root)
+	if err != nil {
+		return errors.Wrap(err, "failed to create snapshotter")
+	}
+	service := snapshotservice.FromSnapshotter(sn)
+	rpc := grpc.NewServer()
+	snapshotsapi.RegisterSnapshotsServer(rpc, service)
+	socksAddr := opts.SocketAddr
+	if socksAddr == "" {
+		socksAddr = snapshot.DefaultSocketAddress
+	}
+	log.G(ctx).Infof("socket path: %s", socksAddr)
+	// Prepare the directory for the socket
+	if err := os.MkdirAll(filepath.Dir(socksAddr), 0700); err != nil {
+		return errors.Wrapf(err, "failed to create directory: %s", filepath.Dir(socksAddr))
+	}
+	err = os.RemoveAll(socksAddr)
+	if err != nil {
+		return errors.Wrapf(err, "failed to remove socket: %s", socksAddr)
+	}
+	l, err := net.Listen("unix", socksAddr)
+	if err != nil {
+		return errors.Wrapf(err, "failed to listen on socket: %s", socksAddr)
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		if err := rpc.Serve(l); err != nil {
+			errCh <- errors.Wrap(err, "failed to serve")
+		}
+	}()
+
+	if os.Getenv("NOTIFY_SOCKET") != "" {
+		notified, notifyErr := sddaemon.SdNotify(false, sddaemon.SdNotifyReady)
+		log.G(ctx).Debugf("SdNotifyReady notified=%v, err=%v", notified, notifyErr)
+	}
+	defer func() {
+		if os.Getenv("NOTIFY_SOCKET") != "" {
+			notified, notifyErr := sddaemon.SdNotify(false, sddaemon.SdNotifyStopping)
+			log.G(ctx).Debugf("SdNotifyStopping notified=%v, err=%v", notified, notifyErr)
+		}
+	}()
+
+	var s os.Signal
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, unix.SIGINT, unix.SIGTERM)
+	select {
+	case s = <-sigCh:
+		log.G(ctx).Infof("Got %v", s)
+		cancel()
+	case err := <-errCh:
+		return err
+	}
+	return nil
+}
+
 func main() {
-	app := &cli.App{
-		Name:  "bento-image-snapshotter",
-		Usage: "Run a bento-image snapshotter",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:  "root-dir",
-				Value: snapshot.DefaultRootDir,
-			},
-			&cli.StringFlag{
-				Name:  "socket-addr",
-				Value: snapshot.DefaultSocketAddress,
-			},
-		},
-		Action: func(ctx *cli.Context) error {
-			ctx_ := ctx.Context
-			root := ctx.String("root-dir")
-			sn, err := snapshot.NewSnapshotter(ctx_, root)
-			if err != nil {
-				return errors.Wrap(err, "failed to create snapshotter")
-			}
-			service := snapshotservice.FromSnapshotter(sn)
-			rpc := grpc.NewServer()
-			snapshotsapi.RegisterSnapshotsServer(rpc, service)
-			socksPath := ctx.String("socket-addr")
-			log.G(ctx_).Infof("socket path: %s", socksPath)
-			// Prepare the directory for the socket
-			if err := os.MkdirAll(filepath.Dir(socksPath), 0700); err != nil {
-				return errors.Wrapf(err, "failed to create directory: %s", filepath.Dir(socksPath))
-			}
-			err = os.RemoveAll(socksPath)
-			if err != nil {
-				return errors.Wrapf(err, "failed to remove socket: %s", socksPath)
-			}
-			l, err := net.Listen("unix", socksPath)
-			if err != nil {
-				return errors.Wrapf(err, "failed to listen on socket: %s", socksPath)
-			}
-			errCh := make(chan error, 1)
-			go func() {
-				if err := rpc.Serve(l); err != nil {
-					errCh <- errors.Wrap(err, "failed to serve")
-				}
-			}()
+	ctx := context.Background()
 
-			if os.Getenv("NOTIFY_SOCKET") != "" {
-				notified, notifyErr := sddaemon.SdNotify(false, sddaemon.SdNotifyReady)
-				log.G(ctx_).Debugf("SdNotifyReady notified=%v, err=%v", notified, notifyErr)
-			}
-			defer func() {
-				if os.Getenv("NOTIFY_SOCKET") != "" {
-					notified, notifyErr := sddaemon.SdNotify(false, sddaemon.SdNotifyStopping)
-					log.G(ctx_).Debugf("SdNotifyStopping notified=%v, err=%v", notified, notifyErr)
-				}
-			}()
+	var opts runOptions
 
-			var s os.Signal
-			sigCh := make(chan os.Signal, 1)
-			signal.Notify(sigCh, unix.SIGINT, unix.SIGTERM)
-			select {
-			case s = <-sigCh:
-				log.G(ctx_).Infof("Got %v", s)
-			case err := <-errCh:
-				return err
-			}
-			return nil
-		},
+	_, err := flags.Parse(&opts)
+	if err != nil {
+		os.Exit(1)
 	}
 
-	if err := app.Run(os.Args); err != nil {
-		log.G(context.Background()).WithError(err).Fatal("failed to run")
+	if opts.Debug {
+		_ = log.SetLevel("debug")
+	}
+
+	err = run(ctx, &opts)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
 }

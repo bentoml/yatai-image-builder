@@ -30,12 +30,16 @@ import (
 	"github.com/containerd/continuity/fs"
 	"github.com/containerd/errdefs"
 	"github.com/containerd/log"
+	stargzfs "github.com/containerd/stargz-snapshotter/fs"
+	stargzfsconfig "github.com/containerd/stargz-snapshotter/fs/config"
 	"github.com/moby/sys/mountinfo"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/pkg/errors"
 
 	ourfs "github.com/bentoml/yatai-image-builder/bento-image-snapshotter/fs"
+	"github.com/bentoml/yatai-image-builder/bento-image-snapshotter/fs/stargzs3"
+	"github.com/bentoml/yatai-image-builder/common"
 )
 
 const (
@@ -105,8 +109,9 @@ type snapshotter struct {
 	ms          *storage.MetaStore
 	asyncRemove bool
 
-	// fs is a filesystem that this snapshotter recognizes.
-	fs                          FileSystem
+	// s3fs is a filesystem that this snapshotter recognizes.
+	s3fs                        FileSystem
+	stargzs3fs                  FileSystem
 	userxattr                   bool // whether to enable "userxattr" mount option
 	noRestore                   bool
 	allowInvalidMountsOnRestart bool
@@ -148,13 +153,24 @@ func NewSnapshotter(ctx context.Context, root string, opts ...Opt) (snapshots.Sn
 		log.G(ctx).WithError(err).Warnf("cannot detect whether \"userxattr\" option needs to be used, assuming to be %v", userxattr)
 	}
 
-	targetFs := ourfs.NewS3FileSystem()
+	s3fs := ourfs.NewS3FileSystem()
+	stargzs3fs, err := stargzfs.NewFilesystem(root, stargzfsconfig.Config{
+		HTTPCacheType:       "memory",
+		FSCacheType:         "memory",
+		PrefetchSize:        32 * 1024 * 1024, // 32MB
+		DisableVerification: true,
+		NoBackgroundFetch:   true,
+	}, stargzfs.WithResolveHandler("stargzs3", &stargzs3.ResolveHandler{}))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create stargz filesystem")
+	}
 
 	o := &snapshotter{
 		root:                        root,
 		ms:                          ms,
 		asyncRemove:                 config.asyncRemove,
-		fs:                          targetFs,
+		s3fs:                        s3fs,
+		stargzs3fs:                  stargzs3fs,
 		userxattr:                   userxattr,
 		noRestore:                   config.noRestore,
 		allowInvalidMountsOnRestart: config.allowInvalidMountsOnRestart,
@@ -259,7 +275,7 @@ func (o *snapshotter) Prepare(ctx context.Context, key, parent string, opts ...s
 			return nil, errors.Wrap(err, "failed to apply option")
 		}
 	}
-	bucketName := base.Labels[ourfs.BucketLabel]
+	bucketName := base.Labels[common.DescriptorAnnotationBucket]
 	if target, ok := base.Labels[targetSnapshotLabel]; ok && bucketName != "" {
 		// NOTE: If passed labels include a target of the remote snapshot, `Prepare`
 		//       must log whether this method succeeded to prepare that remote snapshot
@@ -485,8 +501,24 @@ func (o *snapshotter) cleanupSnapshotDirectory(ctx context.Context, dir string) 
 	// We use Filesystem's Unmount API so that it can do necessary finalization
 	// before/after the unmount.
 	mp := filepath.Join(dir, "fs")
-	if err := o.fs.Unmount(ctx, mp); err != nil {
-		log.G(ctx).WithError(err).WithField("dir", mp).Debug("failed to unmount")
+	hasMountPoint := false
+	_, err := mountinfo.GetMounts(func(m *mountinfo.Info) (skip, stop bool) {
+		if strings.HasPrefix(m.Mountpoint, mp) {
+			hasMountPoint = true
+			if err := o.stargzs3fs.Unmount(ctx, m.Mountpoint); err != nil {
+				log.G(ctx).WithError(err).WithField("dir", dir).Debug("failed to unmount")
+			}
+			return true, true
+		}
+		return false, false
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to get mounts")
+	}
+	if !hasMountPoint {
+		if err := o.s3fs.Unmount(ctx, mp); err != nil {
+			log.G(ctx).WithError(err).WithField("dir", mp).Debug("failed to unmount")
+		}
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		return errors.Wrapf(err, "failed to remove directory %q", dir)
@@ -688,7 +720,12 @@ func (o *snapshotter) prepareRemoteSnapshot(ctx context.Context, key string, lab
 	mountpoint := o.upperPath(id)
 	log.G(ctx).Infof("preparing filesystem mount at mountpoint=%v", mountpoint)
 
-	return errors.Wrap(o.fs.Mount(ctx, mountpoint, labels), "failed to mount filesystem")
+	format := labels[common.DescriptorAnnotationFormat]
+	if format == common.DescriptorAnnotationValueFormatStargz {
+		return errors.Wrap(o.stargzs3fs.Mount(ctx, mountpoint, labels), "failed to mount stargzs3 filesystem")
+	}
+
+	return errors.Wrap(o.s3fs.Mount(ctx, mountpoint, labels), "failed to mount s3 filesystem")
 }
 
 // checkAvailability checks avaiability of the specified layer and all lower
@@ -717,7 +754,11 @@ func (o *snapshotter) checkAvailability(ctx context.Context, key string) bool {
 		if _, ok := info.Labels[remoteLabel]; ok {
 			eg.Go(func() error {
 				log.G(lCtx).Debug("checking mount point")
-				if err := o.fs.Check(egCtx, mp, info.Labels); err != nil {
+				fs := o.s3fs
+				if info.Labels[common.DescriptorAnnotationFormat] == common.DescriptorAnnotationValueFormatStargz {
+					fs = o.stargzs3fs
+				}
+				if err := fs.Check(egCtx, mp, info.Labels); err != nil {
 					log.G(lCtx).WithError(err).Warn("layer is unavailable")
 					return errors.Wrap(err, "failed to check layer")
 				}

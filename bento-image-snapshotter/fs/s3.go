@@ -10,12 +10,8 @@ import (
 
 	"github.com/containerd/log"
 	"github.com/pkg/errors"
-)
 
-const (
-	BucketLabel       = "containerd.io/snapshot/bento-image-bucket"
-	ObjectKeyLabel    = "containerd.io/snapshot/bento-image-object-key"
-	IsBentoLayerLabel = "containerd.io/snapshot/bento-image-is-bento-layer"
+	"github.com/bentoml/yatai-image-builder/common"
 )
 
 type S3FileSystem struct{}
@@ -44,14 +40,14 @@ func (o S3FileSystem) Mount(ctx context.Context, mountpoint string, labels map[s
 		return errors.Wrap(err, "failed to create mountpoint")
 	}
 
-	bucketName := labels[BucketLabel]
-	objectKey := labels[ObjectKeyLabel]
+	bucketName := labels[common.DescriptorAnnotationBucket]
+	objectKey := labels[common.DescriptorAnnotationObjectKey]
 	logger := log.G(ctx).WithField("bucket", bucketName).WithField("key", objectKey).WithField("mountpoint", mountpoint)
 	logger.Info("downloading layer from S3")
 	if err := o.downloadLayerFromS3(ctx, bucketName, objectKey, mountpoint); err != nil {
 		return errors.Wrap(err, "failed to download layer from S3")
 	}
-	isBentoLayer := labels[IsBentoLayerLabel] == "true"
+	isBentoLayer := labels[common.DescriptorAnnotationIsBentoLayer] == "true"
 	if isBentoLayer {
 		logger.Info("chowning the /home/bentoml directory")
 		if err := chownRecursive(ctx, filepath.Join(mountpoint, "home", "bentoml"), 1034, 1034); err != nil {

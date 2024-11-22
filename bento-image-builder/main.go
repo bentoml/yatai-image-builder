@@ -28,6 +28,9 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/containerd/stargz-snapshotter/estargz"
+	"github.com/containerd/stargz-snapshotter/estargz/zstdchunked"
+
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go"
 	ocispecv1 "github.com/opencontainers/image-spec/specs-go/v1"
@@ -80,6 +83,7 @@ type buildOptions struct {
 	S3Bucket              string            `long:"s3-bucket" description:"S3 bucket name" required:"false"`
 	ImageName             string            `long:"image-name" description:"Name of the image to push" required:"false"`
 	ImageRegistryInsecure bool              `long:"image-registry-insecure" description:"Insecure registry" required:"false"`
+	EnableStargz          bool              `long:"enable-stargz" description:"Enable stargz" required:"false"`
 }
 
 // OCIConfig represents the image configuration
@@ -106,34 +110,95 @@ type Config struct {
 	ExposedPorts map[string]struct{} `json:"ExposedPorts,omitempty"` // nolint:tagliatelle
 }
 
-func streamingCompressAndUpload(ctx context.Context, bucketName, objectKey string, reader io.Reader) error {
+type Compression interface {
+	estargz.Compressor
+	estargz.Decompressor
+
+	// DecompressTOC decompresses the passed blob and returns a reader of TOC JSON.
+	// This is needed to be used from metadata pkg
+	DecompressTOC(io.Reader) (tocJSON io.ReadCloser, err error)
+}
+
+type CompressionFactory func() Compression
+
+type zstdCompression struct {
+	*zstdchunked.Compressor
+	*zstdchunked.Decompressor
+}
+
+func ZstdCompressionWithLevel(compressionLevel zstd.EncoderLevel) CompressionFactory {
+	return func() Compression {
+		return &zstdCompression{&zstdchunked.Compressor{CompressionLevel: compressionLevel}, &zstdchunked.Decompressor{}}
+	}
+}
+
+func streamingCompressAndUpload(ctx context.Context, bucketName, objectKey string, reader io.Reader, enableStargz bool) error {
 	logger := L(ctx).With(slog.String("bucket", bucketName), slog.String("object-key", objectKey))
 
-	pr, pw := io.Pipe()
+	var compressedReader io.Reader
 
 	// Start compression and upload in a goroutine
-	uploadErrCh := make(chan error, 1)
-	go func() {
-		defer pw.Close()
-
-		enc, err := zstd.NewWriter(pw, zstd.WithEncoderLevel(zstd.SpeedFastest))
+	compressionErrCh := make(chan error, 1)
+	if enableStargz {
+		logger.InfoContext(ctx, "stargz enabled")
+		// Create a temporary file to store the tar content
+		tmpFile, err := os.CreateTemp("", "bento-tar-*")
 		if err != nil {
-			uploadErrCh <- errors.Wrap(err, "failed to create zstd encoder")
-			return
+			return errors.Wrap(err, "failed to create temporary file")
 		}
-		defer enc.Close()
+		defer os.Remove(tmpFile.Name())
+		defer tmpFile.Close()
 
-		logger.InfoContext(ctx, "compressing...")
-		_, err = io.Copy(enc, reader)
+		// Copy tar content to temporary file
+		_, err = io.Copy(tmpFile, reader)
 		if err != nil {
-			uploadErrCh <- errors.Wrap(err, "failed to copy and compress")
-			return
+			return errors.Wrap(err, "failed to copy tar to temporary file")
 		}
-		logger.InfoContext(ctx, "compressed")
-		uploadErrCh <- nil
-	}()
 
-	return uploadToS3(ctx, bucketName, objectKey, pr, uploadErrCh)
+		// Seek back to start of file
+		if _, err := tmpFile.Seek(0, 0); err != nil {
+			return errors.Wrap(err, "failed to seek temporary file")
+		}
+
+		logger.InfoContext(ctx, "building stargz...")
+		// Get file info for size
+		fi, err := tmpFile.Stat()
+		if err != nil {
+			return errors.Wrap(err, "failed to get temporary file info")
+		}
+
+		sr := io.NewSectionReader(tmpFile, 0, fi.Size())
+		blob, err := estargz.Build(sr, estargz.WithCompression(ZstdCompressionWithLevel(zstd.SpeedFastest)()))
+		if err != nil {
+			return errors.Wrap(err, "failed to build stargz")
+		}
+		compressedReader = blob
+		compressionErrCh <- nil
+	} else {
+		pr, pw := io.Pipe()
+		compressedReader = pr
+		go func() {
+			defer pw.Close()
+
+			enc, err := zstd.NewWriter(pw, zstd.WithEncoderLevel(zstd.SpeedFastest))
+			if err != nil {
+				compressionErrCh <- errors.Wrap(err, "failed to create zstd encoder")
+				return
+			}
+			defer enc.Close()
+
+			logger.InfoContext(ctx, "compressing...")
+			_, err = io.Copy(enc, reader)
+			if err != nil {
+				compressionErrCh <- errors.Wrap(err, "failed to copy and compress")
+				return
+			}
+			logger.InfoContext(ctx, "compressed")
+			compressionErrCh <- nil
+		}()
+	}
+
+	return uploadToS3(ctx, bucketName, objectKey, compressedReader, compressionErrCh)
 }
 
 func checkS3ObjectExists(ctx context.Context, bucketName, objectKey string) (bool, error) {
@@ -168,7 +233,7 @@ func checkS3ObjectExists(ctx context.Context, bucketName, objectKey string) (boo
 	}
 }
 
-func uploadToS3(ctx context.Context, bucketName, objectKey string, reader io.Reader, uploadErrCh chan error) error {
+func uploadToS3(ctx context.Context, bucketName, objectKey string, reader io.Reader, compressionErrCh chan error) error {
 	logger := L(ctx).With(slog.String("bucket", bucketName), slog.String("object-key", objectKey))
 
 	// Create s5cmd command
@@ -198,7 +263,7 @@ func uploadToS3(ctx context.Context, bucketName, objectKey string, reader io.Rea
 	}
 
 	// Wait for compression to complete
-	if err := <-uploadErrCh; err != nil {
+	if err := <-compressionErrCh; err != nil {
 		return err
 	}
 
@@ -272,19 +337,29 @@ func createTarReader(srcDir, prefix string) io.ReadCloser {
 	return pr
 }
 
-func getLayerDesc(digestStr, s3BucketName, objectKey, baseImage string, isBentoLayer bool) (descriptor.Descriptor, ocispecv1.Descriptor) {
+func getLayerDesc(digestStr, s3BucketName, objectKey, baseImage string, isBentoLayer bool, enableStargz bool) (descriptor.Descriptor, ocispecv1.Descriptor) {
+	format := common.DescriptorAnnotationValueFormatTar
+	if enableStargz {
+		format = common.DescriptorAnnotationValueFormatStargz
+	}
 	layerDesc := descriptor.Descriptor{
 		MediaType: "application/vnd.oci.image.layer.v1.tar+zstd",
 		Size:      0,                        // We don't know the exact size
 		Digest:    digest.Digest(digestStr), // placeholder
 		Annotations: map[string]string{
-			"org.opencontainers.image.source":                   fmt.Sprintf("s3://%s/%s", s3BucketName, objectKey),
-			"containerd.io/snapshot/bento-image-bucket":         s3BucketName,
-			"containerd.io/snapshot/bento-image-object-key":     objectKey,
-			"containerd.io/snapshot/bento-image-compression":    "zstd",
-			"containerd.io/snapshot/bento-image-base":           baseImage,
-			"containerd.io/snapshot/bento-image-is-bento-layer": strconv.FormatBool(isBentoLayer),
+			"org.opencontainers.image.source":       fmt.Sprintf("s3://%s/%s", s3BucketName, objectKey),
+			common.DescriptorAnnotationBucket:       s3BucketName,
+			common.DescriptorAnnotationObjectKey:    objectKey,
+			common.DescriptorAnnotationCompression:  "zstd",
+			common.DescriptorAnnotationBaseImage:    baseImage,
+			common.DescriptorAnnotationIsBentoLayer: strconv.FormatBool(isBentoLayer),
+			common.DescriptorAnnotationFormat:       format,
 		},
+	}
+
+	if enableStargz {
+		layerDesc.Annotations["containerd.io/snapshot/remote/stargz.reference"] = fmt.Sprintf("dummy.io/%s/%s", s3BucketName, objectKey)
+		layerDesc.Annotations["containerd.io/snapshot/remote/stargz.digest"] = digestStr
 	}
 
 	ociLayerDesc := ocispecv1.Descriptor{
@@ -297,7 +372,17 @@ func getLayerDesc(digestStr, s3BucketName, objectKey, baseImage string, isBentoL
 	return layerDesc, ociLayerDesc
 }
 
+const (
+	normalLayerObjectKeyPrefix = "layers/"
+	stargzLayerObjectKeyPrefix = "stargz-layers/"
+)
+
 func build(ctx context.Context, opts buildOptions) error {
+	objectKeyPrefix := normalLayerObjectKeyPrefix
+	if opts.EnableStargz {
+		objectKeyPrefix = stargzLayerObjectKeyPrefix
+	}
+
 	logger := L(ctx).With(slog.String("context-path", opts.ContextPath)).With(slog.String("bucket", opts.S3Bucket)).With(slog.String("image", opts.ImageName))
 	ctx = WithLogger(ctx, logger)
 
@@ -318,7 +403,7 @@ func build(ctx context.Context, opts buildOptions) error {
 		return err
 	}
 
-	bentoLayerObjectKey := "layers/" + bentoHash
+	bentoLayerObjectKey := objectKeyPrefix + bentoHash
 
 	bentoLayerExists, err := checkS3ObjectExists(ctx, opts.S3Bucket, bentoLayerObjectKey)
 	if err != nil {
@@ -332,7 +417,7 @@ func build(ctx context.Context, opts buildOptions) error {
 			logger.InfoContext(ctx, "compressing and streaming upload of bento layer to S3...")
 			bentoTarReader := createTarReader(opts.ContextPath, "home/bentoml/bento")
 			defer bentoTarReader.Close()
-			err = streamingCompressAndUpload(ctx, opts.S3Bucket, bentoLayerObjectKey, bentoTarReader)
+			err = streamingCompressAndUpload(ctx, opts.S3Bucket, bentoLayerObjectKey, bentoTarReader, opts.EnableStargz)
 			if err != nil {
 				logger.ErrorContext(ctx, "failed to upload bento layer", slog.String("error", err.Error()))
 				bentoLayerUploadErrCh <- err
@@ -358,7 +443,7 @@ func build(ctx context.Context, opts buildOptions) error {
 		return err
 	}
 
-	baseLayerObjectKey := "layers/" + imageInfo.Hash
+	baseLayerObjectKey := objectKeyPrefix + imageInfo.Hash
 
 	logger.InfoContext(ctx, "checking if base layer exists...", slog.String("object-key", baseLayerObjectKey))
 
@@ -480,7 +565,7 @@ func build(ctx context.Context, opts buildOptions) error {
 		}
 		defer exportOut.Close()
 
-		err = streamingCompressAndUpload(ctx, opts.S3Bucket, baseLayerObjectKey, exportOut)
+		err = streamingCompressAndUpload(ctx, opts.S3Bucket, baseLayerObjectKey, exportOut, opts.EnableStargz)
 		if err != nil {
 			return err
 		}
@@ -573,8 +658,8 @@ func build(ctx context.Context, opts buildOptions) error {
 			Digest:    configDesc.Digest,
 		}
 
-		baseLayerDesc, ociBaseLayerDesc := getLayerDesc(baseLayerPlaceholderDigest, opts.S3Bucket, baseLayerObjectKey, imageInfo.BaseImage, false)
-		bentoLayerDesc, ociBentoLayerDesc := getLayerDesc(bentoLayerPlaceholderDigest, opts.S3Bucket, bentoLayerObjectKey, imageInfo.BaseImage, true)
+		baseLayerDesc, ociBaseLayerDesc := getLayerDesc(baseLayerPlaceholderDigest, opts.S3Bucket, baseLayerObjectKey, imageInfo.BaseImage, false, opts.EnableStargz)
+		bentoLayerDesc, ociBentoLayerDesc := getLayerDesc(bentoLayerPlaceholderDigest, opts.S3Bucket, bentoLayerObjectKey, imageInfo.BaseImage, true, opts.EnableStargz)
 
 		// Create manifest
 		manifest_ := ocispecv1.Manifest{
