@@ -135,5 +135,6 @@ bentoRequestNamespaces: ['yatai']
 bentoRequestAllNamespaces: false
 
 containerImageS3Storage:
-  endpoint_url: ''
+  endpointURL: ''
   bucket: ''
+  enableStargz: false

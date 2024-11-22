@@ -82,10 +82,18 @@ spec:
           fi
           bento_image_bin_file=${HOST_MOUNT_DIR}/usr/bin/bento-image-snapshotter
           if [ -f "$bento_image_bin_file" ]; then
-            echo "file $bento_image_bin_file exists, stopping bento-image-snapshotter service..."
-            nsenter -t 1 -m systemctl stop bento-image-snapshotter.service
+            old_md5=$(md5sum $bento_image_bin_file | awk '{print $1}')
+            new_md5=$(md5sum /usr/bin/bento-image-snapshotter | awk '{print $1}')
+            if [ "$old_md5" != "$new_md5" ]; then
+              echo "file $bento_image_bin_file exists, but md5sum is different, stopping bento-image-snapshotter service..."
+              nsenter -t 1 -m systemctl stop bento-image-snapshotter.service
+              cp /usr/bin/bento-image-snapshotter $bento_image_bin_file
+            else
+              echo "file $bento_image_bin_file exists, and md5sum is the same, no need to copy."
+            fi
+          else
+            cp /usr/bin/bento-image-snapshotter $bento_image_bin_file
           fi
-          cp /usr/bin/bento-image-snapshotter $bento_image_bin_file
           s5cmd_bin_file=${HOST_MOUNT_DIR}/usr/bin/s5cmd
           if [ ! -f "$s5cmd_bin_file" ]; then
             cp /usr/bin/s5cmd $s5cmd_bin_file

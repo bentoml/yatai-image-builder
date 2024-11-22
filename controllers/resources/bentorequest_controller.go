@@ -1496,6 +1496,10 @@ func getContainerImageS3Bucket() string {
 	return os.Getenv("CONTAINER_IMAGE_S3_BUCKET")
 }
 
+func getContainerImageS3EnableStargz() bool {
+	return os.Getenv("CONTAINER_IMAGE_S3_ENABLE_STARGZ") == trueStr
+}
+
 func (r *BentoRequestReconciler) getBuildArgs(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest) (buildArgs []string, err error) {
 	buildArgs = []string{}
 
@@ -2312,6 +2316,7 @@ type GenerateImageBuilderPodTemplateSpecOption struct {
 func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context.Context, opt GenerateImageBuilderPodTemplateSpecOption) (pod *corev1.PodTemplateSpec, err error) {
 	containerImageS3EndpointURL := getContainerImageS3EndpointURL()
 	containerImageS3Bucket := getContainerImageS3Bucket()
+	containerImageS3EnableStargz := getContainerImageS3EnableStargz()
 	imageStoredInS3 := isImageStoredInS3(opt.BentoRequest)
 
 	bentoRepositoryName, _, bentoVersion := xstrings.Partition(opt.BentoRequest.Spec.BentoTag, ":")
@@ -3089,6 +3094,9 @@ echo "Done"
 		}
 		if !opt.ImageInfo.DockerRegistry.Secure {
 			extraFlags += " --image-registry-insecure"
+		}
+		if containerImageS3EnableStargz {
+			extraFlags += " --enable-stargz"
 		}
 		var cmdOutput bytes.Buffer
 		err = template.Must(template.New("script").Parse(`

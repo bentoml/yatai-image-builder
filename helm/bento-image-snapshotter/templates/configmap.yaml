@@ -6,9 +6,9 @@ metadata:
     {{- include "bento-image-snapshotter.labels" . | nindent 4 }}
 data:
   bento-image-snapshotter.service.env: |-
-    S3_ENDPOINT_URL={{ .Values.s3.endpoint_url }}
-    AWS_ACCESS_KEY_ID={{ .Values.s3.access_key_id }}
-    AWS_SECRET_ACCESS_KEY={{ .Values.s3.secret_access_key }}
+    S3_ENDPOINT_URL={{ .Values.s3.endpointURL }}
+    AWS_ACCESS_KEY_ID={{ .Values.s3.accessKeyID }}
+    AWS_SECRET_ACCESS_KEY={{ .Values.s3.secretAccessKey }}
 
   bento-image-snapshotter.service: |-
     [Unit]

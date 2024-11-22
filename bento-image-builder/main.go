@@ -337,19 +337,29 @@ func createTarReader(srcDir, prefix string) io.ReadCloser {
 	return pr
 }
 
-func getLayerDesc(digestStr, s3BucketName, objectKey, baseImage string, isBentoLayer bool) (descriptor.Descriptor, ocispecv1.Descriptor) {
+func getLayerDesc(digestStr, s3BucketName, objectKey, baseImage string, isBentoLayer bool, enableStargz bool) (descriptor.Descriptor, ocispecv1.Descriptor) {
+	format := common.DescriptorAnnotationValueFormatTar
+	if enableStargz {
+		format = common.DescriptorAnnotationValueFormatStargz
+	}
 	layerDesc := descriptor.Descriptor{
 		MediaType: "application/vnd.oci.image.layer.v1.tar+zstd",
 		Size:      0,                        // We don't know the exact size
 		Digest:    digest.Digest(digestStr), // placeholder
 		Annotations: map[string]string{
-			"org.opencontainers.image.source":                   fmt.Sprintf("s3://%s/%s", s3BucketName, objectKey),
-			"containerd.io/snapshot/bento-image-bucket":         s3BucketName,
-			"containerd.io/snapshot/bento-image-object-key":     objectKey,
-			"containerd.io/snapshot/bento-image-compression":    "zstd",
-			"containerd.io/snapshot/bento-image-base":           baseImage,
-			"containerd.io/snapshot/bento-image-is-bento-layer": strconv.FormatBool(isBentoLayer),
+			"org.opencontainers.image.source":       fmt.Sprintf("s3://%s/%s", s3BucketName, objectKey),
+			common.DescriptorAnnotationBucket:       s3BucketName,
+			common.DescriptorAnnotationObjectKey:    objectKey,
+			common.DescriptorAnnotationCompression:  "zstd",
+			common.DescriptorAnnotationBaseImage:    baseImage,
+			common.DescriptorAnnotationIsBentoLayer: strconv.FormatBool(isBentoLayer),
+			common.DescriptorAnnotationFormat:       format,
 		},
+	}
+
+	if enableStargz {
+		layerDesc.Annotations["containerd.io/snapshot/remote/stargz.reference"] = fmt.Sprintf("dummy.io/%s/%s", s3BucketName, objectKey)
+		layerDesc.Annotations["containerd.io/snapshot/remote/stargz.digest"] = digestStr
 	}
 
 	ociLayerDesc := ocispecv1.Descriptor{
@@ -648,8 +658,8 @@ func build(ctx context.Context, opts buildOptions) error {
 			Digest:    configDesc.Digest,
 		}
 
-		baseLayerDesc, ociBaseLayerDesc := getLayerDesc(baseLayerPlaceholderDigest, opts.S3Bucket, baseLayerObjectKey, imageInfo.BaseImage, false)
-		bentoLayerDesc, ociBentoLayerDesc := getLayerDesc(bentoLayerPlaceholderDigest, opts.S3Bucket, bentoLayerObjectKey, imageInfo.BaseImage, true)
+		baseLayerDesc, ociBaseLayerDesc := getLayerDesc(baseLayerPlaceholderDigest, opts.S3Bucket, baseLayerObjectKey, imageInfo.BaseImage, false, opts.EnableStargz)
+		bentoLayerDesc, ociBentoLayerDesc := getLayerDesc(bentoLayerPlaceholderDigest, opts.S3Bucket, bentoLayerObjectKey, imageInfo.BaseImage, true, opts.EnableStargz)
 
 		// Create manifest
 		manifest_ := ocispecv1.Manifest{
