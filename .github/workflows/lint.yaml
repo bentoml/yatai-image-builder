@@ -33,6 +33,12 @@ jobs:
               - "hack/**"
               - "services/**"
               - "yatai-client/**"
+              - "common/**"
+              - "main.go"
+              - "go.mod"
+              - "go.sum"
+              - "bento-image-builder/**"
+              - "bento-image-snapshotter/**"
             helmcharts:
               - "helm/**"
 
