@@ -218,6 +218,7 @@ func checkS3ObjectExists(ctx context.Context, bucketName, objectKey string) (boo
 		logger = logger.With(slog.String("endpoint-url", s3EndpointURL))
 	}
 
+	logger.InfoContext(ctx, "checking if object exists...")
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, s5cmdPath, append(baseArgs, "ls", fmt.Sprintf("s3://%s/%s", bucketName, objectKey))...)
 	cmd.Stderr = &stderr
@@ -227,8 +228,10 @@ func checkS3ObjectExists(ctx context.Context, bucketName, objectKey string) (boo
 			logger.ErrorContext(ctx, "failed to check if object exists", slog.String("stderr", stderrStr))
 			return false, errors.Wrap(err, "failed to check if object exists")
 		}
+		logger.InfoContext(ctx, "object does not exist")
 		return false, nil
 	} else {
+		logger.InfoContext(ctx, "object exists")
 		return true, nil
 	}
 }
@@ -270,7 +273,7 @@ func uploadToS3(ctx context.Context, bucketName, objectKey string, reader io.Rea
 	return nil
 }
 
-func createTarReader(srcDir, prefix string) io.ReadCloser {
+func createTarReader(srcDir string) io.ReadCloser {
 	pr, pw := io.Pipe()
 
 	go func() {
@@ -289,7 +292,7 @@ func createTarReader(srcDir, prefix string) io.ReadCloser {
 				return errors.Wrap(err, "failed to get relative path")
 			}
 
-			tarPath := filepath.Join(prefix, relPath)
+			tarPath := relPath
 
 			if fi.Mode().IsDir() {
 				if file != srcDir {
@@ -377,6 +380,21 @@ const (
 	stargzLayerObjectKeyPrefix = "stargz-layers/"
 )
 
+func chownRecursive(ctx context.Context, root string, uid, gid int) error {
+	return errors.Wrap(filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return errors.Wrap(err, "failed to walk the directory")
+		}
+		// Change ownership of the file/directory
+		err = os.Chown(path, uid, gid)
+		if err != nil {
+			L(ctx).ErrorContext(ctx, "failed to chown the file/directory", slog.String("path", path), slog.String("error", err.Error()))
+			return errors.Wrap(err, "failed to chown the file/directory")
+		}
+		return nil
+	}), "failed to walk the directory")
+}
+
 func build(ctx context.Context, opts buildOptions) error {
 	objectKeyPrefix := normalLayerObjectKeyPrefix
 	if opts.EnableStargz {
@@ -389,14 +407,49 @@ func build(ctx context.Context, opts buildOptions) error {
 	bentoLayerObjectKeyCh := make(chan string, 1)
 	bentoLayerUploadErrCh := make(chan error, 1)
 
+	logger.InfoContext(ctx, "preparing bento files...")
+	// Create temporary directory
+	tmpDir, err := os.MkdirTemp("", "bento-layer-*")
+	if err != nil {
+		logger.ErrorContext(ctx, "failed to create temporary directory", slog.String("error", err.Error()))
+		return errors.Wrap(err, "failed to create temporary directory")
+	}
+	defer os.RemoveAll(tmpDir)
+
+	tmpBentoDir := filepath.Join(tmpDir, "home/bentoml/bento")
+	err = os.MkdirAll(tmpBentoDir, 0755)
+	if err != nil {
+		logger.ErrorContext(ctx, "failed to create temporary directory", slog.String("error", err.Error()))
+		return errors.Wrap(err, "failed to create temporary directory")
+	}
+
+	logger.InfoContext(ctx, "copying files to temporary directory...", slog.String("path", tmpBentoDir))
+	// Copy all files to temporary directory
+	cmd := exec.CommandContext(ctx, "cp", "-a", opts.ContextPath+"/.", tmpBentoDir) // nolint:gosec
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		logger.ErrorContext(ctx, "failed to copy files to temporary directory", slog.String("error", err.Error()))
+		return errors.Wrapf(err, "failed to copy files to temporary directory, stderr: %s", stderr.String())
+	}
+
+	// Change ownership of temporary directory
+	logger.InfoContext(ctx, "chown -R 1034:1034", slog.String("path", filepath.Dir(tmpBentoDir)))
+	err = chownRecursive(ctx, filepath.Dir(tmpBentoDir), 1034, 1034)
+	if err != nil {
+		logger.ErrorContext(ctx, "failed to chown temporary directory", slog.String("error", err.Error()))
+		return errors.Wrap(err, "failed to chown temporary directory")
+	}
+	logger.InfoContext(ctx, "chown done")
+
 	logger.InfoContext(ctx, "chmod a+x env/docker/entrypoint.sh")
-	err := os.Chmod(filepath.Join(opts.ContextPath, "env/docker/entrypoint.sh"), 0755)
+	err = os.Chmod(filepath.Join(tmpBentoDir, "env/docker/entrypoint.sh"), 0755)
 	if err != nil {
 		err = errors.Wrap(err, "failed to chmod +x env/docker/entrypoint.sh")
 		return err
 	}
 
-	bentoHash, err := common.HashFile(opts.ContextPath)
+	bentoHash, err := common.HashFile(tmpBentoDir)
 	logger.InfoContext(ctx, "bento hash", slog.String("hash", bentoHash))
 	if err != nil {
 		err = errors.Wrap(err, "failed to get hash of file")
@@ -415,7 +468,7 @@ func build(ctx context.Context, opts buildOptions) error {
 			logger := logger.With(slog.String("object-key", bentoLayerObjectKey))
 			logger.InfoContext(ctx, "bento layer does not exist, building bento layer...")
 			logger.InfoContext(ctx, "compressing and streaming upload of bento layer to S3...")
-			bentoTarReader := createTarReader(opts.ContextPath, "home/bentoml/bento")
+			bentoTarReader := createTarReader(tmpDir)
 			defer bentoTarReader.Close()
 			err = streamingCompressAndUpload(ctx, opts.S3Bucket, bentoLayerObjectKey, bentoTarReader, opts.EnableStargz)
 			if err != nil {
