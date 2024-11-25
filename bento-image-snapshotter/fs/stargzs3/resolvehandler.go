@@ -79,7 +79,8 @@ func (r *ResolveHandler) Handle(ctx context.Context, desc ocispec.Descriptor) (r
 	objectKey := desc.Annotations[common.DescriptorAnnotationObjectKey]
 	size, err := statS3ObjectSize(ctx, client, bucket, objectKey)
 	if err != nil {
-		return nil, 0, err
+		log.G(ctx).Errorf("failed to stat %s/%s: %v", bucket, objectKey, err)
+		return nil, 0, nil
 	}
 	return &fetcher{bucket: bucket, objectKey: objectKey, size: size, client: client}, size, nil
 }

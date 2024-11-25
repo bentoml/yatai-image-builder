@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -103,12 +104,14 @@ func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, laye
 	s3Path := fmt.Sprintf("s3://%s/%s", bucketName, layerKey)
 
 	startTime := time.Now()
+	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "sh", "-c", fmt.Sprintf("s5cmd cat %s | pzstd -d | tar -xf -", s3Path)) // nolint:gosec
+	cmd.Stderr = &stderr
 	cmd.Dir = tempName
 
 	err := cmd.Run()
 	if err != nil {
-		return errors.Wrapf(err, "failed to run command: %s", stringifyCmd(cmd))
+		return errors.Wrapf(err, "failed to run command: %s, stderr: %s", stringifyCmd(cmd), stderr.String())
 	}
 
 	duration := time.Since(startTime)
