@@ -67,7 +67,7 @@ spec:
               address = "/run/bento-image-snapshotter/grpc.sock"
           EOF
             echo "Removing all images and contents in containerd..."
-            ctr -n $containerd_namespace image ls | tail +2 | awk '{print \$1}' | xargs -I {} ctr -n $containerd_namespace image rm {} && ctr -n $containerd_namespace content ls | tail +2 | awk '{print \$1}' | xargs -I {} ctr -n $containerd_namespace content rm {}
+            ctr -n $containerd_namespace image ls | tail +2 | awk '{print $1}' | xargs -I {} ctr -n $containerd_namespace image rm {} && ctr -n $containerd_namespace content ls | tail +2 | awk '{print $1}' | xargs -I {} ctr -n $containerd_namespace content rm {}
             echo "Removed all images and contents in containerd"
           else
             # Add only [proxy_plugins.bento-image] if [proxy_plugins] exists
