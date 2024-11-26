@@ -56,6 +56,25 @@ spec:
           etcContainerd=${HOST_MOUNT_DIR}{{ .Values.containerRuntime.containerd.configFile }}
           containerd_namespace=k8s.io
 
+          grep -q "# corrupted contents cleaned" $etcContainerd
+
+          if [ $? -eq 0 ]; then
+            echo "The corrupted containerd images and contants have been cleaned."
+          else
+            namesapces=$(ctr namespace ls | tail +2 | awk '{print $1}')
+
+            echo "Removing all corrupted images and contents in containerd..."
+            for namespace in $namesapces
+            do
+                echo "Removing corrupted images and contents in $namespace"
+                ctr -n $namespace image ls | tail +2 | awk '{print $1}' | xargs -I {} sudo ctr -n $namespace image rm {}
+                ctr -n $namespace content ls | tail +2 | awk '{print $1}' | xargs -I {} sudo ctr -n $namespace content rm {}
+                echo "Removed corrupted images and contents in $namespace"
+            done
+            echo "Removed all corrupted images and contents in containerd"
+            echo "# corrupted contents cleaned" >> $etcContainerd
+          fi
+
           toml set --overwrite $etcContainerd plugins.\"io.containerd.grpc.v1.cri\".containerd.disable_snapshot_annotations false
           toml set --overwrite $etcContainerd plugins.\"io.containerd.grpc.v1.cri\".containerd.snapshotter bento
 
@@ -69,9 +88,6 @@ spec:
               type = "snapshot"
               address = "/run/bento-image-snapshotter/grpc.sock"
           EOF
-            echo "Removing all images and contents in containerd..."
-            ctr -n $containerd_namespace image ls | tail +2 | awk '{print $1}' | xargs -I {} ctr -n $containerd_namespace image rm {} && ctr -n $containerd_namespace content ls | tail +2 | awk '{print $1}' | xargs -I {} ctr -n $containerd_namespace content rm {}
-            echo "Removed all images and contents in containerd"
           else
             # Add only [proxy_plugins.bento-image] if [proxy_plugins] exists
             toml set --overwrite $etcContainerd proxy_plugins.bento.type "snapshot"
