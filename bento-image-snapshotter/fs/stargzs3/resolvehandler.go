@@ -14,11 +14,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/containerd/log"
 	"github.com/containerd/stargz-snapshotter/fs/remote"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/peak/s5cmd/v2/orderedwriter"
 	"github.com/pkg/errors"
 
 	smithyhttp "github.com/aws/smithy-go/transport/http"
@@ -149,7 +151,17 @@ func statS3ObjectSize(ctx context.Context, client *s3.Client, bucket, objectKey 
 	return *output.ContentLength, nil
 }
 
-type ResolveHandler struct{}
+type ResolveHandler struct {
+	downloadConcurrency int
+	downloadPartSize    int64
+}
+
+func NewResolveHandler(downloadConcurrency int, downloadPartSize int64) *ResolveHandler {
+	return &ResolveHandler{
+		downloadConcurrency: downloadConcurrency,
+		downloadPartSize:    downloadPartSize,
+	}
+}
 
 func (r *ResolveHandler) Handle(ctx context.Context, desc ocispec.Descriptor) (remote.Fetcher, int64, error) {
 	s3EndpointURL := os.Getenv("S3_ENDPOINT_URL")
@@ -181,19 +193,10 @@ func (r *ResolveHandler) Handle(ctx context.Context, desc ocispec.Descriptor) (r
 
 	region := extractRegionFromEndpointURL(endpointURL.String())
 
-	resolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-		return aws.Endpoint{
-			PartitionID:       "aws",
-			URL:               endpointURL.String(),
-			SigningRegion:     region,
-			HostnameImmutable: true,
-		}, nil
-	})
-
 	cfg := aws.Config{
-		Region:                      region,
-		Credentials:                 credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""),
-		EndpointResolverWithOptions: resolver,
+		Region:       region,
+		Credentials:  credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""),
+		BaseEndpoint: aws.String(endpointURL.String()),
 	}
 
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
@@ -212,7 +215,8 @@ func (r *ResolveHandler) Handle(ctx context.Context, desc ocispec.Descriptor) (r
 		log.G(ctx).Errorf("failed to stat %s/%s: %v", bucket, objectKey, err)
 		return nil, 0, nil
 	}
-	return &fetcher{bucket: bucket, objectKey: objectKey, size: size, client: client}, size, nil
+	downloader := manager.NewDownloader(client)
+	return &fetcher{bucket: bucket, objectKey: objectKey, size: size, client: client, downloader: downloader, downloadConcurrency: r.downloadConcurrency, downloadPartSize: r.downloadPartSize}, size, nil
 }
 
 type fetcher struct {
@@ -220,7 +224,11 @@ type fetcher struct {
 	objectKey string
 	size      int64
 
-	client *s3.Client
+	client     *s3.Client
+	downloader *manager.Downloader
+
+	downloadConcurrency int
+	downloadPartSize    int64
 }
 
 func (f *fetcher) Fetch(ctx context.Context, off int64, size int64) (io.ReadCloser, error) {
@@ -235,13 +243,22 @@ func (f *fetcher) Fetch(ctx context.Context, off int64, size int64) (io.ReadClos
 		Range:  aws.String(fmt.Sprintf("bytes=%d-%d", o, o+s-1)),
 	}
 
-	log.G(ctx).Debugf("fetching %s/%s with range %s", f.bucket, f.objectKey, *input.Range)
-	output, err := f.client.GetObject(ctx, input)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get object %s/%s", f.bucket, f.objectKey)
-	}
+	log.G(ctx).Debugf("fetching %s/%s with range %s, concurrency %d, part size %d", f.bucket, f.objectKey, *input.Range, f.downloadConcurrency, f.downloadPartSize)
 
-	return output.Body, nil
+	pr, pw := io.Pipe()
+	buf := orderedwriter.New(pw)
+	go func() {
+		_, err := f.downloader.Download(ctx, buf, input, func(u *manager.Downloader) {
+			u.PartSize = f.downloadPartSize
+			u.Concurrency = f.downloadConcurrency
+		})
+		if err != nil {
+			err = errors.Wrap(err, "failed to download object")
+			_ = pw.CloseWithError(err)
+		}
+	}()
+
+	return pr, nil
 }
 
 func (f *fetcher) Check() error {

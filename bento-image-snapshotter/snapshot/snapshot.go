@@ -80,6 +80,8 @@ type SnapshotterConfig struct {
 	asyncRemove                 bool
 	noRestore                   bool
 	allowInvalidMountsOnRestart bool
+	downloadConcurrency         int
+	downloadPartSize            int64
 }
 
 // Opt is an option to configure the remote snapshotter
@@ -102,6 +104,20 @@ func NoRestore(config *SnapshotterConfig) error {
 func AllowInvalidMountsOnRestart(config *SnapshotterConfig) error {
 	config.allowInvalidMountsOnRestart = true
 	return nil
+}
+
+func WithDownloadConcurrency(concurrency int) Opt {
+	return func(config *SnapshotterConfig) error {
+		config.downloadConcurrency = concurrency
+		return nil
+	}
+}
+
+func WithDownloadPartSize(partSize int64) Opt {
+	return func(config *SnapshotterConfig) error {
+		config.downloadPartSize = partSize
+		return nil
+	}
 }
 
 type snapshotter struct {
@@ -160,7 +176,7 @@ func NewSnapshotter(ctx context.Context, root string, opts ...Opt) (snapshots.Sn
 		PrefetchSize:        32 * 1024 * 1024, // 32MB
 		DisableVerification: true,
 		NoBackgroundFetch:   true,
-	}, stargzfs.WithResolveHandler("stargzs3", &stargzs3.ResolveHandler{}))
+	}, stargzfs.WithResolveHandler("stargzs3", stargzs3.NewResolveHandler(config.downloadConcurrency, config.downloadPartSize)))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create stargz filesystem")
 	}

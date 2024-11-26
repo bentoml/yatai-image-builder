@@ -57,9 +57,11 @@ func init() {
 }
 
 type runOptions struct {
-	RootDir    string `short:"r" long:"root-dir" description:"Root directory for the snapshotter" required:"false"`
-	SocketAddr string `short:"s" long:"socket-addr" description:"Socket address for the snapshotter" required:"false"`
-	Debug      bool   `short:"d" long:"debug" description:"Enable debug logging" required:"false"`
+	RootDir             string `short:"r" long:"root-dir" description:"Root directory for the snapshotter" required:"false"`
+	SocketAddr          string `short:"s" long:"socket-addr" description:"Socket address for the snapshotter" required:"false"`
+	Debug               bool   `short:"d" long:"debug" description:"Enable debug logging" required:"false"`
+	DownloadConcurrency int    `short:"c" long:"download-concurrency" description:"Number of concurrent downloads" required:"false" default:"32" env:"DOWNLOAD_CONCURRENCY"`
+	DownloadPartSizeMiB int64  `short:"p" long:"download-part-size" description:"Size of each download part, in MiB" required:"false" default:"32" env:"DOWNLOAD_PART_SIZE"`
 }
 
 func run(ctx context.Context, opts *runOptions) error {
@@ -71,7 +73,7 @@ func run(ctx context.Context, opts *runOptions) error {
 	if root == "" {
 		root = snapshot.DefaultRootDir
 	}
-	sn, err := snapshot.NewSnapshotter(ctx, root)
+	sn, err := snapshot.NewSnapshotter(ctx, root, snapshot.WithDownloadConcurrency(opts.DownloadConcurrency), snapshot.WithDownloadPartSize(opts.DownloadPartSizeMiB*1024*1024))
 	if err != nil {
 		return errors.Wrap(err, "failed to create snapshotter")
 	}
