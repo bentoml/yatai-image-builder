@@ -3266,7 +3266,7 @@ echo "Done"
 
 func (r *BentoRequestReconciler) getHashStr(bentoRequest *resourcesv1alpha1.BentoRequest) (string, error) {
 	var hash uint64
-	hashBody := struct {
+	hash, err := hashstructure.Hash(struct {
 		Spec        resourcesv1alpha1.BentoRequestSpec
 		Labels      map[string]string
 		Annotations map[string]string
@@ -3274,17 +3274,11 @@ func (r *BentoRequestReconciler) getHashStr(bentoRequest *resourcesv1alpha1.Bent
 		Spec:        bentoRequest.Spec,
 		Labels:      bentoRequest.Labels,
 		Annotations: bentoRequest.Annotations,
-	}
-	hashBody.Spec.DownloadURL = ""
-	for i := range hashBody.Spec.Models {
-		hashBody.Spec.Models[i].DownloadURL = ""
-	}
-	hash, err := hashstructure.Hash(hashBody, hashstructure.FormatV2, nil)
+	}, hashstructure.FormatV2, nil)
 	if err != nil {
 		err = errors.Wrap(err, "get bentoRequest CR spec hash")
 		return "", err
 	}
-
 	hashStr := strconv.FormatUint(hash, 10)
 	return hashStr, nil
 }
