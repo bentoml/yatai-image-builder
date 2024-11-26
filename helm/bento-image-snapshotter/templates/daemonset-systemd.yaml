@@ -132,6 +132,13 @@ spec:
         image: quay.io/bentoml/busybox:1.33
         securityContext:
           privileged: true
+        resources:
+          requests:
+            cpu: 10m
+            memory: 10Mi
+          limits:
+            cpu: 100m
+            memory: 100Mi
         command:
         - sh
         - -c
