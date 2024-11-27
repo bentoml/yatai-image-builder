@@ -56,25 +56,6 @@ spec:
           etcContainerd=${HOST_MOUNT_DIR}{{ .Values.containerRuntime.containerd.configFile }}
           containerd_namespace=k8s.io
 
-          grep -q "# corrupted contents cleaned" $etcContainerd
-
-          if [ $? -eq 0 ]; then
-            echo "The corrupted containerd images and contants have been cleaned."
-          else
-            namesapces=$(ctr namespace ls | tail +2 | awk '{print $1}')
-
-            echo "Removing all corrupted images and contents in containerd..."
-            for namespace in $namesapces
-            do
-                echo "Removing corrupted images and contents in $namespace"
-                ctr -n $namespace image ls | tail +2 | awk '{print $1}' | xargs -I {} sudo ctr -n $namespace image rm {}
-                ctr -n $namespace content ls | tail +2 | awk '{print $1}' | xargs -I {} sudo ctr -n $namespace content rm {}
-                echo "Removed corrupted images and contents in $namespace"
-            done
-            echo "Removed all corrupted images and contents in containerd"
-            echo "# corrupted contents cleaned" >> $etcContainerd
-          fi
-
           toml set --overwrite $etcContainerd plugins.\"io.containerd.grpc.v1.cri\".containerd.discard_unpacked_layers false
           toml set --overwrite $etcContainerd plugins.\"io.containerd.grpc.v1.cri\".containerd.disable_snapshot_annotations false
           toml set --overwrite $etcContainerd plugins.\"io.containerd.grpc.v1.cri\".containerd.snapshotter bento
@@ -132,6 +113,14 @@ spec:
           nsenter -t 1 -m systemctl restart bento-image-snapshotter.service
           echo "bento-image snapshotter has been restarted."
           nsenter -t 1 -m systemctl status bento-image-snapshotter.service
+
+          pause_image=$(ps aux | grep kubelet | grep -- '--pod-infra-container-image' | awk -F '--pod-infra-container-image=' '{print $2}' | awk '{print $1}')
+          # if pause image is not empty, then pull the image
+          if [ -n "$pause_image" ]; then
+            echo "Pulling pause image: $pause_image"
+            ctr -n k8s.io content fetch $pause_image
+            echo "Pulled pause image: $pause_image"
+          fi
 
         volumeMounts:
         - name: config
