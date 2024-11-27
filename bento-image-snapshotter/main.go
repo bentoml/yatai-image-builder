@@ -136,9 +136,43 @@ func main() {
 		os.Exit(1)
 	}
 
-	if opts.Debug {
-		_ = log.SetLevel("debug")
+	currentLogLevelString := log.GetLevel().String()
+
+	const (
+		logLevelDebug = "debug"
+		logLevelInfo  = "info"
+	)
+
+	rotateLogLevel := func() {
+		if currentLogLevelString == logLevelDebug {
+			currentLogLevelString = logLevelInfo
+		} else {
+			currentLogLevelString = logLevelDebug
+		}
+		_ = log.SetLevel(currentLogLevelString)
+		logger := log.G(ctx)
+		logger.Infof("Log level set to %s", currentLogLevelString)
 	}
+
+	if opts.Debug {
+		currentLogLevelString = logLevelDebug
+		_ = log.SetLevel(currentLogLevelString)
+	}
+
+	// watch usr1 signal to rotate log level
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+
+		signal.Notify(sigCh, unix.SIGUSR1)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-sigCh:
+				rotateLogLevel()
+			}
+		}
+	}()
 
 	err = run(ctx, &opts)
 	if err != nil {
