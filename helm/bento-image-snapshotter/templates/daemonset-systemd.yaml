@@ -118,7 +118,7 @@ spec:
           # if pause image is not empty, then pull the image
           if [ -n "$pause_image" ]; then
             echo "Pulling pause image: $pause_image"
-            ctr -n k8s.io content fetch $pause_image
+            nsenter -t 1 -m ctr -n k8s.io content fetch $pause_image
             echo "Pulled pause image: $pause_image"
           fi
 
