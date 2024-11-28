@@ -123,6 +123,7 @@ spec:
           fi
 
           nsenter -t 1 -m ctr -n k8s.io content fetch gke.gcr.io/csi-node-driver-registrar:v2.9.4-gke.14@sha256:76f5678b02f8f0b82f2b31275976e5a24187e3e552d273aa7dca75f7da0edb9d
+          nsenter -t 1 -m ctr -n k8s.io content fetch gke.gcr.io/cilium/cilium:v1.14.13-gke1.30-gke.5@sha256:07e79ffaf532257823d7f1ee99c114887f33c2321a59e019b233c0a8bd8f068a
 
         volumeMounts:
         - name: config
