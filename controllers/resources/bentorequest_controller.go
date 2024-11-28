@@ -1500,6 +1500,14 @@ func getContainerImageS3EnableStargz() bool {
 	return os.Getenv("CONTAINER_IMAGE_S3_ENABLE_STARGZ") == trueStr
 }
 
+func getContainerImageS3AccessKeyID() string {
+	return os.Getenv("CONTAINER_IMAGE_S3_ACCESS_KEY_ID")
+}
+
+func getContainerImageS3SecretAccessKey() string {
+	return os.Getenv("CONTAINER_IMAGE_S3_SECRET_ACCESS_KEY")
+}
+
 func (r *BentoRequestReconciler) getBuildArgs(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest) (buildArgs []string, err error) {
 	buildArgs = []string{}
 
@@ -2317,6 +2325,8 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 	containerImageS3EndpointURL := getContainerImageS3EndpointURL()
 	containerImageS3Bucket := getContainerImageS3Bucket()
 	containerImageS3EnableStargz := getContainerImageS3EnableStargz()
+	containerImageS3AccessKeyID := getContainerImageS3AccessKeyID()
+	containerImageS3SecretAccessKey := getContainerImageS3SecretAccessKey()
 	imageStoredInS3 := isImageStoredInS3(opt.BentoRequest)
 
 	bentoRepositoryName, _, bentoVersion := xstrings.Partition(opt.BentoRequest.Spec.BentoTag, ":")
@@ -3122,6 +3132,13 @@ echo "Done"
 		builderContainerSecurityContext = &corev1.SecurityContext{
 			Privileged: ptr.To(true),
 		}
+		builderContainerEnvs = append(builderContainerEnvs, corev1.EnvVar{
+			Name:  commonconsts.EnvAWSAccessKeyID,
+			Value: containerImageS3AccessKeyID,
+		}, corev1.EnvVar{
+			Name:  commonconsts.EnvAWSSecretAccessKey,
+			Value: containerImageS3SecretAccessKey,
+		})
 	}
 
 	builderContainerArgs := []string{
