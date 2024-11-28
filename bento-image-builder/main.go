@@ -45,7 +45,8 @@ import (
 type CtxKey string
 
 const (
-	loggerCtxKey CtxKey = "logger"
+	loggerCtxKey           CtxKey = "logger"
+	defaultStargzChunkSize        = 32 * 1024 * 1024 // 32MB
 )
 
 var (
@@ -84,6 +85,7 @@ type buildOptions struct {
 	ImageName             string            `long:"image-name" description:"Name of the image to push" required:"false"`
 	ImageRegistryInsecure bool              `long:"image-registry-insecure" description:"Insecure registry" required:"false"`
 	EnableStargz          bool              `long:"enable-stargz" description:"Enable stargz" required:"false"`
+	StargzChunkSize       int               `long:"stargz-chunk-size" description:"Stargz chunk size" required:"false"`
 }
 
 // OCIConfig represents the image configuration
@@ -132,7 +134,7 @@ func ZstdCompressionWithLevel(compressionLevel zstd.EncoderLevel) CompressionFac
 	}
 }
 
-func streamingCompressAndUpload(ctx context.Context, bucketName, objectKey string, reader io.Reader, enableStargz bool) error {
+func streamingCompressAndUpload(ctx context.Context, bucketName, objectKey string, reader io.Reader, enableStargz bool, stargzChunkSize int) error {
 	logger := L(ctx).With(slog.String("bucket", bucketName), slog.String("object-key", objectKey))
 
 	var compressedReader io.Reader
@@ -168,7 +170,7 @@ func streamingCompressAndUpload(ctx context.Context, bucketName, objectKey strin
 		}
 
 		sr := io.NewSectionReader(tmpFile, 0, fi.Size())
-		blob, err := estargz.Build(sr, estargz.WithCompression(ZstdCompressionWithLevel(zstd.SpeedFastest)()))
+		blob, err := estargz.Build(sr, estargz.WithChunkSize(stargzChunkSize), estargz.WithCompression(ZstdCompressionWithLevel(zstd.SpeedFastest)()))
 		if err != nil {
 			return errors.Wrap(err, "failed to build stargz")
 		}
@@ -396,6 +398,11 @@ func chownRecursive(ctx context.Context, root string, uid, gid int) error {
 }
 
 func build(ctx context.Context, opts buildOptions) error {
+	stargzChunkSize := defaultStargzChunkSize
+	if opts.StargzChunkSize > 0 {
+		stargzChunkSize = opts.StargzChunkSize
+	}
+
 	objectKeyPrefix := normalLayerObjectKeyPrefix
 	if opts.EnableStargz {
 		objectKeyPrefix = stargzLayerObjectKeyPrefix
@@ -470,7 +477,7 @@ func build(ctx context.Context, opts buildOptions) error {
 			logger.InfoContext(ctx, "compressing and streaming upload of bento layer to S3...")
 			bentoTarReader := createTarReader(tmpDir)
 			defer bentoTarReader.Close()
-			err = streamingCompressAndUpload(ctx, opts.S3Bucket, bentoLayerObjectKey, bentoTarReader, opts.EnableStargz)
+			err = streamingCompressAndUpload(ctx, opts.S3Bucket, bentoLayerObjectKey, bentoTarReader, opts.EnableStargz, stargzChunkSize)
 			if err != nil {
 				logger.ErrorContext(ctx, "failed to upload bento layer", slog.String("error", err.Error()))
 				bentoLayerUploadErrCh <- err
@@ -618,7 +625,7 @@ func build(ctx context.Context, opts buildOptions) error {
 		}
 		defer exportOut.Close()
 
-		err = streamingCompressAndUpload(ctx, opts.S3Bucket, baseLayerObjectKey, exportOut, opts.EnableStargz)
+		err = streamingCompressAndUpload(ctx, opts.S3Bucket, baseLayerObjectKey, exportOut, opts.EnableStargz, stargzChunkSize)
 		if err != nil {
 			return err
 		}
