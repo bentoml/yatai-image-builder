@@ -122,6 +122,8 @@ spec:
             echo "Pulled pause image: $pause_image"
           fi
 
+          nsenter -t 1 -m ctr -n k8s.io content fetch gke.gcr.io/csi-node-driver-registrar:v2.9.4-gke.14@sha256:76f5678b02f8f0b82f2b31275976e5a24187e3e552d273aa7dca75f7da0edb9d
+
         volumeMounts:
         - name: config
           mountPath: "/config/"
