@@ -135,6 +135,8 @@ bentoRequestNamespaces: ['yatai']
 bentoRequestAllNamespaces: false
 
 containerImageS3Storage:
+  accessKeyID: ''
+  secretAccessKey: ''
   endpointURL: ''
   bucket: ''
   enableStargz: false
