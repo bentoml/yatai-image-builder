@@ -57,9 +57,10 @@ func init() {
 }
 
 type runOptions struct {
-	RootDir    string `short:"r" long:"root-dir" description:"Root directory for the snapshotter" required:"false"`
-	SocketAddr string `short:"s" long:"socket-addr" description:"Socket address for the snapshotter" required:"false"`
-	Debug      bool   `short:"d" long:"debug" description:"Enable debug logging" required:"false"`
+	RootDir     string `short:"r" long:"root-dir" description:"Root directory for the snapshotter" required:"false"`
+	SocketAddr  string `short:"s" long:"socket-addr" description:"Socket address for the snapshotter" required:"false"`
+	Debug       bool   `short:"d" long:"debug" description:"Enable debug logging" required:"false"`
+	EnableRamfs bool   `long:"enable-ramfs" description:"Enable ramfs" required:"false" env:"ENABLE_RAMFS"`
 }
 
 func run(ctx context.Context, opts *runOptions) error {
@@ -71,7 +72,13 @@ func run(ctx context.Context, opts *runOptions) error {
 	if root == "" {
 		root = snapshot.DefaultRootDir
 	}
-	sn, err := snapshot.NewSnapshotter(ctx, root)
+
+	snapshotterOpts := []snapshot.Opt{}
+	if opts.EnableRamfs {
+		snapshotterOpts = append(snapshotterOpts, snapshot.EnableRamfs)
+	}
+
+	sn, err := snapshot.NewSnapshotter(ctx, root, snapshotterOpts...)
 	if err != nil {
 		return errors.Wrap(err, "failed to create snapshotter")
 	}
