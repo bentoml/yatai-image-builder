@@ -9,6 +9,7 @@ data:
     S3_ENDPOINT_URL={{ .Values.s3.endpointURL }}
     AWS_ACCESS_KEY_ID={{ .Values.s3.accessKeyID }}
     AWS_SECRET_ACCESS_KEY={{ .Values.s3.secretAccessKey }}
+    ENABLE_RAMFS={{ .Values.enableRamfs }}
 
   bento-image-snapshotter.service: |-
     [Unit]

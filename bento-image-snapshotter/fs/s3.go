@@ -1,12 +1,15 @@
 package fs
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/containerd/log"
@@ -15,10 +18,14 @@ import (
 	"github.com/bentoml/yatai-image-builder/common"
 )
 
-type S3FileSystem struct{}
+type S3FileSystem struct {
+	EnableRamfs bool
+}
 
-func NewS3FileSystem() S3FileSystem {
-	return S3FileSystem{}
+func NewS3FileSystem(enableRamfs bool) S3FileSystem {
+	return S3FileSystem{
+		EnableRamfs: enableRamfs,
+	}
 }
 
 func chownRecursive(ctx context.Context, root string, uid, gid int) error {
@@ -36,6 +43,26 @@ func chownRecursive(ctx context.Context, root string, uid, gid int) error {
 	}), "failed to walk the directory")
 }
 
+func (o S3FileSystem) getObjectSize(ctx context.Context, bucketName, objectKey string) (int64, error) {
+	s3Path := fmt.Sprintf("s3://%s/%s", bucketName, objectKey)
+	cmd := exec.CommandContext(ctx, "s5cmd", "ls", s3Path)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to run command: %s, stderr: %s", stringifyCmd(cmd), stderr.String())
+	}
+	fields := strings.Fields(string(output))
+	if len(fields) < 3 {
+		return 0, errors.Errorf("failed to parse output: %s", string(output))
+	}
+	size, err := strconv.ParseInt(strings.TrimSpace(fields[2]), 10, 64)
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to parse size: %s", string(output))
+	}
+	return size, nil
+}
+
 func (o S3FileSystem) Mount(ctx context.Context, mountpoint string, labels map[string]string) error {
 	if err := os.MkdirAll(mountpoint, 0755); err != nil {
 		return errors.Wrap(err, "failed to create mountpoint")
@@ -44,6 +71,24 @@ func (o S3FileSystem) Mount(ctx context.Context, mountpoint string, labels map[s
 	bucketName := labels[common.DescriptorAnnotationBucket]
 	objectKey := labels[common.DescriptorAnnotationObjectKey]
 	logger := log.G(ctx).WithField("bucket", bucketName).WithField("key", objectKey).WithField("mountpoint", mountpoint)
+
+	if o.EnableRamfs {
+		objectSize, err := o.getObjectSize(ctx, bucketName, objectKey)
+		if err != nil {
+			return errors.Wrap(err, "failed to get object size")
+		}
+		logger.Infof("object size: %d", objectSize)
+		ramfsSize := int64(float64(objectSize) * 2.2)
+		logger.Infof("mounting ramfs with size: %d", ramfsSize)
+		cmd := exec.CommandContext(ctx, "mount", "-t", "ramfs", "-o", "size="+strconv.FormatInt(ramfsSize, 10), "ramfs", mountpoint) // nolint:gosec
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return errors.Wrap(err, "failed to mount ramfs")
+		}
+		logger.Info("successfully mounted ramfs")
+	}
+
 	logger.Info("downloading layer from S3")
 	if err := o.downloadLayerFromS3(ctx, bucketName, objectKey, mountpoint); err != nil {
 		return errors.Wrap(err, "failed to download layer from S3")
@@ -74,7 +119,51 @@ func (o S3FileSystem) Check(ctx context.Context, mountpoint string, labels map[s
 	return nil
 }
 
+func isRamfsMounted(path string) (bool, error) {
+	file, err := os.Open("/proc/mounts")
+	if err != nil {
+		return false, errors.Wrap(err, "failed to open /proc/mounts")
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+
+		mountPoint := fields[1]
+		fsType := fields[2]
+
+		if mountPoint == path && fsType == "ramfs" {
+			return true, nil
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return false, errors.Wrap(err, "failed to scan /proc/mounts")
+	}
+
+	return false, nil
+}
+
+func unmountRamfs(path string) error {
+	cmd := exec.Command("umount", path)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return errors.Wrap(cmd.Run(), "failed to unmount ramfs")
+}
+
 func (o S3FileSystem) Unmount(ctx context.Context, mountpoint string) error {
+	if ramfsMounted, err := isRamfsMounted(mountpoint); err != nil {
+		return errors.Wrap(err, "failed to check if ramfs is mounted")
+	} else if ramfsMounted {
+		if err := unmountRamfs(mountpoint); err != nil {
+			return errors.Wrap(err, "failed to unmount ramfs")
+		}
+	}
 	if err := os.RemoveAll(mountpoint); err != nil {
 		return errors.Wrap(err, "failed to remove mountpoint")
 	}

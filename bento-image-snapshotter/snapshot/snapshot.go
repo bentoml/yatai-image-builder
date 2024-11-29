@@ -80,6 +80,7 @@ type SnapshotterConfig struct {
 	asyncRemove                 bool
 	noRestore                   bool
 	allowInvalidMountsOnRestart bool
+	enableRamfs                 bool
 }
 
 // Opt is an option to configure the remote snapshotter
@@ -101,6 +102,11 @@ func NoRestore(config *SnapshotterConfig) error {
 
 func AllowInvalidMountsOnRestart(config *SnapshotterConfig) error {
 	config.allowInvalidMountsOnRestart = true
+	return nil
+}
+
+func EnableRamfs(config *SnapshotterConfig) error {
+	config.enableRamfs = true
 	return nil
 }
 
@@ -153,7 +159,7 @@ func NewSnapshotter(ctx context.Context, root string, opts ...Opt) (snapshots.Sn
 		log.G(ctx).WithError(err).Warnf("cannot detect whether \"userxattr\" option needs to be used, assuming to be %v", userxattr)
 	}
 
-	s3fs := ourfs.NewS3FileSystem()
+	s3fs := ourfs.NewS3FileSystem(config.enableRamfs)
 	stargzs3fs, err := stargzfs.NewFilesystem(root, stargzfsconfig.Config{
 		HTTPCacheType:       "memory",
 		FSCacheType:         "memory",

@@ -71,6 +71,8 @@ isK3s: false
 
 useSystemd: true
 
+enableRamfs: false
+
 s3:
   endpointURL: ""
   accessKeyID: ""
