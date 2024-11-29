@@ -64,15 +64,17 @@ func (o S3FileSystem) getObjectSize(ctx context.Context, bucketName, objectKey s
 }
 
 func (o S3FileSystem) Mount(ctx context.Context, mountpoint string, labels map[string]string) error {
-	if err := os.MkdirAll(mountpoint, 0755); err != nil {
-		return errors.Wrap(err, "failed to create mountpoint")
-	}
-
 	bucketName := labels[common.DescriptorAnnotationBucket]
 	objectKey := labels[common.DescriptorAnnotationObjectKey]
 	logger := log.G(ctx).WithField("bucket", bucketName).WithField("key", objectKey).WithField("mountpoint", mountpoint)
+	destinationPath := mountpoint
 
 	if o.EnableRamfs {
+		destinationPath = getRamfsPath(mountpoint)
+		if err := os.MkdirAll(destinationPath, 0755); err != nil {
+			return errors.Wrap(err, "failed to create mountpoint")
+		}
+
 		objectSize, err := o.getObjectSize(ctx, bucketName, objectKey)
 		if err != nil {
 			return errors.Wrap(err, "failed to get object size")
@@ -80,7 +82,7 @@ func (o S3FileSystem) Mount(ctx context.Context, mountpoint string, labels map[s
 		logger.Infof("object size: %d", objectSize)
 		ramfsSize := int64(float64(objectSize) * 2.2)
 		logger.Infof("mounting ramfs with size: %d", ramfsSize)
-		cmd := exec.CommandContext(ctx, "mount", "-t", "ramfs", "-o", "size="+strconv.FormatInt(ramfsSize, 10), "ramfs", mountpoint) // nolint:gosec
+		cmd := exec.CommandContext(ctx, "mount", "-t", "ramfs", "-o", "size="+strconv.FormatInt(ramfsSize, 10), "ramfs", destinationPath) // nolint:gosec
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
@@ -90,18 +92,29 @@ func (o S3FileSystem) Mount(ctx context.Context, mountpoint string, labels map[s
 	}
 
 	logger.Info("downloading layer from S3")
-	if err := o.downloadLayerFromS3(ctx, bucketName, objectKey, mountpoint); err != nil {
+	if err := o.downloadLayerFromS3(ctx, bucketName, objectKey, destinationPath); err != nil {
 		return errors.Wrap(err, "failed to download layer from S3")
 	}
 	isBentoLayer := labels[common.DescriptorAnnotationIsBentoLayer] == "true"
 	if isBentoLayer {
 		logger.Info("chowning the /home/bentoml directory")
-		if err := chownRecursive(ctx, filepath.Join(mountpoint, "home", "bentoml"), 1034, 1034); err != nil {
+		if err := chownRecursive(ctx, filepath.Join(destinationPath, "home", "bentoml"), 1034, 1034); err != nil {
 			return errors.Wrap(err, "failed to chown /home/bentoml directory")
 		}
 		logger.Info("successfully chowned the /home/bentoml directory")
 	}
 	logger.Info("layer downloaded from S3")
+	if o.EnableRamfs {
+		if err := os.RemoveAll(mountpoint); err != nil {
+			if !os.IsNotExist(err) {
+				return errors.Wrap(err, "failed to remove mountpoint")
+			}
+		}
+		// symlink the destinationPath to the mountpoint
+		if err := os.Symlink(destinationPath, mountpoint); err != nil {
+			return errors.Wrap(err, "failed to symlink destinationPath to mountpoint")
+		}
+	}
 	return nil
 }
 
@@ -119,7 +132,15 @@ func (o S3FileSystem) Check(ctx context.Context, mountpoint string, labels map[s
 	return nil
 }
 
+func getRamfsPath(path string) string {
+	if strings.HasSuffix(path, "/") {
+		return path[:len(path)-1] + ".ramfs"
+	}
+	return path + ".ramfs"
+}
+
 func isRamfsMounted(path string) (bool, error) {
+	ramfsPath := getRamfsPath(path)
 	file, err := os.Open("/proc/mounts")
 	if err != nil {
 		return false, errors.Wrap(err, "failed to open /proc/mounts")
@@ -137,7 +158,7 @@ func isRamfsMounted(path string) (bool, error) {
 		mountPoint := fields[1]
 		fsType := fields[2]
 
-		if mountPoint == path && fsType == "ramfs" {
+		if mountPoint == ramfsPath && fsType == "ramfs" {
 			return true, nil
 		}
 	}
@@ -150,10 +171,19 @@ func isRamfsMounted(path string) (bool, error) {
 }
 
 func unmountRamfs(path string) error {
-	cmd := exec.Command("umount", path)
+	ramfsPath := getRamfsPath(path)
+	cmd := exec.Command("umount", ramfsPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return errors.Wrap(cmd.Run(), "failed to unmount ramfs")
+	if err := cmd.Run(); err != nil {
+		return errors.Wrap(err, "failed to unmount ramfs")
+	}
+	if err := os.RemoveAll(ramfsPath); err != nil {
+		if !os.IsNotExist(err) {
+			return errors.Wrap(err, "failed to remove ramfs")
+		}
+	}
+	return nil
 }
 
 func (o S3FileSystem) Unmount(ctx context.Context, mountpoint string) error {
@@ -183,8 +213,12 @@ func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, laye
 	dirName := filepath.Dir(destinationPath)
 	tempName := filepath.Join(dirName, baseName+".tmp")
 
-	if err := os.MkdirAll(tempName, 0755); err != nil {
-		return errors.Wrap(err, "failed to create temp directory")
+	if o.EnableRamfs {
+		tempName = destinationPath
+	} else {
+		if err := os.MkdirAll(tempName, 0755); err != nil {
+			return errors.Wrap(err, "failed to create temp directory")
+		}
 	}
 
 	logger := log.G(ctx).WithField("key", layerKey).WithField("destinationPath", tempName)
@@ -207,19 +241,20 @@ func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, laye
 
 	logger.WithField("duration", duration).Info("the layer has been downloaded and decompressed")
 
-	err = os.RemoveAll(destinationPath)
-	if err != nil && !os.IsNotExist(err) {
-		return errors.Wrapf(err, "failed to remove destination path: %s", destinationPath)
+	if !o.EnableRamfs {
+		err = os.RemoveAll(destinationPath)
+		if err != nil && !os.IsNotExist(err) {
+			return errors.Wrapf(err, "failed to remove destination path: %s", destinationPath)
+		}
+
+		logger = log.G(ctx).WithField("key", layerKey).WithField("destinationPath", destinationPath).WithField("oldPath", tempName)
+		logger.Info("renaming the layer...")
+
+		if err := os.Rename(tempName, destinationPath); err != nil {
+			return errors.Wrap(err, "failed to rename layer")
+		}
+		logger.Info("the layer has been renamed")
 	}
-
-	logger = log.G(ctx).WithField("key", layerKey).WithField("destinationPath", destinationPath).WithField("oldPath", tempName)
-	logger.Info("renaming the layer...")
-
-	if err := os.Rename(tempName, destinationPath); err != nil {
-		return errors.Wrap(err, "failed to rename layer")
-	}
-
-	logger.Info("the layer has been renamed")
 
 	return nil
 }

@@ -507,10 +507,8 @@ func (o *snapshotter) cleanupSnapshotDirectory(ctx context.Context, dir string) 
 	// We use Filesystem's Unmount API so that it can do necessary finalization
 	// before/after the unmount.
 	mp := filepath.Join(dir, "fs")
-	hasMountPoint := false
 	_, err := mountinfo.GetMounts(func(m *mountinfo.Info) (skip, stop bool) {
 		if strings.HasPrefix(m.Mountpoint, mp) {
-			hasMountPoint = true
 			if err := o.stargzs3fs.Unmount(ctx, m.Mountpoint); err != nil {
 				log.G(ctx).WithError(err).WithField("dir", dir).Debug("failed to unmount")
 			}
@@ -521,10 +519,8 @@ func (o *snapshotter) cleanupSnapshotDirectory(ctx context.Context, dir string) 
 	if err != nil {
 		return errors.Wrap(err, "failed to get mounts")
 	}
-	if !hasMountPoint {
-		if err := o.s3fs.Unmount(ctx, mp); err != nil {
-			log.G(ctx).WithError(err).WithField("dir", mp).Debug("failed to unmount")
-		}
+	if err := o.s3fs.Unmount(ctx, mp); err != nil {
+		log.G(ctx).WithError(err).WithField("dir", mp).Debug("failed to unmount")
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		return errors.Wrapf(err, "failed to remove directory %q", dir)
