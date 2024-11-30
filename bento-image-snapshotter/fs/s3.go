@@ -228,7 +228,7 @@ func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, laye
 
 	startTime := time.Now()
 	var stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "sh", "-c", fmt.Sprintf("s5cmd cat --concurrency=12 --part-size=400 %s | pzstd -d | tar -xf -", s3Path)) // nolint:gosec
+	cmd := exec.CommandContext(ctx, "sh", "-c", fmt.Sprintf("s5cmd cat --concurrency=12 --part-size=100 %s | pzstd -d | tar -xf -", s3Path)) // nolint:gosec
 	cmd.Stderr = &stderr
 	cmd.Dir = tempName
 
