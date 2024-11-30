@@ -78,7 +78,7 @@ spec:
 
           nsenter -t 1 -m modprobe fuse
           service_env_file=${HOST_MOUNT_DIR}/etc/systemd/system/bento-image-snapshotter.service.env
-          cp /config/bento-image-snapshotter.service.env $service_env_file
+          cp /secret-config/bento-image-snapshotter.service.env $service_env_file
           service_file=${HOST_MOUNT_DIR}/etc/systemd/system/bento-image-snapshotter.service
           if [ ! -f "$service_file" ]; then
             cp /config/bento-image-snapshotter.service $service_file
@@ -132,6 +132,8 @@ spec:
         volumeMounts:
         - name: config
           mountPath: "/config/"
+        - name: secret-config
+          mountPath: "/secret-config/"
         - name: host-bento-image-run
           mountPath: "/run/containerd-bento-image-grpc"
           mountPropagation: Bidirectional
@@ -188,6 +190,9 @@ spec:
       - name: config
         configMap:
           name: {{ template "bento-image-snapshotter.fullname" . }}
+      - name: secret-config
+        secret:
+          secretName: {{ template "bento-image-snapshotter.fullname" . }}
       - name: host-bento-image-run
         hostPath:
           path: /run/bento-image-snapshotter
