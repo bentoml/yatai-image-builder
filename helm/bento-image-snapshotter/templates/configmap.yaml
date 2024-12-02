@@ -16,7 +16,17 @@ data:
     EnvironmentFile=-/etc/systemd/system/bento-image-snapshotter.service.env
     ExecStart=/usr/bin/bento-image-snapshotter
     Restart=always
-    RestartSec=1
+    RestartSec=60s
+    TimeoutStartSec=600s
+    # Having non-zero Limit*s causes performance problems due to accounting overhead
+    # in the kernel. We recommend using cgroups to do container-local accounting.
+    LimitNPROC=infinity
+    LimitCORE=infinity
+    LimitNOFILE=infinity
+    # Comment TasksMax if your systemd version does not supports it.
+    # Only systemd 226 and above support this version.
+    TasksMax=infinity
+    OOMScoreAdjust=-999
 
     [Install]
     WantedBy=multi-user.target
