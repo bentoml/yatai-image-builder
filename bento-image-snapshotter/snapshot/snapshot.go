@@ -159,7 +159,11 @@ func NewSnapshotter(ctx context.Context, root string, opts ...Opt) (snapshots.Sn
 		log.G(ctx).WithError(err).Warnf("cannot detect whether \"userxattr\" option needs to be used, assuming to be %v", userxattr)
 	}
 
-	s3fs := ourfs.NewS3FileSystem(config.enableRamfs)
+	s3fs, err := ourfs.NewS3FileSystem(ctx, config.enableRamfs)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create s3 filesystem")
+	}
+
 	stargzs3fs, err := stargzfs.NewFilesystem(root, stargzfsconfig.Config{
 		HTTPCacheType:       "memory",
 		FSCacheType:         "memory",
