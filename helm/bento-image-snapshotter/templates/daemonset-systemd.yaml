@@ -99,6 +99,12 @@ spec:
           if [ ! -f "$s5cmd_bin_file" ]; then
             cp /usr/bin/s5cmd $s5cmd_bin_file
           fi
+          aria2_bin_file=${HOST_MOUNT_DIR}/usr/bin/aria2c
+          if [ ! -f "$aria2_bin_file" ]; then
+            cp /usr/bin/aria2c $aria2_bin_file
+            chmod +x $aria2_bin_file
+            echo "aria2c has been copied to $aria2_bin_file"
+          fi
           nsenter -t 1 -m systemctl daemon-reload
           nsenter -t 1 -m systemctl enable --now bento-image-snapshotter.service
           echo "restarting containerd..."

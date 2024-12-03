@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y \
     xz-utils \
     zstd \
     file \
+    aria2 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -L https://github.com/peak/s5cmd/releases/download/v2.2.2/s5cmd_2.2.2_Linux-64bit.tar.gz | tar zxv && mv ./s5cmd /usr/bin
