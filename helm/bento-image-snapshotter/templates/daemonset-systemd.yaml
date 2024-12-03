@@ -80,11 +80,7 @@ spec:
           service_env_file=${HOST_MOUNT_DIR}/etc/systemd/system/bento-image-snapshotter.service.env
           cp /secret-config/bento-image-snapshotter.service.env $service_env_file
           service_file=${HOST_MOUNT_DIR}/etc/systemd/system/bento-image-snapshotter.service
-          if [ ! -f "$service_file" ]; then
-            cp /config/bento-image-snapshotter.service $service_file
-          else
-            echo "$service_file exists!"
-          fi
+          cp /config/bento-image-snapshotter.service $service_file
           bento_image_bin_file=${HOST_MOUNT_DIR}/usr/bin/bento-image-snapshotter
           if [ -f "$bento_image_bin_file" ]; then
             old_md5=$(md5sum $bento_image_bin_file | awk '{print $1}')
