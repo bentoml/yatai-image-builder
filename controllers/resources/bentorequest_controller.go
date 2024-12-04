@@ -2027,7 +2027,7 @@ func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.
 set -e
 
 if curl -XHEAD -sIL -H "Authorization: Bearer $HF_TOKEN" "{{.ModelURL}}" | grep -iq 'x-error-code:.*GatedRepo'; then
-    echo "Error: Model is gated. No access permission."
+    echo "Error: Model is gated. No access permission. \nPlease check your huggingface token and model access permission: {{.ModelURL}}"
     exit 1
 else
     echo "Model access granted."
