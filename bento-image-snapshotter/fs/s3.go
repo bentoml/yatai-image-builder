@@ -387,14 +387,9 @@ func ParrallelDownload(ctx context.Context, presignedURL string, downloadedFileP
 		return errors.Wrap(err, "failed to create base dir for downloaded file")
 	}
 
-	_, err = os.OpenFile(downloadedFilePath, os.O_CREATE|os.O_RDWR, 0644)
+	file, err := os.OpenFile(downloadedFilePath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return errors.Wrap(err, "failed to create downloaded file")
-	}
-
-	file, err := os.OpenFile(downloadedFilePath, os.O_RDWR, 0644)
-	if err != nil {
-		return errors.Wrap(err, "failed to reopen file with O_RDWR")
 	}
 	defer file.Close()
 
@@ -575,14 +570,9 @@ func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, laye
 		return errors.Wrap(err, "failed to create base dir for downloaded file")
 	}
 
-	_, err = os.OpenFile(downloadedFilePath, os.O_CREATE|os.O_RDWR, 0644)
+	file, err := os.OpenFile(downloadedFilePath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return errors.Wrap(err, "failed to create downloaded file")
-	}
-
-	file, err := os.OpenFile(downloadedFilePath, os.O_RDWR, 0644)
-	if err != nil {
-		return errors.Wrap(err, "failed to reopen file with O_RDWR")
 	}
 	defer file.Close()
 
