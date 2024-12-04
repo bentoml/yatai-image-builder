@@ -394,7 +394,7 @@ func ParrallelDownload(ctx context.Context, presignedURL string, downloadedFileP
 
 	file, err := os.OpenFile(downloadedFilePath, os.O_RDWR, 0644)
 	if err != nil {
-		return errors.Wrap(err, "failed to reopen file with O_DIRECT")
+		return errors.Wrap(err, "failed to reopen file with O_RDWR")
 	}
 	defer file.Close()
 
@@ -582,7 +582,7 @@ func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, laye
 
 	file, err := os.OpenFile(downloadedFilePath, os.O_RDWR, 0644)
 	if err != nil {
-		return errors.Wrap(err, "failed to reopen file with O_DIRECT")
+		return errors.Wrap(err, "failed to reopen file with O_RDWR")
 	}
 	defer file.Close()
 
