@@ -268,10 +268,10 @@ func stringifyCmd(cmd *exec.Cmd) string {
 }
 
 func downloadRange(ctx context.Context, presignedURL string, start, end int64, writer io.WriterAt) error {
-	// use curl
 	logger := log.G(ctx).WithField("range", fmt.Sprintf("%d-%d", start, end)).WithField("url", presignedURL)
 	logger.Debug("downloading range...")
 	pr, pw := io.Pipe()
+
 	go func() {
 		var stderr bytes.Buffer
 		defer pw.Close()
@@ -282,7 +282,10 @@ func downloadRange(ctx context.Context, presignedURL string, start, end int64, w
 			pw.CloseWithError(errors.Wrapf(err, "failed to run command: %s, stderr: %s", stringifyCmd(cmd), stderr.String()))
 		}
 	}()
-	buf := make([]byte, end-start+1)
+
+	buf := make([]byte, 32*1024)
+	currentPos := start
+
 	for {
 		n, err := pr.Read(buf)
 		if err != nil {
@@ -291,12 +294,14 @@ func downloadRange(ctx context.Context, presignedURL string, start, end int64, w
 			}
 			return errors.Wrap(err, "failed to read from pipe")
 		}
-		_, err = writer.WriteAt(buf[:n], start)
+
+		_, err = writer.WriteAt(buf[:n], currentPos)
 		if err != nil {
 			return errors.Wrap(err, "failed to write to writer")
 		}
-		start += int64(n)
+		currentPos += int64(n)
 	}
+
 	logger.Debug("range downloaded")
 	return nil
 }
@@ -331,6 +336,90 @@ func parrallelDownload(ctx context.Context, presignedURL string, writer io.Write
 	}
 
 	return errors.Wrap(eg.Wait(), "failed to download layer from S3")
+}
+
+func getObjectSizeFromPresignedURL(ctx context.Context, presignedURL string) (int64, error) {
+	// use curl to get the size of the file
+	logger := log.G(ctx).WithField("url", presignedURL)
+	logger.Debug("getting the size of the file...")
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "curl", "--silent", "--show-error", "--fail", "--head", "--output", "-", presignedURL) // nolint:gosec
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to run command: %s, stderr: %s", stringifyCmd(cmd), stderr.String())
+	}
+	var size int64
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		k, v, found := strings.Cut(line, ":")
+		if !found {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(k)) == "content-length" {
+			var err error
+			size, err = strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+			if err != nil {
+				return 0, errors.Wrapf(err, "failed to parse size: %s", string(output))
+			}
+			logger.Debugf("size: %d", size)
+			break
+		}
+	}
+
+	if size == 0 {
+		return 0, errors.New("cannot get the file size from presigned url")
+	}
+	return size, nil
+}
+
+func ParrallelDownload(ctx context.Context, presignedURL string, downloadedFilePath string) error {
+	size, err := getObjectSizeFromPresignedURL(ctx, presignedURL)
+
+	if err != nil {
+		return errors.Wrap(err, "failed to get object size")
+	}
+
+	coreNumber := runtime.NumCPU()
+
+	baseDir := filepath.Dir(downloadedFilePath)
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		return errors.Wrap(err, "failed to create base dir for downloaded file")
+	}
+
+	_, err = os.OpenFile(downloadedFilePath, os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return errors.Wrap(err, "failed to create downloaded file")
+	}
+
+	file, err := os.OpenFile(downloadedFilePath, os.O_RDWR, 0644)
+	if err != nil {
+		return errors.Wrap(err, "failed to reopen file with O_DIRECT")
+	}
+	defer file.Close()
+
+	// use truncate to fallocate the target file
+	// seek to the first byte of the file
+	if _, err := file.Seek(0, 0); err != nil {
+		return errors.Wrap(err, "failed to seek the target file")
+	}
+	// truncate the file to the size
+	if err := file.Truncate(size); err != nil {
+		return errors.Wrap(err, "failed to truncate the target file")
+	}
+
+	startTime := time.Now()
+	err = parrallelDownload(ctx, presignedURL, file, size, coreNumber)
+	if err != nil {
+		return errors.Wrap(err, "failed to download layer from S3")
+	}
+
+	duration := time.Since(startTime)
+
+	bandwidth := float64(size) / 1024 / 1024 / duration.Seconds()
+	log.G(ctx).WithField("duration", duration).WithField("bandwidth", fmt.Sprintf("%.2f MB/s", bandwidth)).Info("the file has been downloaded and decompressed")
+
+	return nil
 }
 
 type DataRange struct {
@@ -486,10 +575,14 @@ func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, laye
 		return errors.Wrap(err, "failed to create base dir for downloaded file")
 	}
 
-	// create the target file and falloc the target file
-	file, err := os.Create(downloadedFilePath)
+	_, err = os.OpenFile(downloadedFilePath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return errors.Wrap(err, "failed to create downloaded file")
+	}
+
+	file, err := os.OpenFile(downloadedFilePath, os.O_RDWR, 0644)
+	if err != nil {
+		return errors.Wrap(err, "failed to reopen file with O_DIRECT")
 	}
 	defer file.Close()
 
@@ -513,9 +606,18 @@ func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, laye
 		defer func() {
 			_ = w.Close()
 		}()
+		start := time.Now()
 		err := parrallelDownload(ctx, presignedURL, w, size, coreNumber)
 		if err != nil {
 			errCh <- errors.Wrap(err, "failed to download layer from S3")
+		}
+		duration := time.Since(start)
+		seconds := duration.Seconds()
+		if seconds != 0 {
+			bandwidth := float64(size) / 1024 / 1024 / seconds
+			logger.WithField("bandwidth", fmt.Sprintf("%.2f MB/s", bandwidth)).WithField("duration", duration).WithField("parallel", coreNumber).WithField("size", size).Info("download finished")
+		} else {
+			logger.WithField("bandwidth", "unknown MB/s").WithField("duration", duration).WithField("parallel", coreNumber).WithField("size", size).Info("download finished")
 		}
 	}()
 
