@@ -680,6 +680,7 @@ func (o *snapshotter) mounts(ctx context.Context, s storage.Snapshot, checkKey s
 	if o.userxattr {
 		options = append(options, "userxattr")
 	}
+	log.G(ctx).Infof("mounting overlayfs with options=%v", options)
 	return []mount.Mount{
 		{
 			Type:    "overlay",

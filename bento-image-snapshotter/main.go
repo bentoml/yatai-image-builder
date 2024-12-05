@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -22,6 +23,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/bentoml/yatai-image-builder/bento-image-snapshotter/snapshot"
+	seekabletarlogger "github.com/bentoml/yatai-image-builder/seekabletar/pkg/logger"
 )
 
 type Config struct {
@@ -152,8 +154,10 @@ func main() {
 
 	rotateLogLevel := func() {
 		if currentLogLevelString == logLevelDebug {
+			seekabletarlogger.SetLevel(slog.LevelInfo)
 			currentLogLevelString = logLevelInfo
 		} else {
+			seekabletarlogger.SetLevel(slog.LevelDebug)
 			currentLogLevelString = logLevelDebug
 		}
 		_ = log.SetLevel(currentLogLevelString)
@@ -164,6 +168,7 @@ func main() {
 	if opts.Debug {
 		currentLogLevelString = logLevelDebug
 		_ = log.SetLevel(currentLogLevelString)
+		seekabletarlogger.SetLevel(slog.LevelDebug)
 	}
 
 	// watch usr1 signal to rotate log level

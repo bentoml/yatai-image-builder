@@ -13,6 +13,7 @@ RUN go mod download
 # Copy the go source
 COPY common/ common/
 COPY bento-image-snapshotter/ bento-image-snapshotter/
+COPY seekabletar/ seekabletar/
 
 # Build
 ARG VERSION_BUILDFLAGS

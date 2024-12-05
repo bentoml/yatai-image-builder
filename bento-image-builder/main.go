@@ -24,6 +24,7 @@ import (
 	"github.com/jessevdk/go-flags"
 
 	"github.com/bentoml/yatai-image-builder/common"
+	"github.com/bentoml/yatai-image-builder/seekabletar/pkg/seekabletar"
 
 	"encoding/json"
 	"time"
@@ -47,6 +48,13 @@ type CtxKey string
 const (
 	loggerCtxKey           CtxKey = "logger"
 	defaultStargzChunkSize        = 32 * 1024 * 1024 // 32MB
+)
+
+type ComressionType string
+
+const (
+	CompressionTypeZSTD ComressionType = "zstd"
+	CompressionTypeNone ComressionType = "none"
 )
 
 var (
@@ -85,6 +93,7 @@ type buildOptions struct {
 	ImageName             string            `long:"image-name" description:"Name of the image to push" required:"false"`
 	ImageRegistryInsecure bool              `long:"image-registry-insecure" description:"Insecure registry" required:"false"`
 	EnableStargz          bool              `long:"enable-stargz" description:"Enable stargz" required:"false"`
+	Force                 bool              `long:"force" description:"Force" required:"false"`
 	StargzChunkSize       int               `long:"stargz-chunk-size" description:"Stargz chunk size" required:"false"`
 }
 
@@ -134,7 +143,23 @@ func ZstdCompressionWithLevel(compressionLevel zstd.EncoderLevel) CompressionFac
 	}
 }
 
-func streamingCompressAndUpload(ctx context.Context, bucketName, objectKey string, reader io.Reader, enableStargz bool, stargzChunkSize int) error {
+type streamingCompressAndUploadOptions struct {
+	bucketName      string
+	objectKey       string
+	reader          io.Reader
+	enableStargz    bool
+	stargzChunkSize int
+	compression     ComressionType
+}
+
+func streamingCompressAndUpload(ctx context.Context, opts streamingCompressAndUploadOptions) error {
+	bucketName := opts.bucketName
+	objectKey := opts.objectKey
+	reader := opts.reader
+	enableStargz := opts.enableStargz
+	stargzChunkSize := opts.stargzChunkSize
+	compression := opts.compression
+
 	logger := L(ctx).With(slog.String("bucket", bucketName), slog.String("object-key", objectKey))
 
 	var compressedReader io.Reader
@@ -170,34 +195,68 @@ func streamingCompressAndUpload(ctx context.Context, bucketName, objectKey strin
 		}
 
 		sr := io.NewSectionReader(tmpFile, 0, fi.Size())
-		blob, err := estargz.Build(sr, estargz.WithChunkSize(stargzChunkSize), estargz.WithCompression(ZstdCompressionWithLevel(zstd.SpeedFastest)()))
+		args := []estargz.Option{
+			estargz.WithChunkSize(stargzChunkSize),
+		}
+		if compression == CompressionTypeZSTD {
+			args = append(args, estargz.WithCompression(ZstdCompressionWithLevel(zstd.SpeedFastest)()))
+		}
+		blob, err := estargz.Build(sr, args...)
 		if err != nil {
 			return errors.Wrap(err, "failed to build stargz")
 		}
 		compressedReader = blob
 		compressionErrCh <- nil
 	} else {
-		pr, pw := io.Pipe()
-		compressedReader = pr
-		go func() {
-			defer pw.Close()
+		if compression == CompressionTypeZSTD {
+			pr, pw := io.Pipe()
+			compressedReader = pr
+			go func() {
+				defer pw.Close()
 
-			enc, err := zstd.NewWriter(pw, zstd.WithEncoderLevel(zstd.SpeedFastest))
-			if err != nil {
-				compressionErrCh <- errors.Wrap(err, "failed to create zstd encoder")
-				return
-			}
-			defer enc.Close()
+				enc, err := zstd.NewWriter(pw, zstd.WithEncoderLevel(zstd.SpeedFastest))
+				if err != nil {
+					compressionErrCh <- errors.Wrap(err, "failed to create zstd encoder")
+					return
+				}
+				defer enc.Close()
 
-			logger.InfoContext(ctx, "compressing...")
-			_, err = io.Copy(enc, reader)
+				logger.InfoContext(ctx, "compressing...")
+				_, err = io.Copy(enc, reader)
+				if err != nil {
+					compressionErrCh <- errors.Wrap(err, "failed to copy and compress")
+					return
+				}
+				logger.InfoContext(ctx, "compressed")
+				compressionErrCh <- nil
+			}()
+		} else {
+			tempFile, err := os.CreateTemp("", "bento-seekable-tar-*")
 			if err != nil {
-				compressionErrCh <- errors.Wrap(err, "failed to copy and compress")
-				return
+				return errors.Wrap(err, "failed to create temp file")
 			}
-			logger.InfoContext(ctx, "compressed")
+			defer os.Remove(tempFile.Name())
+
+			_, err = io.Copy(tempFile, reader)
+			if err != nil {
+				return errors.Wrap(err, "failed to copy to temp file")
+			}
+			err = tempFile.Close()
+			if err != nil {
+				return errors.Wrap(err, "failed to close temp file")
+			}
+
+			tempFile, err = os.Open(tempFile.Name())
+			if err != nil {
+				return errors.Wrap(err, "failed to open temp file")
+			}
+
+			compressedReader, err = seekabletar.GenerateSeekableTar(tempFile)
+			if err != nil {
+				return errors.Wrap(err, "failed to generate seekable tar")
+			}
 			compressionErrCh <- nil
-		}()
+		}
 	}
 
 	return uploadToS3(ctx, bucketName, objectKey, compressedReader, compressionErrCh)
@@ -342,7 +401,25 @@ func createTarReader(srcDir string) io.ReadCloser {
 	return pr
 }
 
-func getLayerDesc(digestStr, s3BucketName, objectKey, baseImage string, isBentoLayer bool, enableStargz bool) (descriptor.Descriptor, ocispecv1.Descriptor) {
+type getLayerDescOptions struct {
+	digestStr    string
+	s3BucketName string
+	objectKey    string
+	baseImage    string
+	isBentoLayer bool
+	enableStargz bool
+	compression  ComressionType
+}
+
+func getLayerDesc(opts getLayerDescOptions) (descriptor.Descriptor, ocispecv1.Descriptor) {
+	digestStr := opts.digestStr
+	s3BucketName := opts.s3BucketName
+	objectKey := opts.objectKey
+	baseImage := opts.baseImage
+	isBentoLayer := opts.isBentoLayer
+	enableStargz := opts.enableStargz
+	compression := opts.compression
+
 	format := common.DescriptorAnnotationValueFormatTar
 	if enableStargz {
 		format = common.DescriptorAnnotationValueFormatStargz
@@ -355,7 +432,7 @@ func getLayerDesc(digestStr, s3BucketName, objectKey, baseImage string, isBentoL
 			"org.opencontainers.image.source":       fmt.Sprintf("s3://%s/%s", s3BucketName, objectKey),
 			common.DescriptorAnnotationBucket:       s3BucketName,
 			common.DescriptorAnnotationObjectKey:    objectKey,
-			common.DescriptorAnnotationCompression:  "zstd",
+			common.DescriptorAnnotationCompression:  string(compression),
 			common.DescriptorAnnotationBaseImage:    baseImage,
 			common.DescriptorAnnotationIsBentoLayer: strconv.FormatBool(isBentoLayer),
 			common.DescriptorAnnotationFormat:       format,
@@ -470,14 +547,21 @@ func build(ctx context.Context, opts buildOptions) error {
 		return errors.Wrap(err, "failed to check if object exists")
 	}
 
-	if !bentoLayerExists {
+	if !bentoLayerExists || opts.Force {
 		go func() {
 			logger := logger.With(slog.String("object-key", bentoLayerObjectKey))
 			logger.InfoContext(ctx, "bento layer does not exist, building bento layer...")
 			logger.InfoContext(ctx, "compressing and streaming upload of bento layer to S3...")
 			bentoTarReader := createTarReader(tmpDir)
 			defer bentoTarReader.Close()
-			err = streamingCompressAndUpload(ctx, opts.S3Bucket, bentoLayerObjectKey, bentoTarReader, opts.EnableStargz, stargzChunkSize)
+			err = streamingCompressAndUpload(ctx, streamingCompressAndUploadOptions{
+				bucketName:      opts.S3Bucket,
+				objectKey:       bentoLayerObjectKey,
+				reader:          bentoTarReader,
+				enableStargz:    opts.EnableStargz,
+				stargzChunkSize: stargzChunkSize,
+				compression:     CompressionTypeNone,
+			})
 			if err != nil {
 				logger.ErrorContext(ctx, "failed to upload bento layer", slog.String("error", err.Error()))
 				bentoLayerUploadErrCh <- err
@@ -512,7 +596,9 @@ func build(ctx context.Context, opts buildOptions) error {
 		return errors.Wrap(err, "failed to check if object exists")
 	}
 
-	if !baseLayerExists {
+	if !baseLayerExists || opts.Force {
+		logger := logger.With(slog.String("object-key", baseLayerObjectKey))
+
 		logger.InfoContext(ctx, "base layer does not exist, building base layer...")
 
 		cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
@@ -625,7 +711,14 @@ func build(ctx context.Context, opts buildOptions) error {
 		}
 		defer exportOut.Close()
 
-		err = streamingCompressAndUpload(ctx, opts.S3Bucket, baseLayerObjectKey, exportOut, opts.EnableStargz, stargzChunkSize)
+		err = streamingCompressAndUpload(ctx, streamingCompressAndUploadOptions{
+			bucketName:      opts.S3Bucket,
+			objectKey:       baseLayerObjectKey,
+			reader:          exportOut,
+			enableStargz:    opts.EnableStargz,
+			stargzChunkSize: stargzChunkSize,
+			compression:     CompressionTypeNone,
+		})
 		if err != nil {
 			return err
 		}
@@ -718,8 +811,24 @@ func build(ctx context.Context, opts buildOptions) error {
 			Digest:    configDesc.Digest,
 		}
 
-		baseLayerDesc, ociBaseLayerDesc := getLayerDesc(baseLayerPlaceholderDigest, opts.S3Bucket, baseLayerObjectKey, imageInfo.BaseImage, false, opts.EnableStargz)
-		bentoLayerDesc, ociBentoLayerDesc := getLayerDesc(bentoLayerPlaceholderDigest, opts.S3Bucket, bentoLayerObjectKey, imageInfo.BaseImage, true, opts.EnableStargz)
+		baseLayerDesc, ociBaseLayerDesc := getLayerDesc(getLayerDescOptions{
+			digestStr:    baseLayerPlaceholderDigest,
+			s3BucketName: opts.S3Bucket,
+			objectKey:    baseLayerObjectKey,
+			baseImage:    imageInfo.BaseImage,
+			isBentoLayer: false,
+			enableStargz: opts.EnableStargz,
+			compression:  CompressionTypeNone,
+		})
+		bentoLayerDesc, ociBentoLayerDesc := getLayerDesc(getLayerDescOptions{
+			digestStr:    bentoLayerPlaceholderDigest,
+			s3BucketName: opts.S3Bucket,
+			objectKey:    bentoLayerObjectKey,
+			baseImage:    imageInfo.BaseImage,
+			isBentoLayer: true,
+			enableStargz: opts.EnableStargz,
+			compression:  CompressionTypeNone,
+		})
 
 		// Create manifest
 		manifest_ := ocispecv1.Manifest{

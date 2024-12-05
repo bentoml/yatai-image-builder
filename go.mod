@@ -11,6 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.24.1
 	github.com/aws/aws-sdk-go-v2/credentials v1.16.16
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.48.1
+	github.com/aws/smithy-go v1.19.0
 	github.com/bentoml/yatai-common v0.0.0-20241107031151-f7d5e9220f8a
 	github.com/bentoml/yatai-schemas v0.0.0-20231012015630-b7ce9413265c
 	github.com/containerd/containerd/api v1.8.0
@@ -22,6 +23,7 @@ require (
 	github.com/containerd/stargz-snapshotter/estargz v0.16.1
 	github.com/coreos/go-systemd/v22 v22.5.0
 	github.com/docker/docker v27.3.1+incompatible
+	github.com/hanwen/go-fuse/v2 v2.6.3
 	github.com/huandu/xstrings v1.3.2
 	github.com/iancoleman/strcase v0.2.0
 	github.com/jessevdk/go-flags v1.6.1
@@ -36,6 +38,7 @@ require (
 	github.com/rs/xid v1.6.0
 	github.com/sergeymakinen/go-quote v1.1.0
 	github.com/sirupsen/logrus v1.9.3
+	github.com/tidwall/btree v1.7.0
 	github.com/zeebo/blake3 v0.2.4
 	golang.org/x/sync v0.9.0
 	google.golang.org/grpc v1.68.0
@@ -58,7 +61,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.2.10 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.10.10 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.16.10 // indirect
-	github.com/aws/smithy-go v1.19.0 // indirect
 	github.com/bentoml/yatai-deployment v1.1.10 // indirect
 	github.com/containerd/cgroups/v3 v3.0.3 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
@@ -77,7 +79,6 @@ require (
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/pprof v0.0.0-20240727154555-813a5fbdbec8 // indirect
-	github.com/hanwen/go-fuse/v2 v2.6.3 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
