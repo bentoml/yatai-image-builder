@@ -102,10 +102,10 @@ type ImageInfo struct {
 }
 
 type BentoImageSpec struct {
-	BaseImage          string   `yaml:"base_image"`
-	PythonVersion      string   `yaml:"python_version"`
+	BaseImage          string   `yaml:"base_image"`     // nolint:tagliatelle
+	PythonVersion      string   `yaml:"python_version"` // nolint:tagliatelle
 	Commands           []string `yaml:"commands"`
-	PythonRequirements string   `yaml:"python_requirements"`
+	PythonRequirements string   `yaml:"python_requirements"` // nolint:tagliatelle
 }
 
 type BentoYamlContent struct {
