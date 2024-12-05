@@ -135,11 +135,12 @@ func GetImageInfo(ctx context.Context, dockerfileContent string, contextPath str
 	} else if bentoYamlContent.Spec == 2 {
 		var commands = []string{"pip install uv"}
 		commands = append(commands, fmt.Sprintf("mkdir /app && uv venv -p %s /app/.venv && source /app/.venv", bentoYamlContent.Image.PythonVersion))
+		commands = append(commands, bentoYamlContent.Image.Commands...)
 		if bentoYamlContent.Image.PythonRequirements != "" {
 			commands = append(commands, fmt.Sprintf("echo \"%s\" | uv pip install -r /dev/stdin", bentoYamlContent.Image.PythonRequirements))
 		}
 
-		hashBaseStr := bentoYamlContent.Image.BaseImage + "__" + bentoYamlContent.Image.PythonVersion + "__" + strings.Join(commands, ":") + "__" + bentoYamlContent.Image.PythonRequirements
+		hashBaseStr := bentoYamlContent.Image.BaseImage + "__" + bentoYamlContent.Image.PythonVersion + "__" + strings.Join(bentoYamlContent.Image.Commands, ":") + "__" + bentoYamlContent.Image.PythonRequirements
 		hasher := blake3.New()
 		_, _ = hasher.Write([]byte(hashBaseStr))
 		hashStr := hex.EncodeToString(hasher.Sum(nil))
