@@ -14,6 +14,7 @@ import (
 	"github.com/asottile/dockerfile"
 	"github.com/pkg/errors"
 	"github.com/zeebo/blake3"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -100,7 +101,56 @@ type ImageInfo struct {
 	WorkingDir string            `json:"working_dir"` // nolint:tagliatelle
 }
 
-func GetImageInfo(ctx context.Context, dockerfileContent string, contextPath string, buildArgs map[string]string) (*ImageInfo, error) {
+type BentoImageSpec struct {
+	BaseImage          string   `yaml:"base_image"`
+	PythonVersion      string   `yaml:"python_version"`
+	Commands           []string `yaml:"commands"`
+	PythonRequirements string   `yaml:"python_requirements"`
+}
+
+type BentoYamlContent struct {
+	Spec  uint           `yaml:"spec"`
+	Image BentoImageSpec `yaml:"image"`
+}
+
+func readBentoYamlContent(bentoYamlPath string) (*BentoYamlContent, error) {
+	bentoYamlContent := &BentoYamlContent{}
+	bentoYamlFile, err := os.Open(bentoYamlPath)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to open bento yaml file")
+	}
+	defer bentoYamlFile.Close()
+
+	err = yaml.NewDecoder(bentoYamlFile).Decode(bentoYamlContent)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to decode bento yaml file")
+	}
+	return bentoYamlContent, nil
+}
+
+func GetImageInfo(ctx context.Context, dockerfileContent string, contextPath string, buildArgs map[string]string, bentoYamlPath string) (*ImageInfo, error) {
+	bentoYamlContent, err := readBentoYamlContent(bentoYamlPath)
+	if err != nil {
+		logger.ErrorContext(ctx, "failed to read bento yaml content", slog.String("error", err.Error()))
+	} else if bentoYamlContent.Spec == 2 {
+		var commands = []string{"pip install uv"}
+		commands = append(commands, fmt.Sprintf("mkdir /app && uv venv -p %s /app/.venv && source /app/.venv", bentoYamlContent.Image.PythonVersion))
+		if bentoYamlContent.Image.PythonRequirements != "" {
+			commands = append(commands, fmt.Sprintf("echo \"%s\" | uv pip install -r /dev/stdin", bentoYamlContent.Image.PythonRequirements))
+		}
+
+		hashBaseStr := bentoYamlContent.Image.BaseImage + "__" + bentoYamlContent.Image.PythonVersion + "__" + strings.Join(commands, ":") + "__" + bentoYamlContent.Image.PythonRequirements
+		hasher := blake3.New()
+		_, _ = hasher.Write([]byte(hashBaseStr))
+		hashStr := hex.EncodeToString(hasher.Sum(nil))
+
+		return &ImageInfo{
+			BaseImage: bentoYamlContent.Image.BaseImage,
+			Commands:  commands,
+			Hash:      hashStr,
+		}, nil
+	}
+
 	reader := strings.NewReader(dockerfileContent)
 	dockerfileCommands, err := dockerfile.ParseReader(reader)
 	if err != nil {

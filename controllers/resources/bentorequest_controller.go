@@ -2847,6 +2847,7 @@ echo "Done"
 	}
 
 	dockerFilePath := "/workspace/buildcontext/env/docker/Dockerfile"
+	bentoYamlPath := "/workspace/buildcontext/bento.yaml"
 
 	builderContainerEnvFrom := make([]corev1.EnvFromSource, 0)
 	if imageStoredInS3 && awsAccessKeySecretName != "" {
@@ -3113,7 +3114,7 @@ echo "Done"
 		set -ex
 		bash /usr/local/bin/entrypoint.sh
 		export S3_ENDPOINT_URL={{.ContainerImageS3EndpointURL}}
-		bento-image-builder {{.ExtraFlags}} --context {{.BuildContextPath}} --dockerfile {{.DockerFilePath}} --s3-bucket {{.ContainerImageS3Bucket}} --image-name {{.ImageName}}
+		bento-image-builder {{.ExtraFlags}} --context {{.BuildContextPath}} --dockerfile {{.DockerFilePath}} --s3-bucket {{.ContainerImageS3Bucket}} --image-name {{.ImageName}} --bento-yaml {{.BentoYamlPath}}
 		`)).Execute(&cmdOutput, map[string]interface{}{
 			"BuildContextPath":            buildContextPath,
 			"ContainerImageS3EndpointURL": containerImageS3EndpointURL,
@@ -3121,6 +3122,7 @@ echo "Done"
 			"ImageName":                   opt.ImageInfo.InClusterImageName,
 			"ExtraFlags":                  extraFlags,
 			"DockerFilePath":              dockerFilePath,
+			"BentoYamlPath":               bentoYamlPath,
 		})
 		if err != nil {
 			err = errors.Wrap(err, "failed to generate cmd output")

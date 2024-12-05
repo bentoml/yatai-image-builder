@@ -86,6 +86,7 @@ type buildOptions struct {
 	ImageRegistryInsecure bool              `long:"image-registry-insecure" description:"Insecure registry" required:"false"`
 	EnableStargz          bool              `long:"enable-stargz" description:"Enable stargz" required:"false"`
 	StargzChunkSize       int               `long:"stargz-chunk-size" description:"Stargz chunk size" required:"false"`
+	BentoYamlPath         string            `long:"bento-yaml" description:"Path to the bento yaml file" required:"false"`
 }
 
 // OCIConfig represents the image configuration
@@ -497,7 +498,7 @@ func build(ctx context.Context, opts buildOptions) error {
 		return err
 	}
 
-	imageInfo, err := common.GetImageInfo(ctx, string(dockerfileContent), opts.ContextPath, opts.BuildArg)
+	imageInfo, err := common.GetImageInfo(ctx, string(dockerfileContent), opts.ContextPath, opts.BuildArg, opts.BentoYamlPath)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get image info")
 		return err
