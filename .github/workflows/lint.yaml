@@ -39,6 +39,7 @@ jobs:
               - "go.sum"
               - "bento-image-builder/**"
               - "bento-image-snapshotter/**"
+              - "seekabletar/**"
             helmcharts:
               - "helm/**"
 

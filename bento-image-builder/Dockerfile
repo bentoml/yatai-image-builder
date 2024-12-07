@@ -1,5 +1,7 @@
 FROM golang:1.23 as builder
 
+ENV GOPROXY=
+
 WORKDIR /workspace
 # Copy the Go Modules manifests
 COPY go.mod go.mod
@@ -11,6 +13,7 @@ RUN go mod download
 # Copy the go source
 COPY common/ common/
 COPY bento-image-builder/ bento-image-builder/
+COPY seekabletar/ seekabletar/
 
 # Build
 ARG VERSION_BUILDFLAGS

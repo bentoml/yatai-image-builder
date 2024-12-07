@@ -22,6 +22,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/bentoml/yatai-image-builder/common"
+	"github.com/bentoml/yatai-image-builder/seekabletar/pkg/seekabletarfs"
 )
 
 type S3FileSystem struct {
@@ -39,21 +40,6 @@ func NewS3FileSystem(ctx context.Context, enableRamfs bool) (S3FileSystem, error
 		EnableRamfs: enableRamfs,
 		client:      client,
 	}, nil
-}
-
-func chownRecursive(ctx context.Context, root string, uid, gid int) error {
-	return errors.Wrap(filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return errors.Wrap(err, "failed to walk the directory")
-		}
-		// Change ownership of the file/directory
-		err = os.Chown(path, uid, gid)
-		if err != nil {
-			log.G(ctx).Errorf("failed to chown %s: %v", path, err)
-			return errors.Wrap(err, "failed to chown the file/directory")
-		}
-		return nil
-	}), "failed to walk the directory")
 }
 
 func (o S3FileSystem) getObjectSize(ctx context.Context, bucketName, objectKey string) (int64, error) {
@@ -77,6 +63,7 @@ func (o S3FileSystem) getObjectSize(ctx context.Context, bucketName, objectKey s
 }
 
 func (o S3FileSystem) Mount(ctx context.Context, mountpoint string, labels map[string]string) error {
+	decompression := labels[common.DescriptorAnnotationCompression] == "zstd"
 	if mounted, err := o.isMounted(mountpoint); err != nil {
 		return errors.Wrap(err, "failed to check if mountpoint is mounted")
 	} else if mounted {
@@ -111,19 +98,38 @@ func (o S3FileSystem) Mount(ctx context.Context, mountpoint string, labels map[s
 		logger.Info("successfully mounted ramfs")
 	}
 
-	logger.Info("downloading layer from S3")
-	if err := o.downloadLayerFromS3(ctx, bucketName, objectKey, destinationPath); err != nil {
-		return errors.Wrap(err, "failed to download layer from S3")
+	downloadedFilePath := getDownloadFilePath(objectKey, destinationPath, decompression)
+
+	downloadedFilePathExists, err := fileExists(downloadedFilePath)
+	if err != nil {
+		return errors.Wrap(err, "failed to check if downloaded file exists")
 	}
-	isBentoLayer := labels[common.DescriptorAnnotationIsBentoLayer] == "true"
-	if isBentoLayer {
-		logger.Info("chowning the /home/bentoml directory")
-		if err := chownRecursive(ctx, filepath.Join(destinationPath, "home", "bentoml"), 1034, 1034); err != nil {
-			return errors.Wrap(err, "failed to chown /home/bentoml directory")
+
+	if decompression || !downloadedFilePathExists {
+		logger.Info("downloading layer from S3")
+		if err := o.downloadLayerFromS3(ctx, bucketName, objectKey, destinationPath, decompression); err != nil {
+			return errors.Wrap(err, "failed to download layer from S3")
 		}
-		logger.Info("successfully chowned the /home/bentoml directory")
+		logger.Info("layer downloaded from S3")
+	} else {
+		logger.Info("file already exists, skipping download")
 	}
-	logger.Info("layer downloaded from S3")
+
+	if !decompression {
+		go func() {
+			err := os.MkdirAll(mountpoint, 0755)
+			if err != nil && !os.IsExist(err) {
+				log.G(ctx).WithError(err).Error("failed to create mountpoint")
+				return
+			}
+
+			err = seekabletarfs.Mount(downloadedFilePath, mountpoint)
+			if err != nil {
+				log.G(ctx).WithError(err).Error("failed to mount seekable tar filesystem")
+			}
+		}()
+		return nil
+	}
 	if o.EnableRamfs {
 		if err := os.RemoveAll(mountpoint); err != nil {
 			if !os.IsNotExist(err) {
@@ -198,8 +204,7 @@ func (o S3FileSystem) isMounted(mountpoint string) (bool, error) {
 	return true, nil
 }
 
-func isRamfsMounted(path string) (bool, error) {
-	ramfsPath := getRamfsPath(path)
+func isMounted(path string) (bool, error) {
 	file, err := os.Open("/proc/mounts")
 	if err != nil {
 		return false, errors.Wrap(err, "failed to open /proc/mounts")
@@ -215,9 +220,8 @@ func isRamfsMounted(path string) (bool, error) {
 		}
 
 		mountPoint := fields[1]
-		fsType := fields[2]
 
-		if mountPoint == ramfsPath && fsType == "ramfs" {
+		if mountPoint == path {
 			return true, nil
 		}
 	}
@@ -229,15 +233,14 @@ func isRamfsMounted(path string) (bool, error) {
 	return false, nil
 }
 
-func unmountRamfs(path string) error {
-	ramfsPath := getRamfsPath(path)
-	cmd := exec.Command("umount", ramfsPath)
+func unmount(ctx context.Context, path string) error {
+	cmd := exec.CommandContext(ctx, "umount", path)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return errors.Wrap(err, "failed to unmount ramfs")
 	}
-	if err := os.RemoveAll(ramfsPath); err != nil {
+	if err := os.RemoveAll(path); err != nil {
 		if !os.IsNotExist(err) {
 			return errors.Wrap(err, "failed to remove ramfs")
 		}
@@ -245,12 +248,28 @@ func unmountRamfs(path string) error {
 	return nil
 }
 
+func isRamfsMounted(path string) (bool, error) {
+	ramfsPath := getRamfsPath(path)
+	return isMounted(ramfsPath)
+}
+
+func unmountRamfs(ctx context.Context, path string) error {
+	ramfsPath := getRamfsPath(path)
+	return unmount(ctx, ramfsPath)
+}
+
 func (o S3FileSystem) Unmount(ctx context.Context, mountpoint string) error {
 	if ramfsMounted, err := isRamfsMounted(mountpoint); err != nil {
 		return errors.Wrap(err, "failed to check if ramfs is mounted")
 	} else if ramfsMounted {
-		if err := unmountRamfs(mountpoint); err != nil {
+		if err := unmountRamfs(ctx, mountpoint); err != nil {
 			return errors.Wrap(err, "failed to unmount ramfs")
+		}
+	} else if isMounted, err := isMounted(mountpoint); err != nil {
+		return errors.Wrap(err, "failed to check if mountpoint is mounted")
+	} else if isMounted {
+		if err := unmount(ctx, mountpoint); err != nil {
+			return errors.Wrap(err, "failed to unmount mountpoint")
 		}
 	}
 	if err := os.RemoveAll(mountpoint); err != nil {
@@ -529,13 +548,30 @@ func (w *WriterAtReader) Close() error {
 	return nil
 }
 
-func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, layerKey string, destinationPath string) error {
+func getDownloadFilePath(layerKey string, destinationPath string, decompression bool) (downloadedFilePath string) {
+	dirName := filepath.Dir(destinationPath)
+	downloadedFilePath = filepath.Join(dirName, "downloads", layerKey+".tar.zst")
+	if !decompression {
+		downloadedFilePath = filepath.Join(dirName, "downloads", layerKey+".tar")
+	}
+	return
+}
+
+func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, layerKey string, destinationPath string, decompression bool) (err error) {
+	downloadedFilePath := getDownloadFilePath(layerKey, destinationPath, decompression)
 	baseName := filepath.Base(destinationPath)
 	dirName := filepath.Dir(destinationPath)
-	downloadedFilePath := filepath.Join(dirName, "downloads", layerKey+".tar.zst")
 	tempName := filepath.Join(dirName, baseName+".tmp")
 
 	defer func() {
+		if !decompression {
+			if err := os.Remove(tempName); err != nil {
+				if !os.IsNotExist(err) {
+					log.G(ctx).WithError(err).Error("failed to remove temp dir")
+				}
+			}
+			return
+		}
 		if err := os.Remove(downloadedFilePath); err != nil {
 			if !os.IsNotExist(err) {
 				log.G(ctx).WithError(err).Error("failed to remove downloaded file")
@@ -546,8 +582,9 @@ func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, laye
 	if o.EnableRamfs {
 		tempName = destinationPath
 	} else {
-		if err := os.MkdirAll(tempName, 0755); err != nil {
-			return errors.Wrap(err, "failed to create temp directory")
+		if err = os.MkdirAll(tempName, 0755); err != nil {
+			err = errors.Wrap(err, "failed to create temp directory")
+			return
 		}
 	}
 
@@ -555,35 +592,41 @@ func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, laye
 
 	presignedURL, err := GetS3PresignedURL(ctx, o.client, bucketName, layerKey)
 	if err != nil {
-		return errors.Wrap(err, "failed to get s3 presigned url")
+		err = errors.Wrap(err, "failed to get s3 presigned url")
+		return
 	}
 
 	size, err := o.getObjectSize(ctx, bucketName, layerKey)
 	if err != nil {
-		return errors.Wrap(err, "failed to get object size")
+		err = errors.Wrap(err, "failed to get object size")
+		return
 	}
 
 	coreNumber := runtime.NumCPU()
 
 	baseDir := filepath.Dir(downloadedFilePath)
-	if err := os.MkdirAll(baseDir, 0755); err != nil {
-		return errors.Wrap(err, "failed to create base dir for downloaded file")
+	if err = os.MkdirAll(baseDir, 0755); err != nil {
+		err = errors.Wrap(err, "failed to create base dir for downloaded file")
+		return
 	}
 
 	file, err := os.OpenFile(downloadedFilePath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
-		return errors.Wrap(err, "failed to create downloaded file")
+		err = errors.Wrap(err, "failed to create downloaded file")
+		return
 	}
 	defer file.Close()
 
 	// use truncate to fallocate the target file
 	// seek to the first byte of the file
-	if _, err := file.Seek(0, 0); err != nil {
-		return errors.Wrap(err, "failed to seek the target file")
+	if _, err = file.Seek(0, 0); err != nil {
+		err = errors.Wrap(err, "failed to seek the target file")
+		return
 	}
 	// truncate the file to the size
-	if err := file.Truncate(size); err != nil {
-		return errors.Wrap(err, "failed to truncate the target file")
+	if err = file.Truncate(size); err != nil {
+		err = errors.Wrap(err, "failed to truncate the target file")
+		return
 	}
 
 	w := NewWriterAtReader(file, size)
@@ -600,6 +643,8 @@ func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, laye
 		err := parrallelDownload(ctx, presignedURL, w, size, coreNumber)
 		if err != nil {
 			errCh <- errors.Wrap(err, "failed to download layer from S3")
+		} else if !decompression {
+			errCh <- nil
 		}
 		duration := time.Since(start)
 		seconds := duration.Seconds()
@@ -611,25 +656,28 @@ func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, laye
 		}
 	}()
 
-	go func() {
-		var stderr bytes.Buffer
-		cmd := exec.CommandContext(ctx, "sh", "-c", "pzstd -d | tar -xf -")
-		cmd.Stderr = &stderr
-		cmd.Stdin = w
-		cmd.Dir = tempName
+	if decompression {
+		go func() {
+			var stderr bytes.Buffer
+			cmd := exec.CommandContext(ctx, "sh", "-c", "pzstd -d | tar -xf -")
+			cmd.Stderr = &stderr
+			cmd.Stdin = w
+			cmd.Dir = tempName
 
-		err = cmd.Run()
-		if err != nil {
-			err = errors.Wrapf(err, "failed to run command: %s, stderr: %s", stringifyCmd(cmd), stderr.String())
-			errCh <- err
-		} else {
-			errCh <- nil
-		}
-	}()
+			err = cmd.Run()
+			if err != nil {
+				err = errors.Wrapf(err, "failed to run command: %s, stderr: %s", stringifyCmd(cmd), stderr.String())
+				errCh <- err
+			} else {
+				errCh <- nil
+			}
+		}()
+	}
 
 	err = <-errCh
 	if err != nil {
-		return errors.Wrap(err, "failed to download layer from S3")
+		err = errors.Wrap(err, "failed to download layer from S3")
+		return
 	}
 
 	duration := time.Since(startTime)
@@ -637,21 +685,27 @@ func (o *S3FileSystem) downloadLayerFromS3(ctx context.Context, bucketName, laye
 	logger.WithField("duration", duration).Info("the layer has been downloaded and decompressed")
 
 	if !o.EnableRamfs {
-		err = os.RemoveAll(destinationPath)
-		if err != nil && !os.IsNotExist(err) {
-			return errors.Wrapf(err, "failed to remove destination path: %s", destinationPath)
-		}
+		if decompression {
+			err = os.RemoveAll(destinationPath)
+			if err != nil && !os.IsNotExist(err) {
+				err = errors.Wrapf(err, "failed to remove destination path: %s", destinationPath)
+				return
+			}
 
-		logger = log.G(ctx).WithField("key", layerKey).WithField("destinationPath", destinationPath).WithField("oldPath", tempName)
-		logger.Info("renaming the layer...")
+			logger = log.G(ctx).WithField("key", layerKey).WithField("destinationPath", destinationPath).WithField("oldPath", tempName)
+			logger.Info("renaming the layer...")
 
-		if err := os.Rename(tempName, destinationPath); err != nil {
-			return errors.Wrap(err, "failed to rename layer")
+			if err = os.Rename(tempName, destinationPath); err != nil {
+				err = errors.Wrap(err, "failed to rename layer")
+				return
+			}
+			logger.Info("the layer has been renamed")
 		}
-		logger.Info("the layer has been renamed")
 	}
 
-	return nil
+	err = nil
+
+	return
 }
 
 func fileExists(path string) (bool, error) {
