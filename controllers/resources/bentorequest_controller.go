@@ -3097,7 +3097,7 @@ echo "Done"
 	cmd := shquot.POSIXShell(append(command, args...))
 
 	if imageStoredInS3 {
-		builderImage = "quay.io/bentoml/bento-image-builder:0.0.1"
+		builderImage = "quay.io/bentoml/bento-image-builder:0.0.3"
 		extraFlags := ""
 		for _, buildArg := range buildArgs {
 			extraFlags = fmt.Sprintf("%s --build-arg %s", extraFlags, strings.Replace(buildArg, "=", ":", 1))
