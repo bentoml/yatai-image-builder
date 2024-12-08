@@ -249,8 +249,15 @@ func CalculateTOCFromTar(reader io.Reader) (*TarTOC, error) {
 	return &toc, nil
 }
 
-// [tar bytes][toc bytes][toc size], where [toc size] is a 4-byte little-endian integer
-func GenerateSeekableTar(tarReader io.ReadSeeker) (io.ReadCloser, error) {
+const (
+	// MagicFlag is the magic number to identify seekabletar files
+	MagicFlag uint32 = 0x53454554 // "SEET" in ASCII
+)
+
+// [tar bytes][toc bytes][toc size][magic flag], where:
+// - [toc size] is a 4-byte little-endian integer
+// - [magic flag] is a 4-byte magic number
+func ConvertToSeekableTar(tarReader io.ReadSeeker) (io.ReadCloser, error) {
 	toc, err := CalculateTOCFromTar(tarReader)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to calculate toc")
@@ -266,9 +273,10 @@ func GenerateSeekableTar(tarReader io.ReadSeeker) (io.ReadCloser, error) {
 		return nil, errors.New("toc size is too large")
 	}
 
-	tailBytes := make([]byte, tocSize+4)
+	tailBytes := make([]byte, tocSize+8) // +8 for tocSize and magic flag
 	copy(tailBytes, tocBytes)
 	binary.LittleEndian.PutUint32(tailBytes[len(tocBytes):], uint32(tocSize))
+	binary.LittleEndian.PutUint32(tailBytes[len(tocBytes)+4:], MagicFlag)
 
 	tailReader := bytes.NewReader(tailBytes)
 	_, err = tarReader.Seek(0, 0)
@@ -278,9 +286,35 @@ func GenerateSeekableTar(tarReader io.ReadSeeker) (io.ReadCloser, error) {
 	return io.NopCloser(io.MultiReader(tarReader, tailReader)), nil
 }
 
+func IsSeekableTar(readerAt io.ReaderAt, size int64) (bool, error) {
+	// Read magic flag first
+	magicBytes := make([]byte, 4)
+	_, err := readerAt.ReadAt(magicBytes, size-4)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to read magic flag")
+	}
+
+	magic := binary.LittleEndian.Uint32(magicBytes)
+	if magic != MagicFlag {
+		return false, nil
+	}
+
+	return true, nil
+}
+
 func GetTOCFromReaderAt(readerAt io.ReaderAt, size int64) (*TarTOC, error) {
+	isSeekable, err := IsSeekableTar(readerAt, size)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to check if seekable tar")
+	}
+
+	if !isSeekable {
+		return nil, errors.New("file is not a seekable tar")
+	}
+
+	// Read TOC size
 	tocBytes := make([]byte, 4)
-	_, err := readerAt.ReadAt(tocBytes, size-4)
+	_, err = readerAt.ReadAt(tocBytes, size-8)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read toc bytes")
 	}
@@ -289,7 +323,7 @@ func GetTOCFromReaderAt(readerAt io.ReaderAt, size int64) (*TarTOC, error) {
 		return nil, errors.New("toc size is 0")
 	}
 	tocBytes = make([]byte, tocSize)
-	_, err = readerAt.ReadAt(tocBytes, size-int64(tocSize)-4)
+	_, err = readerAt.ReadAt(tocBytes, size-int64(tocSize)-8)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read toc bytes")
 	}
@@ -303,7 +337,7 @@ func GetTOCFromSeekableTar(file *os.File) (*TarTOC, error) {
 	}
 
 	size := fileInfo.Size()
-	if size < 4 {
+	if size < 8 {
 		return nil, errors.New("file is too small")
 	}
 

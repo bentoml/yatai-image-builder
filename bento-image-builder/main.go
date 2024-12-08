@@ -251,7 +251,7 @@ func streamingCompressAndUpload(ctx context.Context, opts streamingCompressAndUp
 				return errors.Wrap(err, "failed to open temp file")
 			}
 
-			compressedReader, err = seekabletar.GenerateSeekableTar(tempFile)
+			compressedReader, err = seekabletar.ConvertToSeekableTar(tempFile)
 			if err != nil {
 				return errors.Wrap(err, "failed to generate seekable tar")
 			}
