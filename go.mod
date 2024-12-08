@@ -14,6 +14,7 @@ require (
 	github.com/aws/smithy-go v1.19.0
 	github.com/bentoml/yatai-common v0.0.0-20241107031151-f7d5e9220f8a
 	github.com/bentoml/yatai-schemas v0.0.0-20231012015630-b7ce9413265c
+	github.com/briandowns/spinner v1.23.1
 	github.com/containerd/containerd/api v1.8.0
 	github.com/containerd/containerd/v2 v2.0.0
 	github.com/containerd/continuity v0.4.4
@@ -38,6 +39,7 @@ require (
 	github.com/rs/xid v1.6.0
 	github.com/sergeymakinen/go-quote v1.1.0
 	github.com/sirupsen/logrus v1.9.3
+	github.com/spf13/cobra v1.8.1
 	github.com/tidwall/btree v1.7.0
 	github.com/zeebo/blake3 v0.2.4
 	golang.org/x/sync v0.9.0
@@ -73,6 +75,7 @@ require (
 	github.com/docker/go-metrics v0.0.1 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
+	github.com/fatih/color v1.16.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -83,8 +86,11 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/moby/buildkit v0.17.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/locker v1.0.1 // indirect
