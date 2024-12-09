@@ -37,9 +37,6 @@ jobs:
               - "main.go"
               - "go.mod"
               - "go.sum"
-              - "bento-image-builder/**"
-              - "bento-image-snapshotter/**"
-              - "seekabletar/**"
             helmcharts:
               - "helm/**"
 
@@ -88,8 +85,4 @@ jobs:
 
       - name: Render yatai-image-builder Helm Template
         working-directory: ./helm/yatai-image-builder
-        run: make template
-
-      - name: Render bento-image-snapshotter Helm Template
-        working-directory: ./helm/bento-image-snapshotter
         run: make template
