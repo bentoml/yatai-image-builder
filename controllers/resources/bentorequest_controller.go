@@ -541,11 +541,6 @@ func (r *BentoRequestReconciler) ensureImageExists(ctx context.Context, opt ensu
 				err = errors.Wrapf(err, "delete job %s", job_.Name)
 				return
 			}
-			// clean all the events status to unknown
-			bentoRequest, err = r.setStatusConditionsToUnknow(ctx, opt.req, "Bento request hash changed, recreating the jobs")
-			if err != nil {
-				return
-			}
 			return
 		} else {
 			reservedJobs = append(reservedJobs, &job_)
@@ -779,11 +774,6 @@ func (r *BentoRequestReconciler) ensureModelsExists(ctx context.Context, opt ens
 			})
 			if err != nil {
 				err = errors.Wrapf(err, "delete job %s", job_.Name)
-				return
-			}
-			// clean all the events status to unknown
-			bentoRequest, err = r.setStatusConditionsToUnknow(ctx, opt.req, "Bento request hash changed, recreating the jobs")
-			if err != nil {
 				return
 			}
 			continue
@@ -1036,40 +1026,6 @@ func (r *BentoRequestReconciler) deleteModelPVC(ctx context.Context, bentoReques
 
 	r.Recorder.Eventf(bentoRequest, corev1.EventTypeNormal, "DeletePVC", "Successfully deleted PVC %s for model %s", pvcName, model.Tag)
 	return nil
-}
-
-func (r *BentoRequestReconciler) setStatusConditionsToUnknow(ctx context.Context, req ctrl.Request, msg string) (bentoRequest *resourcesv1alpha1.BentoRequest, err error) {
-	bentoRequest = &resourcesv1alpha1.BentoRequest{}
-	/*
-		Please don't blame me when you see this kind of code,
-		this is to avoid "the object has been modified; please apply your changes to the latest version and try again" when updating CR status,
-		don't doubt that almost all CRD operators (e.g. cert-manager) can't avoid this stupid error and can only try to avoid this by this stupid way.
-	*/
-	for i := 0; i < 3; i++ {
-		if err = r.Get(ctx, req.NamespacedName, bentoRequest); err != nil {
-			err = errors.Wrap(err, "Failed to re-fetch BentoRequest")
-			return
-		}
-		for _, condition := range bentoRequest.Status.Conditions {
-			condition.Status = metav1.ConditionUnknown
-			condition.Message = msg
-			meta.SetStatusCondition(&bentoRequest.Status.Conditions, condition)
-		}
-		if err = r.Status().Update(ctx, bentoRequest); err != nil {
-			time.Sleep(100 * time.Millisecond)
-		} else {
-			break
-		}
-	}
-	if err != nil {
-		err = errors.Wrap(err, "Failed to update BentoRequest status")
-		return
-	}
-	if err = r.Get(ctx, req.NamespacedName, bentoRequest); err != nil {
-		err = errors.Wrap(err, "Failed to re-fetch BentoRequest")
-		return
-	}
-	return
 }
 
 func (r *BentoRequestReconciler) setStatusConditions(ctx context.Context, req ctrl.Request, conditions ...metav1.Condition) (bentoRequest *resourcesv1alpha1.BentoRequest, err error) {
@@ -1774,9 +1730,8 @@ func (r *BentoRequestReconciler) generateModelSeederJob(ctx context.Context, opt
 			Annotations: kubeAnnotations,
 		},
 		Spec: batchv1.JobSpec{
-			Completions:  pointer.Int32Ptr(1),
-			Parallelism:  pointer.Int32Ptr(1),
-			BackoffLimit: pointer.Int32Ptr(1),
+			Completions: pointer.Int32Ptr(1),
+			Parallelism: pointer.Int32Ptr(1),
 			PodFailurePolicy: &batchv1.PodFailurePolicy{
 				Rules: []batchv1.PodFailurePolicyRule{
 					{
