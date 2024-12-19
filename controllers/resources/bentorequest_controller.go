@@ -2115,6 +2115,9 @@ echo "Done"
 			Name:  commonconsts.EnvAWSSecretAccessKey,
 			Value: containerImageS3SecretAccessKey,
 		})
+		if opt.BentoRequest.Spec.DownloaderContainerEnvFrom != nil {
+			builderContainerEnvFrom = append(builderContainerEnvFrom, opt.BentoRequest.Spec.DownloaderContainerEnvFrom...)
+		}
 	}
 
 	builderContainerArgs := []string{
