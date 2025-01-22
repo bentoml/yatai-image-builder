@@ -26,8 +26,8 @@ import (
 	watch "k8s.io/apimachinery/pkg/watch"
 	rest "k8s.io/client-go/rest"
 
-	v1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
-	scheme "github.com/bentoml/yatai-image-builder/generated/resources/clientset/versioned/scheme"
+	v1alpha1 "github.com/bentoml/yatai-image-builder/v2/apis/resources/v1alpha1"
+	scheme "github.com/bentoml/yatai-image-builder/v2/generated/resources/clientset/versioned/scheme"
 )
 
 // BentoesGetter has a method to return a BentoInterface.

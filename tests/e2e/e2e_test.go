@@ -17,7 +17,7 @@ import (
 
 	commonconsts "github.com/bentoml/yatai-common/consts"
 
-	resourcesclient "github.com/bentoml/yatai-image-builder/generated/resources/clientset/versioned/typed/resources/v1alpha1"
+	resourcesclient "github.com/bentoml/yatai-image-builder/v2/generated/resources/clientset/versioned/typed/resources/v1alpha1"
 
 	//nolint:golint
 	//nolint:revive
@@ -27,7 +27,7 @@ import (
 	//nolint:revive
 	. "github.com/onsi/gomega"
 
-	"github.com/bentoml/yatai-image-builder/tests/utils"
+	"github.com/bentoml/yatai-image-builder/v2/tests/utils"
 )
 
 var _ = Describe("yatai-image-builder", Ordered, func() {

@@ -68,9 +68,9 @@ import (
 	"github.com/bentoml/yatai-schemas/modelschemas"
 	"github.com/bentoml/yatai-schemas/schemasv1"
 
-	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
-	"github.com/bentoml/yatai-image-builder/version"
-	yataiclient "github.com/bentoml/yatai-image-builder/yatai-client"
+	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/v2/apis/resources/v1alpha1"
+	"github.com/bentoml/yatai-image-builder/v2/version"
+	yataiclient "github.com/bentoml/yatai-image-builder/v2/yatai-client"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
