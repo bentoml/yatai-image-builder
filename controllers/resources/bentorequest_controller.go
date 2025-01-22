@@ -1082,7 +1082,7 @@ func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegis
 }
 
 func isImageStoredInS3(bentoRequest *resourcesv1alpha1.BentoRequest) (storedInS3 bool) {
-	return bentoRequest.Annotations[commonconsts.KubeAnnotationImageStoredInS3] == commonconsts.KubeLabelValueTrue
+	return bentoRequest.Annotations[commonconsts.KubeAnnotationImageStoredInS3] == commonconsts.KubeLabelValueTrue && bentoRequest.Annotations["yatai.ai/bento-image-spec"] == "2"
 }
 
 func getContainerImageS3EndpointURL() string {
