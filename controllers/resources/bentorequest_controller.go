@@ -224,7 +224,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	var modelsExistsResult ctrl.Result
 	var modelsExistsErr error
 
-	if separateModels {
+	if separateModels && !isImageStoredInS3(bentoRequest) {
 		bentoRequest, modelsExists, modelsExistsResult, modelsExistsErr = r.ensureModelsExists(ctx, ensureModelsExistsOption{
 			bentoRequest: bentoRequest,
 			req:          req,
@@ -268,7 +268,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return
 	}
 
-	if separateModels && modelsExists {
+	if separateModels && !isImageStoredInS3(bentoRequest) && modelsExists {
 		// Delete PVCs for all seeded models
 		for _, model := range bentoRequest.Spec.Models {
 			model := model
@@ -288,7 +288,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	if separateModels && !modelsExists {
+	if separateModels && !isImageStoredInS3(bentoRequest) && !modelsExists {
 		result = modelsExistsResult
 		bentoRequest, err = r.setStatusConditions(ctx, req,
 			metav1.Condition{
@@ -319,7 +319,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		},
 	}
 
-	if separateModels {
+	if separateModels && !isImageStoredInS3(bentoRequest) {
 		bentoCR.Annotations = map[string]string{
 			commonconsts.KubeAnnotationYataiImageBuilderSeparateModels: commonconsts.KubeLabelValueTrue,
 			commonconsts.KubeAnnotationAWSAccessKeySecretName:          bentoRequest.Annotations[commonconsts.KubeAnnotationAWSAccessKeySecretName],
@@ -1481,7 +1481,7 @@ func getBentoImageName(bentoRequest *resourcesv1alpha1.BentoRequest, dockerRegis
 }
 
 func isSeparateModels(bentoRequest *resourcesv1alpha1.BentoRequest) (separateModels bool) {
-	return bentoRequest.Annotations[commonconsts.KubeAnnotationYataiImageBuilderSeparateModels] == commonconsts.KubeLabelValueTrue && !isImageStoredInS3(bentoRequest)
+	return bentoRequest.Annotations[commonconsts.KubeAnnotationYataiImageBuilderSeparateModels] == commonconsts.KubeLabelValueTrue
 }
 
 func isImageStoredInS3(bentoRequest *resourcesv1alpha1.BentoRequest) (storedInS3 bool) {
