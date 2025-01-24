@@ -3096,6 +3096,11 @@ echo "Done"
 
 	cmd := shquot.POSIXShell(append(command, args...))
 
+	type ModelSpec struct {
+		Tag         string `json:"tag"`
+		DownloadURL string `json:"download_url"` // nolint:tagliatelle
+	}
+
 	if imageStoredInS3 {
 		builderImage = "quay.io/bentoml/bento-image-builder:0.0.26"
 		extraFlags := ""
@@ -3108,6 +3113,24 @@ echo "Done"
 		if containerImageS3EnableStargz {
 			extraFlags += " --enable-stargz"
 		}
+		models := make([]ModelSpec, 0, len(opt.BentoRequest.Spec.Models))
+		for _, model := range opt.BentoRequest.Spec.Models {
+			models = append(models, ModelSpec{
+				Tag:         model.Tag,
+				DownloadURL: model.DownloadURL,
+			})
+		}
+		var modelsJSON []byte
+		modelsJSON, err = json.Marshal(models)
+		if err != nil {
+			err = errors.Wrap(err, "failed to marshal models")
+			return
+		}
+
+		if len(models) > 0 {
+			extraFlags += " --models " + base64.StdEncoding.EncodeToString(modelsJSON)
+		}
+
 		var cmdOutput bytes.Buffer
 		err = template.Must(template.New("script").Parse(`
 		set -ex
