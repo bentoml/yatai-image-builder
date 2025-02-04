@@ -3102,7 +3102,7 @@ echo "Done"
 	}
 
 	if imageStoredInS3 {
-		builderImage = "quay.io/bentoml/bento-image-builder:0.0.26"
+		builderImage = "quay.io/bentoml/bento-image-builder:0.0.27"
 		extraFlags := ""
 		for _, buildArg := range buildArgs {
 			extraFlags = fmt.Sprintf("%s --build-arg %s", extraFlags, strings.Replace(buildArg, "=", ":", 1))
