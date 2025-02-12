@@ -27,9 +27,9 @@ import (
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 
-	versioned "github.com/bentoml/yatai-image-builder/generated/resources/clientset/versioned"
-	internalinterfaces "github.com/bentoml/yatai-image-builder/generated/resources/informers/externalversions/internalinterfaces"
-	resources "github.com/bentoml/yatai-image-builder/generated/resources/informers/externalversions/resources"
+	versioned "github.com/bentoml/yatai-image-builder/v2/generated/resources/clientset/versioned"
+	internalinterfaces "github.com/bentoml/yatai-image-builder/v2/generated/resources/informers/externalversions/internalinterfaces"
+	resources "github.com/bentoml/yatai-image-builder/v2/generated/resources/informers/externalversions/resources"
 )
 
 // SharedInformerOption defines the functional option type for SharedInformerFactory.

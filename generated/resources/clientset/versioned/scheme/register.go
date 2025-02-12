@@ -24,7 +24,7 @@ import (
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
-	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
+	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/v2/apis/resources/v1alpha1"
 )
 
 var Scheme = runtime.NewScheme()

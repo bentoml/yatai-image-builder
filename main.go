@@ -31,8 +31,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
-	resourcescontrollers "github.com/bentoml/yatai-image-builder/controllers/resources"
+	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/v2/apis/resources/v1alpha1"
+	resourcescontrollers "github.com/bentoml/yatai-image-builder/v2/controllers/resources"
 	//+kubebuilder:scaffold:imports
 )
 

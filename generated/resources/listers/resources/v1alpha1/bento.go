@@ -22,7 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
 
-	v1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
+	v1alpha1 "github.com/bentoml/yatai-image-builder/v2/apis/resources/v1alpha1"
 )
 
 // BentoLister helps list Bentoes.

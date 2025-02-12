@@ -26,10 +26,10 @@ import (
 	watch "k8s.io/apimachinery/pkg/watch"
 	cache "k8s.io/client-go/tools/cache"
 
-	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
-	versioned "github.com/bentoml/yatai-image-builder/generated/resources/clientset/versioned"
-	internalinterfaces "github.com/bentoml/yatai-image-builder/generated/resources/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/bentoml/yatai-image-builder/generated/resources/listers/resources/v1alpha1"
+	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/v2/apis/resources/v1alpha1"
+	versioned "github.com/bentoml/yatai-image-builder/v2/generated/resources/clientset/versioned"
+	internalinterfaces "github.com/bentoml/yatai-image-builder/v2/generated/resources/informers/externalversions/internalinterfaces"
+	v1alpha1 "github.com/bentoml/yatai-image-builder/v2/generated/resources/listers/resources/v1alpha1"
 )
 
 // BentoRequestInformer provides access to a shared informer and lister for

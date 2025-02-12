@@ -21,7 +21,7 @@ import (
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
 
-	v1alpha1 "github.com/bentoml/yatai-image-builder/generated/resources/clientset/versioned/typed/resources/v1alpha1"
+	v1alpha1 "github.com/bentoml/yatai-image-builder/v2/generated/resources/clientset/versioned/typed/resources/v1alpha1"
 )
 
 type FakeResourcesV1alpha1 struct {
