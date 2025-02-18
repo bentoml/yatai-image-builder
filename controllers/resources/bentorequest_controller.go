@@ -2089,10 +2089,19 @@ if [[ ${url} == hf://* ]]; then
 	model_id=$(echo "$hf_url" | awk -F '@' '{print $1}')
 	revision=$(echo "$hf_url" | awk -F '@' '{print $2}')
 	endpoint=$(echo "$hf_url" | awk -F '@' '{print $3}')
+	include=$(echo "$hf_url" | awk -F '@' '{print $4}')
+	exclude=$(echo "$hf_url" | awk -F '@' '{print $5}')
 	export HF_ENDPOINT=${endpoint}
 
 	echo "Downloading model ${model_id} (endpoint=${endpoint}, revision=${revision}) from Huggingface..."
-	huggingface-cli download ${model_id} --revision ${revision} --cache-dir {{.ModelDirPath}}
+	cmd="huggingface-cli download ${model_id} --revision ${revision} --cache-dir {{.ModelDirPath}}"
+	if [ -n "${include}" ]; then
+		cmd="$cmd --include ${include//&/ }"
+	fi
+	if [ -n "${exclude}" ]; then
+		cmd="$cmd --exclude ${exclude//&/ }"
+	fi
+	eval $cmd
 else
 	echo "Downloading model {{.ModelRepositoryName}}:{{.ModelVersion}} to /tmp/downloaded.tar..."
 	if [[ ${url} == s3://* ]]; then
