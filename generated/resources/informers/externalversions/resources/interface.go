@@ -18,8 +18,8 @@ limitations under the License.
 package resources
 
 import (
-	internalinterfaces "github.com/bentoml/yatai-image-builder/generated/resources/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/bentoml/yatai-image-builder/generated/resources/informers/externalversions/resources/v1alpha1"
+	internalinterfaces "github.com/bentoml/yatai-image-builder/v2/generated/resources/informers/externalversions/internalinterfaces"
+	v1alpha1 "github.com/bentoml/yatai-image-builder/v2/generated/resources/informers/externalversions/resources/v1alpha1"
 )
 
 // Interface provides access to each of this group's versions.

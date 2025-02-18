@@ -1,4 +1,4 @@
-module github.com/bentoml/yatai-image-builder
+module github.com/bentoml/yatai-image-builder/v2
 
 go 1.23
 
@@ -29,6 +29,7 @@ require (
 
 require (
 	github.com/bentoml/yatai-deployment v1.1.10 // indirect
+	github.com/bentoml/yatai-image-builder v1.1.1-0.20230108162700-337f26f7f704 // indirect
 	github.com/containerd/typeurl/v2 v2.2.2 // indirect
 	github.com/docker/distribution v2.8.2+incompatible // indirect
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect

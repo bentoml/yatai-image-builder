@@ -25,7 +25,7 @@ import (
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
 
-	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/generated/resources/clientset/versioned/typed/resources/v1alpha1"
+	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/v2/generated/resources/clientset/versioned/typed/resources/v1alpha1"
 )
 
 type Interface interface {

@@ -18,7 +18,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	internalinterfaces "github.com/bentoml/yatai-image-builder/generated/resources/informers/externalversions/internalinterfaces"
+	internalinterfaces "github.com/bentoml/yatai-image-builder/v2/generated/resources/informers/externalversions/internalinterfaces"
 )
 
 // Interface provides access to all the informers in this group version.

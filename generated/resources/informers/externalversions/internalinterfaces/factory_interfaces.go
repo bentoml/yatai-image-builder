@@ -24,7 +24,7 @@ import (
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	cache "k8s.io/client-go/tools/cache"
 
-	versioned "github.com/bentoml/yatai-image-builder/generated/resources/clientset/versioned"
+	versioned "github.com/bentoml/yatai-image-builder/v2/generated/resources/clientset/versioned"
 )
 
 // NewInformerFunc takes versioned.Interface and time.Duration to return a SharedIndexInformer.
