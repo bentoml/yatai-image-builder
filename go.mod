@@ -5,13 +5,15 @@ go 1.23
 toolchain go1.23.1
 
 require (
+	emperror.dev/errors v0.8.1
 	github.com/apparentlymart/go-shquot v0.0.1
 	github.com/asottile/dockerfile v2.2.0+incompatible
 	github.com/aws/aws-sdk-go v1.55.5
-	github.com/bentoml/yatai-common v0.0.0-20241107031151-f7d5e9220f8a
+	github.com/bentoml/yatai-common v0.0.0-20250220035837-36a82744b261
 	github.com/bentoml/yatai-schemas v0.0.0-20231012015630-b7ce9413265c
 	github.com/huandu/xstrings v1.3.2
 	github.com/iancoleman/strcase v0.2.0
+	github.com/minio/minio-go/v7 v7.0.85
 	github.com/mitchellh/hashstructure/v2 v2.0.2
 	github.com/onsi/ginkgo/v2 v2.19.0
 	github.com/onsi/gomega v1.33.1
@@ -30,21 +32,28 @@ require (
 require (
 	github.com/bentoml/yatai-deployment v1.1.10 // indirect
 	github.com/containerd/typeurl/v2 v2.2.2 // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/docker/distribution v2.8.2+incompatible // indirect
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
+	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
+	github.com/goccy/go-json v0.10.4 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/pprof v0.0.0-20240727154555-813a5fbdbec8 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
+	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/moby/buildkit v0.17.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
+	github.com/redis/go-redis/v9 v9.7.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
+	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f // indirect
 	golang.org/x/sync v0.10.0 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
