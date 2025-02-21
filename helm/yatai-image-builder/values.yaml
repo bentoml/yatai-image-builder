@@ -140,3 +140,5 @@ containerImageS3Storage:
   endpointURL: ''
   bucket: ''
   enableStargz: false
+
+skipCheck: false

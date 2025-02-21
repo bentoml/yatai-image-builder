@@ -199,3 +199,23 @@ func GetImageInfo(ctx context.Context, dockerfileContent string, contextPath str
 		WorkingDir: workingDir,
 	}, nil
 }
+
+func GetContainerImageS3EndpointURL() string {
+	return os.Getenv("CONTAINER_IMAGE_S3_ENDPOINT_URL")
+}
+
+func GetContainerImageS3Bucket() string {
+	return os.Getenv("CONTAINER_IMAGE_S3_BUCKET")
+}
+
+func GetContainerImageS3EnableStargz() bool {
+	return os.Getenv("CONTAINER_IMAGE_S3_ENABLE_STARGZ") == "true"
+}
+
+func GetContainerImageS3AccessKeyID() string {
+	return os.Getenv("CONTAINER_IMAGE_S3_ACCESS_KEY_ID")
+}
+
+func GetContainerImageS3SecretAccessKey() string {
+	return os.Getenv("CONTAINER_IMAGE_S3_SECRET_ACCESS_KEY")
+}

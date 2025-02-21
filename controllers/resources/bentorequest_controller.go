@@ -1488,23 +1488,23 @@ func isImageStoredInS3(bentoRequest *resourcesv1alpha1.BentoRequest) (storedInS3
 	return bentoRequest.Annotations[commonconsts.KubeAnnotationImageStoredInS3] == commonconsts.KubeLabelValueTrue
 }
 
-func getContainerImageS3EndpointURL() string {
+func GetContainerImageS3EndpointURL() string {
 	return os.Getenv("CONTAINER_IMAGE_S3_ENDPOINT_URL")
 }
 
-func getContainerImageS3Bucket() string {
+func GetContainerImageS3Bucket() string {
 	return os.Getenv("CONTAINER_IMAGE_S3_BUCKET")
 }
 
-func getContainerImageS3EnableStargz() bool {
+func GetContainerImageS3EnableStargz() bool {
 	return os.Getenv("CONTAINER_IMAGE_S3_ENABLE_STARGZ") == trueStr
 }
 
-func getContainerImageS3AccessKeyID() string {
+func GetContainerImageS3AccessKeyID() string {
 	return os.Getenv("CONTAINER_IMAGE_S3_ACCESS_KEY_ID")
 }
 
-func getContainerImageS3SecretAccessKey() string {
+func GetContainerImageS3SecretAccessKey() string {
 	return os.Getenv("CONTAINER_IMAGE_S3_SECRET_ACCESS_KEY")
 }
 
@@ -2331,11 +2331,11 @@ type GenerateImageBuilderPodTemplateSpecOption struct {
 }
 
 func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context.Context, opt GenerateImageBuilderPodTemplateSpecOption) (pod *corev1.PodTemplateSpec, err error) {
-	containerImageS3EndpointURL := getContainerImageS3EndpointURL()
-	containerImageS3Bucket := getContainerImageS3Bucket()
-	containerImageS3EnableStargz := getContainerImageS3EnableStargz()
-	containerImageS3AccessKeyID := getContainerImageS3AccessKeyID()
-	containerImageS3SecretAccessKey := getContainerImageS3SecretAccessKey()
+	containerImageS3EndpointURL := GetContainerImageS3EndpointURL()
+	containerImageS3Bucket := GetContainerImageS3Bucket()
+	containerImageS3EnableStargz := GetContainerImageS3EnableStargz()
+	containerImageS3AccessKeyID := GetContainerImageS3AccessKeyID()
+	containerImageS3SecretAccessKey := GetContainerImageS3SecretAccessKey()
 	imageStoredInS3 := isImageStoredInS3(opt.BentoRequest)
 
 	bentoRepositoryName, _, bentoVersion := xstrings.Partition(opt.BentoRequest.Spec.BentoTag, ":")
