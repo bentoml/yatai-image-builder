@@ -17,20 +17,31 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
+	"net/http"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+	"emperror.dev/errors"
+	corev1 "k8s.io/api/core/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+
+	commonconfig "github.com/bentoml/yatai-common/config"
+	"github.com/bentoml/yatai-common/conncheck"
 	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
 	resourcescontrollers "github.com/bentoml/yatai-image-builder/controllers/resources"
 	//+kubebuilder:scaffold:imports
@@ -52,11 +63,13 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
+	var skipCheck bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.BoolVar(&skipCheck, "skip-check", false, "Skip check")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -105,10 +118,62 @@ func main() {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
+	mgr.GetWebhookServer().Register("/startup", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !skipCheck {
+			if err := verifyConfigurations(r.Context(), mgr.GetClient()); err != nil {
+				setupLog.Error(err, "failed to verify configurations")
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func verifyConfigurations(ctx context.Context, c client.Client) error {
+	// test s3 connection
+	containerImageS3EndpointURL := resourcescontrollers.GetContainerImageS3EndpointURL()
+	containerImageS3Bucket := resourcescontrollers.GetContainerImageS3Bucket()
+	containerImageS3AccessKeyID := resourcescontrollers.GetContainerImageS3AccessKeyID()
+	containerImageS3SecretAccessKey := resourcescontrollers.GetContainerImageS3SecretAccessKey()
+	minioClient, err := minio.New(containerImageS3EndpointURL, &minio.Options{
+		Creds: credentials.NewStaticV4(containerImageS3AccessKeyID, containerImageS3SecretAccessKey, ""),
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to create minio client")
+	}
+	s3Probe := conncheck.NewS3Probe(minioClient)
+	err = s3Probe.Test(ctx, "imagebuilder", containerImageS3Bucket)
+	if err != nil {
+		return errors.Wrap(err, "failed to test s3 connection")
+	}
+
+	// test docker registry connection
+	dockerRegistryConfig, err := commonconfig.GetDockerRegistryConfig(ctx, func(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
+		secret := &corev1.Secret{}
+		err := c.Get(ctx, types.NamespacedName{
+			Namespace: namespace,
+			Name:      name,
+		}, secret)
+		return secret, errors.Wrap(err, "get secret")
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to get docker registry config")
+	}
+	registryProbe := conncheck.NewRegistryProbe(conncheck.RegistryConfig{
+		Endpoint: dockerRegistryConfig.Server,
+		Username: dockerRegistryConfig.Username,
+		Password: dockerRegistryConfig.Password,
+	})
+	err = registryProbe.Test(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to test docker registry connection")
+	}
+	return nil
 }
