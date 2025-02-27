@@ -9,7 +9,7 @@ require (
 	github.com/apparentlymart/go-shquot v0.0.1
 	github.com/asottile/dockerfile v2.2.0+incompatible
 	github.com/aws/aws-sdk-go v1.55.5
-	github.com/bentoml/yatai-common v0.0.0-20250220035837-36a82744b261
+	github.com/bentoml/yatai-common v0.0.0-20250227192946-388a89740bbe
 	github.com/bentoml/yatai-schemas v0.0.0-20231012015630-b7ce9413265c
 	github.com/huandu/xstrings v1.3.2
 	github.com/iancoleman/strcase v0.2.0
