@@ -6,8 +6,8 @@ github.com/asottile/dockerfile v2.2.0+incompatible h1:sVKYsmos63Km1xGsNTgdz2OEO0
 github.com/asottile/dockerfile v2.2.0+incompatible/go.mod h1:z3uYnlNGA9635hb4kbb2DRnlR9XLQ4HsYsDer3slsjA=
 github.com/aws/aws-sdk-go v1.55.5 h1:KKUZBfBoyqy5d3swXyiC7Q76ic40rYcbqH7qjh59kzU=
 github.com/aws/aws-sdk-go v1.55.5/go.mod h1:eRwEWoyTWFMVYVQzKMNHWP5/RV4xIUGMQfXQHfHkpNU=
-github.com/bentoml/yatai-common v0.0.0-20250220035837-36a82744b261 h1:6hrR94HDPgjxadrlZSApyLfWioVV47Wg7YN3xFbkx2o=
-github.com/bentoml/yatai-common v0.0.0-20250220035837-36a82744b261/go.mod h1:DESgQg7CwvWvFRiBZqCRmHewU1v9A/olfaHLH5LKltY=
+github.com/bentoml/yatai-common v0.0.0-20250227192946-388a89740bbe h1:lOoi4otcI++TYDASX1gnbBfxu2R9btYhQqEmjDezq0c=
+github.com/bentoml/yatai-common v0.0.0-20250227192946-388a89740bbe/go.mod h1:DESgQg7CwvWvFRiBZqCRmHewU1v9A/olfaHLH5LKltY=
 github.com/bentoml/yatai-deployment v1.1.10 h1:YADdLkwyUcH4Zsyp/O4ymJdqNoMFIu/KKQrfnhNsRd0=
 github.com/bentoml/yatai-deployment v1.1.10/go.mod h1:j73glvFeo11oP5I5J7lOxyY5gApS199qFxA1NzplX+Y=
 github.com/bentoml/yatai-schemas v0.0.0-20231012015630-b7ce9413265c h1:GoL7b71mn9+0uPrzvbb0eEVlFToQ2uQJ7vK6UfdZpTc=
