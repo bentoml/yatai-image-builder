@@ -37,7 +37,7 @@ spec:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=:8080
             - --leader-elect
-            - --skip-check={{ .Values.skipCheck | quote }}
+            - --skip-check={{ .Values.skipCheck }}
           command:
             - /manager
           env:
