@@ -25,22 +25,18 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	"emperror.dev/errors"
-	corev1 "k8s.io/api/core/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
-	commonconfig "github.com/bentoml/yatai-common/config"
 	"github.com/bentoml/yatai-common/conncheck"
 	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
 	resourcescontrollers "github.com/bentoml/yatai-image-builder/controllers/resources"
@@ -111,7 +107,7 @@ func main() {
 	//+kubebuilder:scaffold:builder
 
 	if !skipCheck {
-		if err := verifyConfigurations(context.Background(), mgr.GetClient()); err != nil {
+		if err := verifyConfigurations(context.Background()); err != nil {
 			setupLog.Error(err, "failed to verify configurations")
 			os.Exit(1)
 			return
@@ -134,7 +130,7 @@ func main() {
 	}
 }
 
-func verifyConfigurations(ctx context.Context, c client.Client) error {
+func verifyConfigurations(ctx context.Context) error {
 	// test s3 connection
 	rawURL := resourcescontrollers.GetContainerImageS3EndpointURL()
 	parsedURL, err := url.Parse(rawURL)
@@ -157,26 +153,5 @@ func verifyConfigurations(ctx context.Context, c client.Client) error {
 		return errors.Wrap(err, "failed to test s3 connection")
 	}
 
-	// test docker registry connection
-	dockerRegistryConfig, err := commonconfig.GetDockerRegistryConfig(ctx, func(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
-		secret := &corev1.Secret{}
-		err := c.Get(ctx, types.NamespacedName{
-			Namespace: namespace,
-			Name:      name,
-		}, secret)
-		return secret, errors.Wrap(err, "get secret")
-	})
-	if err != nil {
-		return errors.Wrap(err, "failed to get docker registry config")
-	}
-	registryProbe := conncheck.NewRegistryProbe(conncheck.RegistryConfig{
-		Endpoint: dockerRegistryConfig.Server,
-		Username: dockerRegistryConfig.Username,
-		Password: dockerRegistryConfig.Password,
-	})
-	err = registryProbe.Test(ctx)
-	if err != nil {
-		return errors.Wrap(err, "failed to test docker registry connection")
-	}
 	return nil
 }
