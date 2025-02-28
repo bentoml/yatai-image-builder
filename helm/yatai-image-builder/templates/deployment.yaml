@@ -98,14 +98,6 @@ spec:
             periodSeconds: 10
             successThreshold: 1
             timeoutSeconds: 1
-          
-          startupProbe:
-            httpGet:
-              path: /startup
-              port: 8081
-            failureThreshold: 3
-            periodSeconds: 10
-            timeoutSeconds: 10
 
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
