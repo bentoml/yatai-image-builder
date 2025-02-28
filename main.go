@@ -19,7 +19,6 @@ package main
 import (
 	"context"
 	"flag"
-	"net/http"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -110,6 +109,14 @@ func main() {
 	}
 	//+kubebuilder:scaffold:builder
 
+	if !skipCheck {
+		if err := verifyConfigurations(context.Background(), mgr.GetClient()); err != nil {
+			setupLog.Error(err, "failed to verify configurations")
+			os.Exit(1)
+			return
+		}
+	}
+
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
@@ -118,16 +125,6 @@ func main() {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
-	mgr.GetWebhookServer().Register("/startup", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !skipCheck {
-			if err := verifyConfigurations(r.Context(), mgr.GetClient()); err != nil {
-				setupLog.Error(err, "failed to verify configurations")
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-		}
-		w.WriteHeader(http.StatusOK)
-	}))
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
