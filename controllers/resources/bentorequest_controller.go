@@ -1935,7 +1935,7 @@ func (r *BentoRequestReconciler) generateModelSeederPodTemplateSpec(ctx context.
 	if strings.HasPrefix(modelDownloadURL, "hf://") {
 		url := strings.TrimPrefix(modelDownloadURL, "hf://")
 		arr := strings.Split(url, "@")
-		if len(arr) != 3 {
+		if len(arr) < 3 {
 			err = errors.Errorf("invalid Huggingface model download URL %s", modelDownloadURL)
 			return
 		}
