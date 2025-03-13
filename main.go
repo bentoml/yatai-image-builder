@@ -142,7 +142,8 @@ func verifyConfigurations(ctx context.Context) error {
 	containerImageS3AccessKeyID := resourcescontrollers.GetContainerImageS3AccessKeyID()
 	containerImageS3SecretAccessKey := resourcescontrollers.GetContainerImageS3SecretAccessKey()
 	minioClient, err := minio.New(containerImageS3EndpointURL, &minio.Options{
-		Creds: credentials.NewStaticV4(containerImageS3AccessKeyID, containerImageS3SecretAccessKey, ""),
+		Creds:  credentials.NewStaticV4(containerImageS3AccessKeyID, containerImageS3SecretAccessKey, ""),
+		Secure: parsedURL.Scheme == "https",
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to create minio client")
