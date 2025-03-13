@@ -1508,8 +1508,8 @@ func GetContainerImageS3SecretAccessKey() string {
 	return os.Getenv("CONTAINER_IMAGE_S3_SECRET_ACCESS_KEY")
 }
 
-func GetContainerImageS3Secure() string {
-	return os.Getenv("CONTAINER_IMAGE_S3_SECURE")
+func GetContainerImageS3Secure() (bool, error) {
+	return strconv.ParseBool(os.Getenv("CONTAINER_IMAGE_S3_SECURE"))
 }
 
 func (r *BentoRequestReconciler) getBuildArgs(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest) (buildArgs []string, err error) {

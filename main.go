@@ -141,7 +141,10 @@ func verifyConfigurations(ctx context.Context) error {
 	containerImageS3Bucket := resourcescontrollers.GetContainerImageS3Bucket()
 	containerImageS3AccessKeyID := resourcescontrollers.GetContainerImageS3AccessKeyID()
 	containerImageS3SecretAccessKey := resourcescontrollers.GetContainerImageS3SecretAccessKey()
-	containerImageS3Secure := resourcescontrollers.GetContainerImageS3Secure()
+	containerImageS3Secure, err := resourcescontrollers.GetContainerImageS3Secure()
+	if err != nil {
+		return errors.Wrap(err, "failed to parse container image s3 secure")
+	}
 	minioClient, err := minio.New(containerImageS3EndpointURL, &minio.Options{
 		Creds:  credentials.NewStaticV4(containerImageS3AccessKeyID, containerImageS3SecretAccessKey, ""),
 		Secure: containerImageS3Secure,
