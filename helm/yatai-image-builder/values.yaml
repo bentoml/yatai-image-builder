@@ -67,7 +67,7 @@ yataiSystem:
   serviceAccountName: "yatai"
 
 yatai:
-  endpoint: http://yatai.yatai-system.svc.cluster.local
+  endpoint: ''
   apiToken: ''
   clusterName: default
 
