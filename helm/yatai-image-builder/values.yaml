@@ -76,8 +76,6 @@ yatai:
   apiToken: ''
   clusterName: default
 
-disableYataiComponentRegistration: false
-
 dockerRegistry:
   server: ''
   inClusterServer: ''
@@ -143,3 +141,6 @@ containerImageS3Storage:
   secure: false
 
 skipCheck: false
+
+internal:
+  disableYataiComponentRegistration: true
