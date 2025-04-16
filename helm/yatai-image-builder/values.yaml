@@ -106,6 +106,21 @@ kaniko:
   cacheRepo: ''
   snapshotMode: '' # options: full, redo, time
 
+builder:
+  requests: {}
+  limits: {}
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  serviceAccount:
+    create: true
+    annotations: {}
+    # The name of the service account to use.
+    # If not set and create is true, a name is generated using the fullname template
+    name: ""
+
 # The service monitor requires Prometheus CRDs to be installed to function
 serviceMonitor:
   enabled: false
@@ -121,6 +136,8 @@ global:
     accessKeyId: ""
     secretAccessKey: ""
     bucketName: ""
+
+  deploymentNamespace: yatai
 
   multiTenant: false
 

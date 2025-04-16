@@ -86,6 +86,17 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Create the name of the service account to use
+*/}}
+{{- define "yatai-image-builder.builderServiceAccountName" -}}
+{{- if .Values.builder.serviceAccount.create }}
+{{- default ((printf "%s-builder" (include "yatai-image-builder.fullname" .)) | trunc 63 | trimSuffix "-") .Values.builder.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.builder.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
 Generate k8s robot token
 */}}
 {{- define "yatai-image-builder.yataiApiToken" -}}
