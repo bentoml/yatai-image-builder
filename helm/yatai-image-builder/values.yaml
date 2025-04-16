@@ -132,13 +132,13 @@ serviceMonitor: # need prometheus crd installed
 bentoRequestNamespaces: ['yatai']
 bentoRequestAllNamespaces: false
 
-containerImageS3Storage:
-  accessKeyID: ''
-  secretAccessKey: ''
-  endpointURL: ''
-  bucket: ''
-  enableStargz: false
-  secure: false
+global:
+  s3:
+    endpoint: ""
+    secure: false
+    accessKeyId: ""
+    secretAccessKey: ""
+    bucketName: ""
 
 skipCheck: false
 
