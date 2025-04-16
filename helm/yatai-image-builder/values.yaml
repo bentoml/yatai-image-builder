@@ -85,17 +85,6 @@ dockerRegistry:
   useAWSECRWithIAMRole: false
   awsECRRegion: ap-northeast-3
 
-aws:
-  accessKeyID: ''
-  secretAccessKey: ''
-  secretAccessKeyExistingSecretName: ''
-  secretAccessKeyExistingSecretKey: ''
-gcp:
-  accessKeyID: ''
-  secretAccessKey: ''
-  secretAccessKeyExistingSecretName: ''
-  secretAccessKeyExistingSecretKey: ''
-
 internalImages:
   bentoDownloader: quay.io/bentoml/bento-downloader:0.0.5
   kaniko: quay.io/bentoml/kaniko:debug

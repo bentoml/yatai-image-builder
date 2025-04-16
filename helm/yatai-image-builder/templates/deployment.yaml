@@ -52,13 +52,6 @@ spec:
                   name: {{ .Values.dockerRegistry.passwordExistingSecretName | quote }}
                   key: {{ .Values.dockerRegistry.passwordExistingSecretKey | quote }}
             {{- end }}
-            {{- if .Values.aws.secretAccessKeyExistingSecretName }}
-            - name: AWS_SECRET_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.aws.secretAccessKeyExistingSecretName | quote }}
-                  key: {{ .Values.aws.secretAccessKeyExistingSecretKey | quote }}
-            {{- end }}
             - name: JUICEFS_STORAGE_CLASS_NAME
               value: {{ .Values.juicefsStorageClassName | quote }}
           envFrom:
