@@ -3119,8 +3119,7 @@ echo "Done"
 		builderImage = "quay.io/bentoml/bento-image-builder:0.1.1"
 		extraFlags := ""
 		for _, buildArg := range buildArgs {
-			quotedBuildArg := unix.SingleQuote.Quote(buildArg)
-			extraFlags = fmt.Sprintf("%s --build-arg %s", extraFlags, quotedBuildArg)
+			extraFlags = fmt.Sprintf("%s --build-arg \"%s\"", extraFlags, buildArg)
 		}
 		if !opt.ImageInfo.DockerRegistry.Secure {
 			extraFlags += " --image-registry-insecure"
