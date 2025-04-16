@@ -127,6 +127,8 @@ global:
     secretAccessKey: ""
     bucketName: ""
 
+  multiTenant: false
+
 skipCheck: false
 
 internal:
