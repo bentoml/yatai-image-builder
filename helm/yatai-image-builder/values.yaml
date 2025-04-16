@@ -126,7 +126,6 @@ serviceMonitor:
 
 # Namespaces to monitor for bentorequests
 bentoRequestNamespaces: ['yatai']
-bentoRequestAllNamespaces: false
 
 global:
   imagePullSecrets: []
@@ -139,6 +138,7 @@ global:
     bucketName: ""
 
   deploymentNamespace: yatai
+  monitorAllNamespaces: false
 
   multiTenant: false
 
