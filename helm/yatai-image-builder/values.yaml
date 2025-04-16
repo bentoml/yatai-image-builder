@@ -95,8 +95,6 @@ bentoImageBuildEngine: kaniko # options: kaniko, buildkit, buildkit-rootless
 
 addNamespacePrefixToImageName: false
 
-juicefsStorageClassName: juicefs-sc
-
 buildkit:
   cacheRepo: ''
   s3Cache:
@@ -107,9 +105,6 @@ buildkit:
 kaniko:
   cacheRepo: ''
   snapshotMode: '' # options: full, redo, time
-
-estargz:
-  enabled: false
 
 # The service monitor requires Prometheus CRDs to be installed to function
 serviceMonitor:

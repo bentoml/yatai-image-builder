@@ -53,7 +53,7 @@ spec:
                   key: {{ .Values.dockerRegistry.passwordExistingSecretKey | quote }}
             {{- end }}
             - name: JUICEFS_STORAGE_CLASS_NAME
-              value: {{ .Values.juicefsStorageClassName | quote }}
+              value: juicefs-sc
           envFrom:
             - secretRef:
                 name: {{ include "yatai-image-builder.envname" . }}
