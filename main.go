@@ -19,7 +19,6 @@ package main
 import (
 	"context"
 	"flag"
-	"net/url"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
