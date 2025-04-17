@@ -2,7 +2,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: {{ include "yatai-image-builder.serviceAccountNameInYataiSystemNamespace" . }}
-  namespace: {{ .Values.yataiSystem.namespace }}
+  namespace: {{ .Values.global.yataiSystemNamespace }}
 rules:
 - apiGroups:
   - ""

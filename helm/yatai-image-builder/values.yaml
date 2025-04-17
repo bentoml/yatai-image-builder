@@ -62,10 +62,6 @@ tolerations: []
 
 affinity: {}
 
-yataiSystem:
-  namespace: "yatai-system"
-  serviceAccountName: "yatai"
-
 yatai:
   endpoint: ''
   apiToken: ''
@@ -138,6 +134,9 @@ global:
   monitorAllNamespaces: false
 
   multiTenant: false
+
+  yataiSystemNamespace: yatai-system
+  yataiSystemServiceAccountName: yatai
 
 skipCheck: false
 

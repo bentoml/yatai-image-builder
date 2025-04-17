@@ -10,6 +10,6 @@ roleRef:
   name: yatai-with-bento-request
 subjects:
 - kind: ServiceAccount
-  name: {{ $.Values.yataiSystem.serviceAccountName }}
+  name: {{ $.Values.global.yataiSystemServiceAccountName }}
   namespace: {{ . | quote }}
 {{- end }}
