@@ -141,3 +141,4 @@ global:
 internal:
   disableYataiComponentRegistration: true
   skipCheck: false
+  juicefsStorageClassName: juicefs-sc
