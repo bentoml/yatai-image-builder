@@ -138,7 +138,6 @@ global:
   yataiSystemNamespace: yatai-system
   yataiSystemServiceAccountName: yatai
 
-skipCheck: false
-
 internal:
   disableYataiComponentRegistration: true
+  skipCheck: false
