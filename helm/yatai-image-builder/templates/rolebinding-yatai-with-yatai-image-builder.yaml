@@ -9,5 +9,5 @@ roleRef:
   name: {{ include "yatai-image-builder.yatai-with-yatai-image-builder-rolename" . }}
 subjects:
   - kind: ServiceAccount
-    name: {{ .Values.yataiSystem.serviceAccountName }}
-    namespace: {{ .Values.yataiSystem.namespace }}
+    name: {{ .Values.global.yataiSystemServiceAccountName }}
+    namespace: {{ .Values.global.yataiSystemNamespace }}

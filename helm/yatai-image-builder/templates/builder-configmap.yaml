@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+immutable: false
+metadata:
+  name: yatai-image-builder-config
+  namespace: {{ .Release.Namespace }}
+data:
+  default_image_builder_container_resources: |
+    requests:
+      {{ .Values.builder.requests | toYaml | indent 6 }}
+    limits:
+      {{ .Values.builder.limits | toYaml | indent 6 }}
+  extra_pod_spec: |
+    nodeSelector:
+      {{ .Values.builder.nodeSelector | toYaml | indent 6 }}
+    tolerations:
+      {{ .Values.builder.tolerations | toYaml | indent 6 }}
+    affinity:
+      {{ .Values.builder.affinity | toYaml | indent 6 }}

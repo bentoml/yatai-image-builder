@@ -19,7 +19,6 @@ package main
 import (
 	"context"
 	"flag"
-	"net/url"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -132,12 +131,7 @@ func main() {
 
 func verifyConfigurations(ctx context.Context) error {
 	// test s3 connection
-	rawURL := resourcescontrollers.GetContainerImageS3EndpointURL()
-	parsedURL, err := url.Parse(rawURL)
-	if err != nil {
-		return errors.Wrap(err, "failed to parse S3 endpoint URL")
-	}
-	containerImageS3EndpointURL := parsedURL.Host
+	containerImageS3EndpointURL := resourcescontrollers.GetContainerImageS3EndpointURL()
 	containerImageS3Bucket := resourcescontrollers.GetContainerImageS3Bucket()
 	containerImageS3AccessKeyID := resourcescontrollers.GetContainerImageS3AccessKeyID()
 	containerImageS3SecretAccessKey := resourcescontrollers.GetContainerImageS3SecretAccessKey()

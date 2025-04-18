@@ -12,7 +12,6 @@ image:
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
 
-imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
@@ -43,10 +42,6 @@ service:
   port: 80
 
 resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
   # limits:
   #   cpu: 100m
   #   memory: 128Mi
@@ -67,16 +62,10 @@ tolerations: []
 
 affinity: {}
 
-yataiSystem:
-  namespace: "yatai-system"
-  serviceAccountName: "yatai"
-
 yatai:
-  endpoint: http://yatai.yatai-system.svc.cluster.local
+  endpoint: ''
   apiToken: ''
   clusterName: default
-
-disableYataiComponentRegistration: false
 
 dockerRegistry:
   server: ''
@@ -91,17 +80,6 @@ dockerRegistry:
   useAWSECRWithIAMRole: false
   awsECRRegion: ap-northeast-3
 
-aws:
-  accessKeyID: ''
-  secretAccessKey: ''
-  secretAccessKeyExistingSecretName: ''
-  secretAccessKeyExistingSecretKey: ''
-gcp:
-  accessKeyID: ''
-  secretAccessKey: ''
-  secretAccessKeyExistingSecretName: ''
-  secretAccessKeyExistingSecretKey: ''
-
 internalImages:
   bentoDownloader: quay.io/bentoml/bento-downloader:0.0.5
   kaniko: quay.io/bentoml/kaniko:debug
@@ -111,8 +89,6 @@ internalImages:
 bentoImageBuildEngine: kaniko # options: kaniko, buildkit, buildkit-rootless
 
 addNamespacePrefixToImageName: false
-
-juicefsStorageClassName: juicefs-sc
 
 buildkit:
   cacheRepo: ''
@@ -125,21 +101,48 @@ kaniko:
   cacheRepo: ''
   snapshotMode: '' # options: full, redo, time
 
-estargz:
+builder:
+  requests: {}
+  limits: {}
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  serviceAccount:
+    create: true
+    annotations: {}
+    # The name of the service account to use.
+    # If not set and create is true, a name is generated using the fullname template
+    name: ""
+
+# The service monitor requires Prometheus CRDs to be installed to function
+serviceMonitor:
   enabled: false
 
-serviceMonitor: # need prometheus crd installed
-  enabled: false
+global:
+  imagePullSecrets: []
 
-bentoRequestNamespaces: ['yatai']
-bentoRequestAllNamespaces: false
+  s3:
+    endpoint: ""
+    secure: false
+    accessKeyId: ""
+    secretAccessKey: ""
+    bucketName: ""
 
-containerImageS3Storage:
-  accessKeyID: ''
-  secretAccessKey: ''
-  endpointURL: ''
-  bucket: ''
-  enableStargz: false
-  secure: false
+  deploymentNamespaces: ["yatai"]
+  monitorAllNamespaces: false
 
-skipCheck: false
+  multiTenant: false
+
+  yataiSystemNamespace: yatai-system
+  yataiSystemServiceAccountName: yatai
+
+internal:
+  disableYataiComponentRegistration: true
+  skipCheck: false
+  juicefsStorageClassName: juicefs-sc
+
+  aws:
+    accessKeyID: ''
+    secretAccessKey: ''

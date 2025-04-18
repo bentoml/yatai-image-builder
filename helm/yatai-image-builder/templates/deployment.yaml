@@ -24,7 +24,7 @@ spec:
       labels:
         {{- include "yatai-image-builder.selectorLabels" . | nindent 8 }}
     spec:
-      {{- with .Values.imagePullSecrets }}
+      {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -37,7 +37,7 @@ spec:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=:8080
             - --leader-elect
-            - --skip-check={{ .Values.skipCheck }}
+            - --skip-check={{ .Values.internal.skipCheck }}
           command:
             - /manager
           env:
@@ -52,15 +52,8 @@ spec:
                   name: {{ .Values.dockerRegistry.passwordExistingSecretName | quote }}
                   key: {{ .Values.dockerRegistry.passwordExistingSecretKey | quote }}
             {{- end }}
-            {{- if .Values.aws.secretAccessKeyExistingSecretName }}
-            - name: AWS_SECRET_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.aws.secretAccessKeyExistingSecretName | quote }}
-                  key: {{ .Values.aws.secretAccessKeyExistingSecretKey | quote }}
-            {{- end }}
             - name: JUICEFS_STORAGE_CLASS_NAME
-              value: {{ .Values.juicefsStorageClassName | quote }}
+              value: {{ .Values.internal.juicefsStorageClassName }}
           envFrom:
             - secretRef:
                 name: {{ include "yatai-image-builder.envname" . }}

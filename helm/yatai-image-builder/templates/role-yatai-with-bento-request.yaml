@@ -1,4 +1,4 @@
-{{- range .Values.bentoRequestNamespaces }}
+{{- range .Values.global.deploymentNamespaces }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
