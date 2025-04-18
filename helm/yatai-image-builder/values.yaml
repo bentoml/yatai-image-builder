@@ -142,3 +142,7 @@ internal:
   disableYataiComponentRegistration: true
   skipCheck: false
   juicefsStorageClassName: juicefs-sc
+
+  aws:
+    accessKeyID: ''
+    secretAccessKey: ''
