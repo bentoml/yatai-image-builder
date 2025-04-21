@@ -2,12 +2,12 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: {{ include "yatai-image-builder.yatai-rolename-in-yatai-system-namespace" . }}
-  namespace: {{ .Values.global.yataiSystemNamespace }}
+  namespace: {{ .Values.global.systemNamespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ include "yatai-image-builder.yatai-rolename-in-yatai-system-namespace" . }}
 subjects:
   - kind: ServiceAccount
-    name: {{ .Values.global.yataiSystemServiceAccountName }}
-    namespace: {{ .Values.global.yataiSystemNamespace }}
+    name: {{ .Values.global.systemServiceAccountName }}
+    namespace: {{ .Values.global.systemNamespace }}
