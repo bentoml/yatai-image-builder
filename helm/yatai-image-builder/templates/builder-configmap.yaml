@@ -7,13 +7,13 @@ metadata:
 data:
   default_image_builder_container_resources: |
     requests:
-      {{ .Values.builder.requests | toYaml | indent 6 }}
+      {{- .Values.builder.requests | toYaml | nindent 6 }}
     limits:
-      {{ .Values.builder.limits | toYaml | indent 6 }}
+      {{- .Values.builder.limits | toYaml | nindent 6 }}
   extra_pod_spec: |
     nodeSelector:
-      {{ .Values.builder.nodeSelector | toYaml | indent 6 }}
+      {{- .Values.builder.nodeSelector | toYaml | nindent 6 }}
     tolerations:
-      {{ .Values.builder.tolerations | toYaml | indent 6 }}
+      {{- .Values.builder.tolerations | toYaml | nindent 6 }}
     affinity:
-      {{ .Values.builder.affinity | toYaml | indent 6 }}
+      {{- .Values.builder.affinity | toYaml | nindent 6 }}
