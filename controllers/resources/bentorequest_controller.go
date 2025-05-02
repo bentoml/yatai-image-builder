@@ -101,8 +101,9 @@ const (
 // BentoRequestReconciler reconciles a BentoRequest object
 type BentoRequestReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Scheme       *runtime.Scheme
+	Recorder     record.EventRecorder
+	NamespaceMap map[string]bool
 }
 
 //+kubebuilder:rbac:groups=resources.yatai.ai,resources=bentorequests,verbs=get;list;watch;create;update;patch;delete
@@ -3431,10 +3432,17 @@ func (r *BentoRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		logs.Info("yatai component registration is disabled")
 	}
 
+	namespaceFilter := predicate.NewPredicateFuncs(func(object client.Object) bool {
+		if r.NamespaceMap != nil {
+			return r.NamespaceMap[object.GetNamespace()]
+		}
+		return true
+	})
+
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&resourcesv1alpha1.BentoRequest{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Owns(&resourcesv1alpha1.Bento{}).
-		Owns(&batchv1.Job{}).
+		Owns(&resourcesv1alpha1.Bento{}, builder.WithPredicates(namespaceFilter)).
+		Owns(&batchv1.Job{}, builder.WithPredicates(namespaceFilter)).
 		Complete(r)
 	return errors.Wrap(err, "failed to setup BentoRequest controller")
 }

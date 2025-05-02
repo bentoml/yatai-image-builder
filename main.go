@@ -20,6 +20,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -30,6 +31,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -59,12 +61,16 @@ func main() {
 	var enableLeaderElection bool
 	var probeAddr string
 	var skipCheck bool
+	var watchNamespaces string
+	var watchAllNamespaces bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&skipCheck, "skip-check", false, "Skip check")
+	flag.StringVar(&watchNamespaces, "watch-namespaces", "", "Watch namespaces")
+	flag.BoolVar(&watchAllNamespaces, "watch-all-namespaces", false, "Watch all namespaces")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -73,7 +79,7 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	crtlOptions := ctrl.Options{
 		Scheme:                 scheme,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
@@ -89,16 +95,35 @@ func main() {
 		// if you are doing or is intended to do any operation such as perform cleanups
 		// after the manager stops then its usage might be unsafe.
 		// LeaderElectionReleaseOnCancel: true,
-	})
+	}
+
+	watchNamespacesList := strings.Split(watchNamespaces, ",")
+	namespaceMap := map[string]cache.Config{}
+	namespaceMapBool := map[string]bool{}
+	for _, namespace := range watchNamespacesList {
+		namespaceMap[namespace] = cache.Config{}
+		namespaceMapBool[namespace] = true
+	}
+
+	if !watchAllNamespaces {
+		crtlOptions.Cache = cache.Options{
+			DefaultNamespaces: namespaceMap,
+		}
+	} else {
+		namespaceMapBool = nil
+	}
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), crtlOptions)
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
 
 	if err = (&resourcescontrollers.BentoRequestReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("yatai-image-builder"),
+		Client:       mgr.GetClient(),
+		Scheme:       mgr.GetScheme(),
+		Recorder:     mgr.GetEventRecorderFor("yatai-image-builder"),
+		NamespaceMap: namespaceMapBool,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "BentoRequest")
 		os.Exit(1)
