@@ -39,6 +39,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
 	"github.com/bentoml/yatai-common/conncheck"
+	"github.com/bentoml/yatai-common/consts"
 	resourcesv1alpha1 "github.com/bentoml/yatai-image-builder/apis/resources/v1alpha1"
 	resourcescontrollers "github.com/bentoml/yatai-image-builder/controllers/resources"
 	//+kubebuilder:scaffold:imports
@@ -98,6 +99,10 @@ func main() {
 	}
 
 	watchNamespacesList := strings.Split(watchNamespaces, ",")
+	sysNamespace := os.Getenv(consts.EnvYataiImageBuilderNamespace)
+	if sysNamespace != "" && !strings.Contains(watchNamespaces, sysNamespace) {
+		watchNamespacesList = append(watchNamespacesList, sysNamespace)
+	}
 	namespaceMap := map[string]cache.Config{}
 	namespaceMapBool := map[string]bool{}
 	for _, namespace := range watchNamespacesList {
