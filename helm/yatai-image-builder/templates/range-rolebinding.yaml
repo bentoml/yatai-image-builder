@@ -11,5 +11,5 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: {{ include "yatai-image-builder.serviceAccountName" $ }}
-  namespace: {{ . | quote }}
+  namespace: {{ $.Release.Namespace }}
 {{- end }}
