@@ -7,22 +7,26 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - secrets
-  resourceNames:
-  - yatai-image-builder-build-args
+  - configmaps
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - ""
   resources:
-  - configmaps
-  resourceNames:
-  - yatai-image-builder-config
+  - secrets
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - ""
