@@ -21,12 +21,18 @@ import (
 	"path"
 
 	// nolint: gosec
+	"bytes"
 	"crypto/md5"
-	"strconv"
-
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
+	"strconv"
+	"strings"
+	"text/template"
 	"time"
 
 	"github.com/apparentlymart/go-shquot/shquot"
@@ -49,14 +55,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/yaml"
-
-	"bytes"
-	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
-	"path/filepath"
-	"strings"
-	"text/template"
 
 	"github.com/huandu/xstrings"
 	"github.com/iancoleman/strcase"
@@ -134,7 +132,6 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	bentoRequest := &resourcesv1alpha1.BentoRequest{}
 
 	err = r.Get(ctx, req.NamespacedName, bentoRequest)
-
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
@@ -236,7 +233,6 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		bentoRequest: bentoRequest,
 		req:          req,
 	})
-
 	if err != nil {
 		err = errors.Wrapf(err, "ensure image exists")
 		return
@@ -2101,7 +2097,7 @@ if [[ ${url} == hf://* ]]; then
 	export HF_ENDPOINT=${endpoint}
 
 	echo "Downloading model ${model_id} (endpoint=${endpoint}, revision=${revision}) from Huggingface..."
-	cmd="huggingface-cli download ${model_id} --revision ${revision} --cache-dir {{.ModelDirPath}}"
+	cmd="huggingface-cli download ${model_id} --revision ${revision} --cache-dir {{.ModelDirPath}} --quiet"
 	if [ -n "${include}" ]; then
 		cmd="$cmd --include ${include//&/ }"
 	fi
@@ -2328,10 +2324,12 @@ func injectPodAffinity(podSpec *corev1.PodSpec, bentoRequest *resourcesv1alpha1.
 	})
 }
 
-const BuilderContainerName = "builder"
-const BuilderJobFailedExitCode = 42
-const ModelSeederContainerName = "seeder"
-const ModelSeederJobFailedExitCode = 42
+const (
+	BuilderContainerName         = "builder"
+	BuilderJobFailedExitCode     = 42
+	ModelSeederContainerName     = "seeder"
+	ModelSeederJobFailedExitCode = 42
+)
 
 type GenerateImageBuilderPodTemplateSpecOption struct {
 	ImageInfo    ImageInfo
@@ -2522,7 +2520,6 @@ chown -R 1000:1000 /workspace
 {{end}}
 echo "Done"
 	`)
-
 	if err != nil {
 		err = errors.Wrap(err, "failed to parse download command template")
 		return
