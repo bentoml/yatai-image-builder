@@ -20,8 +20,8 @@ import (
 	"context"
 	"path"
 
-	// nolint: gosec
 	"bytes"
+	// nolint: gosec
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/hex"
