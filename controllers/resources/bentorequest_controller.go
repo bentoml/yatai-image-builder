@@ -2295,7 +2295,7 @@ func (r *BentoRequestReconciler) generateImageBuilderJob(ctx context.Context, op
 				},
 			},
 			Template:              *podTemplateSpec,
-			ActiveDeadlineSeconds: (*int64)(opt.BentoRequest.Spec.ImageBuildTimeout),
+			ActiveDeadlineSeconds: ptr.To(int64(opt.BentoRequest.Spec.ImageBuildTimeout.Seconds())),
 		},
 	}
 	err = ctrl.SetControllerReference(opt.BentoRequest, job, r.Scheme)
