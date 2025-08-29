@@ -20,6 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -56,11 +57,12 @@ type BentoSpec struct {
 	// +kubebuilder:validation:Required
 	Tag string `json:"tag"`
 	// +kubebuilder:validation:Required
-	Image       string        `json:"image"`
-	ServiceName string        `json:"serviceName,omitempty"`
-	Context     *BentoContext `json:"context,omitempty"`
-	Runners     []BentoRunner `json:"runners,omitempty"`
-	Models      []BentoModel  `json:"models,omitempty"`
+	Image       string                `json:"image"`
+	ServiceName string                `json:"serviceName,omitempty"`
+	Context     *BentoContext         `json:"context,omitempty"`
+	Runners     []BentoRunner         `json:"runners,omitempty"`
+	Models      []BentoModel          `json:"models,omitempty"`
+	Manifest    *runtime.RawExtension `json:"manifest,omitempty"`
 
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 }

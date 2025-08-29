@@ -317,6 +317,7 @@ func (r *BentoRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			Context:     bentoRequest.Spec.Context,
 			Runners:     bentoRequest.Spec.Runners,
 			Models:      bentoRequest.Spec.Models,
+			Manifest:    bentoRequest.Spec.Manifest,
 		},
 	}
 
