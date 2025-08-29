@@ -21,6 +21,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
 const (
@@ -56,12 +57,13 @@ type BentoRequestSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// +kubebuilder:validation:Required
-	BentoTag    string        `json:"bentoTag"`
-	DownloadURL string        `json:"downloadUrl,omitempty"`
-	ServiceName string        `json:"serviceName,omitempty"`
-	Context     *BentoContext `json:"context,omitempty"`
-	Runners     []BentoRunner `json:"runners,omitempty"`
-	Models      []BentoModel  `json:"models,omitempty"`
+	BentoTag    string                `json:"bentoTag"`
+	DownloadURL string                `json:"downloadUrl,omitempty"`
+	ServiceName string                `json:"serviceName,omitempty"`
+	Context     *BentoContext         `json:"context,omitempty"`
+	Runners     []BentoRunner         `json:"runners,omitempty"`
+	Models      []BentoModel          `json:"models,omitempty"`
+	Manifest    *runtime.RawExtension `json:"manifest,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	Image string `json:"image,omitempty"`

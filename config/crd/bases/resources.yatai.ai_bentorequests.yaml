@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: bentorequests.resources.yatai.ai
 spec:
   group: resources.yatai.ai
@@ -90,10 +90,13 @@ spec:
                       description: The ConfigMap to select from
                       properties:
                         name:
+                          default: ""
                           description: |-
                             Name of the referent.
+                            This field is effectively required, but due to backwards compatibility is
+                            allowed to be empty. Instances of this type with an empty value here are
+                            almost certainly wrong.
                             More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                            TODO: Add other useful fields. apiVersion, kind, uid?
                           type: string
                         optional:
                           description: Specify whether the ConfigMap must be defined
@@ -108,10 +111,13 @@ spec:
                       description: The Secret to select from
                       properties:
                         name:
+                          default: ""
                           description: |-
                             Name of the referent.
+                            This field is effectively required, but due to backwards compatibility is
+                            allowed to be empty. Instances of this type with an empty value here are
+                            almost certainly wrong.
                             More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                            TODO: Add other useful fields. apiVersion, kind, uid?
                           type: string
                         optional:
                           description: Specify whether the Secret must be defined
@@ -132,6 +138,37 @@ spec:
               imageBuilderContainerResources:
                 description: ResourceRequirements describes the compute resource requirements.
                 properties:
+                  claims:
+                    description: |-
+                      Claims lists the names of resources, defined in spec.resourceClaims,
+                      that are used by this container.
+
+                      This is an alpha field and requires enabling the
+                      DynamicResourceAllocation feature gate.
+
+                      This field is immutable. It can only be set for containers.
+                    items:
+                      description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                      properties:
+                        name:
+                          description: |-
+                            Name must match the name of one entry in pod.spec.resourceClaims of
+                            the Pod where this field is used. It makes that resource available
+                            inside a container.
+                          type: string
+                        request:
+                          description: |-
+                            Request is the name chosen for a request in the referenced claim.
+                            If empty, everything from the claim is made available, otherwise
+                            only the result of this request.
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
                   limits:
                     additionalProperties:
                       anyOf:
@@ -153,7 +190,7 @@ spec:
                     description: |-
                       Requests describes the minimum amount of compute resources required.
                       If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
-                      otherwise to an implementation-defined value.
+                      otherwise to an implementation-defined value. Requests cannot exceed Limits.
                       More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                     type: object
                 type: object
@@ -188,10 +225,13 @@ spec:
                               description: The key to select.
                               type: string
                             name:
+                              default: ""
                               description: |-
                                 Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
                                 More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                TODO: Add other useful fields. apiVersion, kind, uid?
                               type: string
                             optional:
                               description: Specify whether the ConfigMap or its key
@@ -250,10 +290,13 @@ spec:
                                 be a valid secret key.
                               type: string
                             name:
+                              default: ""
                               description: |-
                                 Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
                                 More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                TODO: Add other useful fields. apiVersion, kind, uid?
                               type: string
                             optional:
                               description: Specify whether the Secret or its key must
@@ -335,11 +378,13 @@ spec:
                                             items:
                                               type: string
                                             type: array
+                                            x-kubernetes-list-type: atomic
                                         required:
                                         - key
                                         - operator
                                         type: object
                                       type: array
+                                      x-kubernetes-list-type: atomic
                                     matchFields:
                                       description: A list of node selector requirements
                                         by node's fields.
@@ -367,11 +412,13 @@ spec:
                                             items:
                                               type: string
                                             type: array
+                                            x-kubernetes-list-type: atomic
                                         required:
                                         - key
                                         - operator
                                         type: object
                                       type: array
+                                      x-kubernetes-list-type: atomic
                                   type: object
                                   x-kubernetes-map-type: atomic
                                 weight:
@@ -384,6 +431,7 @@ spec:
                               - weight
                               type: object
                             type: array
+                            x-kubernetes-list-type: atomic
                           requiredDuringSchedulingIgnoredDuringExecution:
                             description: |-
                               If the affinity requirements specified by this field are not met at
@@ -428,11 +476,13 @@ spec:
                                             items:
                                               type: string
                                             type: array
+                                            x-kubernetes-list-type: atomic
                                         required:
                                         - key
                                         - operator
                                         type: object
                                       type: array
+                                      x-kubernetes-list-type: atomic
                                     matchFields:
                                       description: A list of node selector requirements
                                         by node's fields.
@@ -460,14 +510,17 @@ spec:
                                             items:
                                               type: string
                                             type: array
+                                            x-kubernetes-list-type: atomic
                                         required:
                                         - key
                                         - operator
                                         type: object
                                       type: array
+                                      x-kubernetes-list-type: atomic
                                   type: object
                                   x-kubernetes-map-type: atomic
                                 type: array
+                                x-kubernetes-list-type: atomic
                             required:
                             - nodeSelectorTerms
                             type: object
@@ -499,8 +552,9 @@ spec:
                                     with the corresponding weight.
                                   properties:
                                     labelSelector:
-                                      description: A label query over a set of resources,
-                                        in this case pods.
+                                      description: |-
+                                        A label query over a set of resources, in this case pods.
+                                        If it's null, this PodAffinityTerm matches with no Pods.
                                       properties:
                                         matchExpressions:
                                           description: matchExpressions is a list
@@ -529,11 +583,13 @@ spec:
                                                 items:
                                                   type: string
                                                 type: array
+                                                x-kubernetes-list-type: atomic
                                             required:
                                             - key
                                             - operator
                                             type: object
                                           type: array
+                                          x-kubernetes-list-type: atomic
                                         matchLabels:
                                           additionalProperties:
                                             type: string
@@ -544,6 +600,36 @@ spec:
                                           type: object
                                       type: object
                                       x-kubernetes-map-type: atomic
+                                    matchLabelKeys:
+                                      description: |-
+                                        MatchLabelKeys is a set of pod label keys to select which pods will
+                                        be taken into consideration. The keys are used to lookup values from the
+                                        incoming pod labels, those key-value labels are merged with `labelSelector` as `key in (value)`
+                                        to select the group of existing pods which pods will be taken into consideration
+                                        for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                        pod labels will be ignored. The default value is empty.
+                                        The same key is forbidden to exist in both matchLabelKeys and labelSelector.
+                                        Also, matchLabelKeys cannot be set when labelSelector isn't set.
+                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
+                                      items:
+                                        type: string
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    mismatchLabelKeys:
+                                      description: |-
+                                        MismatchLabelKeys is a set of pod label keys to select which pods will
+                                        be taken into consideration. The keys are used to lookup values from the
+                                        incoming pod labels, those key-value labels are merged with `labelSelector` as `key notin (value)`
+                                        to select the group of existing pods which pods will be taken into consideration
+                                        for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                        pod labels will be ignored. The default value is empty.
+                                        The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
+                                        Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
+                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
+                                      items:
+                                        type: string
+                                      type: array
+                                      x-kubernetes-list-type: atomic
                                     namespaceSelector:
                                       description: |-
                                         A label query over the set of namespaces that the term applies to.
@@ -579,11 +665,13 @@ spec:
                                                 items:
                                                   type: string
                                                 type: array
+                                                x-kubernetes-list-type: atomic
                                             required:
                                             - key
                                             - operator
                                             type: object
                                           type: array
+                                          x-kubernetes-list-type: atomic
                                         matchLabels:
                                           additionalProperties:
                                             type: string
@@ -603,6 +691,7 @@ spec:
                                       items:
                                         type: string
                                       type: array
+                                      x-kubernetes-list-type: atomic
                                     topologyKey:
                                       description: |-
                                         This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
@@ -625,6 +714,7 @@ spec:
                               - weight
                               type: object
                             type: array
+                            x-kubernetes-list-type: atomic
                           requiredDuringSchedulingIgnoredDuringExecution:
                             description: |-
                               If the affinity requirements specified by this field are not met at
@@ -644,8 +734,9 @@ spec:
                                 a pod of the set of pods is running
                               properties:
                                 labelSelector:
-                                  description: A label query over a set of resources,
-                                    in this case pods.
+                                  description: |-
+                                    A label query over a set of resources, in this case pods.
+                                    If it's null, this PodAffinityTerm matches with no Pods.
                                   properties:
                                     matchExpressions:
                                       description: matchExpressions is a list of label
@@ -674,11 +765,13 @@ spec:
                                             items:
                                               type: string
                                             type: array
+                                            x-kubernetes-list-type: atomic
                                         required:
                                         - key
                                         - operator
                                         type: object
                                       type: array
+                                      x-kubernetes-list-type: atomic
                                     matchLabels:
                                       additionalProperties:
                                         type: string
@@ -689,6 +782,36 @@ spec:
                                       type: object
                                   type: object
                                   x-kubernetes-map-type: atomic
+                                matchLabelKeys:
+                                  description: |-
+                                    MatchLabelKeys is a set of pod label keys to select which pods will
+                                    be taken into consideration. The keys are used to lookup values from the
+                                    incoming pod labels, those key-value labels are merged with `labelSelector` as `key in (value)`
+                                    to select the group of existing pods which pods will be taken into consideration
+                                    for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                    pod labels will be ignored. The default value is empty.
+                                    The same key is forbidden to exist in both matchLabelKeys and labelSelector.
+                                    Also, matchLabelKeys cannot be set when labelSelector isn't set.
+                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
+                                  items:
+                                    type: string
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                                mismatchLabelKeys:
+                                  description: |-
+                                    MismatchLabelKeys is a set of pod label keys to select which pods will
+                                    be taken into consideration. The keys are used to lookup values from the
+                                    incoming pod labels, those key-value labels are merged with `labelSelector` as `key notin (value)`
+                                    to select the group of existing pods which pods will be taken into consideration
+                                    for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                    pod labels will be ignored. The default value is empty.
+                                    The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
+                                    Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
+                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
+                                  items:
+                                    type: string
+                                  type: array
+                                  x-kubernetes-list-type: atomic
                                 namespaceSelector:
                                   description: |-
                                     A label query over the set of namespaces that the term applies to.
@@ -724,11 +847,13 @@ spec:
                                             items:
                                               type: string
                                             type: array
+                                            x-kubernetes-list-type: atomic
                                         required:
                                         - key
                                         - operator
                                         type: object
                                       type: array
+                                      x-kubernetes-list-type: atomic
                                     matchLabels:
                                       additionalProperties:
                                         type: string
@@ -748,6 +873,7 @@ spec:
                                   items:
                                     type: string
                                   type: array
+                                  x-kubernetes-list-type: atomic
                                 topologyKey:
                                   description: |-
                                     This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
@@ -760,6 +886,7 @@ spec:
                               - topologyKey
                               type: object
                             type: array
+                            x-kubernetes-list-type: atomic
                         type: object
                       podAntiAffinity:
                         description: Describes pod anti-affinity scheduling rules
@@ -787,8 +914,9 @@ spec:
                                     with the corresponding weight.
                                   properties:
                                     labelSelector:
-                                      description: A label query over a set of resources,
-                                        in this case pods.
+                                      description: |-
+                                        A label query over a set of resources, in this case pods.
+                                        If it's null, this PodAffinityTerm matches with no Pods.
                                       properties:
                                         matchExpressions:
                                           description: matchExpressions is a list
@@ -817,11 +945,13 @@ spec:
                                                 items:
                                                   type: string
                                                 type: array
+                                                x-kubernetes-list-type: atomic
                                             required:
                                             - key
                                             - operator
                                             type: object
                                           type: array
+                                          x-kubernetes-list-type: atomic
                                         matchLabels:
                                           additionalProperties:
                                             type: string
@@ -832,6 +962,36 @@ spec:
                                           type: object
                                       type: object
                                       x-kubernetes-map-type: atomic
+                                    matchLabelKeys:
+                                      description: |-
+                                        MatchLabelKeys is a set of pod label keys to select which pods will
+                                        be taken into consideration. The keys are used to lookup values from the
+                                        incoming pod labels, those key-value labels are merged with `labelSelector` as `key in (value)`
+                                        to select the group of existing pods which pods will be taken into consideration
+                                        for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                        pod labels will be ignored. The default value is empty.
+                                        The same key is forbidden to exist in both matchLabelKeys and labelSelector.
+                                        Also, matchLabelKeys cannot be set when labelSelector isn't set.
+                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
+                                      items:
+                                        type: string
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                    mismatchLabelKeys:
+                                      description: |-
+                                        MismatchLabelKeys is a set of pod label keys to select which pods will
+                                        be taken into consideration. The keys are used to lookup values from the
+                                        incoming pod labels, those key-value labels are merged with `labelSelector` as `key notin (value)`
+                                        to select the group of existing pods which pods will be taken into consideration
+                                        for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                        pod labels will be ignored. The default value is empty.
+                                        The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
+                                        Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
+                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
+                                      items:
+                                        type: string
+                                      type: array
+                                      x-kubernetes-list-type: atomic
                                     namespaceSelector:
                                       description: |-
                                         A label query over the set of namespaces that the term applies to.
@@ -867,11 +1027,13 @@ spec:
                                                 items:
                                                   type: string
                                                 type: array
+                                                x-kubernetes-list-type: atomic
                                             required:
                                             - key
                                             - operator
                                             type: object
                                           type: array
+                                          x-kubernetes-list-type: atomic
                                         matchLabels:
                                           additionalProperties:
                                             type: string
@@ -891,6 +1053,7 @@ spec:
                                       items:
                                         type: string
                                       type: array
+                                      x-kubernetes-list-type: atomic
                                     topologyKey:
                                       description: |-
                                         This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
@@ -913,6 +1076,7 @@ spec:
                               - weight
                               type: object
                             type: array
+                            x-kubernetes-list-type: atomic
                           requiredDuringSchedulingIgnoredDuringExecution:
                             description: |-
                               If the anti-affinity requirements specified by this field are not met at
@@ -932,8 +1096,9 @@ spec:
                                 a pod of the set of pods is running
                               properties:
                                 labelSelector:
-                                  description: A label query over a set of resources,
-                                    in this case pods.
+                                  description: |-
+                                    A label query over a set of resources, in this case pods.
+                                    If it's null, this PodAffinityTerm matches with no Pods.
                                   properties:
                                     matchExpressions:
                                       description: matchExpressions is a list of label
@@ -962,11 +1127,13 @@ spec:
                                             items:
                                               type: string
                                             type: array
+                                            x-kubernetes-list-type: atomic
                                         required:
                                         - key
                                         - operator
                                         type: object
                                       type: array
+                                      x-kubernetes-list-type: atomic
                                     matchLabels:
                                       additionalProperties:
                                         type: string
@@ -977,6 +1144,36 @@ spec:
                                       type: object
                                   type: object
                                   x-kubernetes-map-type: atomic
+                                matchLabelKeys:
+                                  description: |-
+                                    MatchLabelKeys is a set of pod label keys to select which pods will
+                                    be taken into consideration. The keys are used to lookup values from the
+                                    incoming pod labels, those key-value labels are merged with `labelSelector` as `key in (value)`
+                                    to select the group of existing pods which pods will be taken into consideration
+                                    for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                    pod labels will be ignored. The default value is empty.
+                                    The same key is forbidden to exist in both matchLabelKeys and labelSelector.
+                                    Also, matchLabelKeys cannot be set when labelSelector isn't set.
+                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
+                                  items:
+                                    type: string
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                                mismatchLabelKeys:
+                                  description: |-
+                                    MismatchLabelKeys is a set of pod label keys to select which pods will
+                                    be taken into consideration. The keys are used to lookup values from the
+                                    incoming pod labels, those key-value labels are merged with `labelSelector` as `key notin (value)`
+                                    to select the group of existing pods which pods will be taken into consideration
+                                    for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                    pod labels will be ignored. The default value is empty.
+                                    The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
+                                    Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
+                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
+                                  items:
+                                    type: string
+                                  type: array
+                                  x-kubernetes-list-type: atomic
                                 namespaceSelector:
                                   description: |-
                                     A label query over the set of namespaces that the term applies to.
@@ -1012,11 +1209,13 @@ spec:
                                             items:
                                               type: string
                                             type: array
+                                            x-kubernetes-list-type: atomic
                                         required:
                                         - key
                                         - operator
                                         type: object
                                       type: array
+                                      x-kubernetes-list-type: atomic
                                     matchLabels:
                                       additionalProperties:
                                         type: string
@@ -1036,6 +1235,7 @@ spec:
                                   items:
                                     type: string
                                   type: array
+                                  x-kubernetes-list-type: atomic
                                 topologyKey:
                                   description: |-
                                     This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
@@ -1048,6 +1248,7 @@ spec:
                               - topologyKey
                               type: object
                             type: array
+                            x-kubernetes-list-type: atomic
                         type: object
                     type: object
                   nodeSelector:
@@ -1135,11 +1336,13 @@ spec:
                                     items:
                                       type: string
                                     type: array
+                                    x-kubernetes-list-type: atomic
                                 required:
                                 - key
                                 - operator
                                 type: object
                               type: array
+                              x-kubernetes-list-type: atomic
                             matchLabels:
                               additionalProperties:
                                 type: string
@@ -1156,8 +1359,12 @@ spec:
                             spreading will be calculated. The keys are used to lookup values from the
                             incoming pod labels, those key-value labels are ANDed with labelSelector
                             to select the group of existing pods over which spreading will be calculated
-                            for the incoming pod. Keys that don't exist in the incoming pod labels will
+                            for the incoming pod. The same key is forbidden to exist in both MatchLabelKeys and LabelSelector.
+                            MatchLabelKeys cannot be set when LabelSelector isn't set.
+                            Keys that don't exist in the incoming pod labels will
                             be ignored. A null or empty list means only match against labelSelector.
+
+                            This is a beta field and requires the MatchLabelKeysInPodTopologySpread feature gate to be enabled (enabled by default).
                           items:
                             type: string
                           type: array
@@ -1196,7 +1403,6 @@ spec:
                             Valid values are integers greater than 0.
                             When value is not nil, WhenUnsatisfiable must be DoNotSchedule.
 
-
                             For example, in a 3-zone cluster, MaxSkew is set to 2, MinDomains is set to 5 and pods with the same
                             labelSelector spread as 2/2/2:
                             | zone1 | zone2 | zone3 |
@@ -1205,9 +1411,6 @@ spec:
                             In this situation, new pod with the same labelSelector cannot be scheduled,
                             because computed skew will be 3(3 - 0) if new Pod is scheduled to any of the three zones,
                             it will violate MaxSkew.
-
-
-                            This is a beta field and requires the MinDomainsInPodTopologySpread feature gate to be enabled (enabled by default).
                           format: int32
                           type: integer
                         nodeAffinityPolicy:
@@ -1217,9 +1420,8 @@ spec:
                             - Honor: only nodes matching nodeAffinity/nodeSelector are included in the calculations.
                             - Ignore: nodeAffinity/nodeSelector are ignored. All nodes are included in the calculations.
 
-
                             If this value is nil, the behavior is equivalent to the Honor policy.
-                            This is a alpha-level feature enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
+                            This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                           type: string
                         nodeTaintsPolicy:
                           description: |-
@@ -1229,9 +1431,8 @@ spec:
                             has a toleration, are included.
                             - Ignore: node taints are ignored. All nodes are included.
 
-
                             If this value is nil, the behavior is equivalent to the Ignore policy.
-                            This is a alpha-level feature enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
+                            This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                           type: string
                         topologyKey:
                           description: |-
@@ -1274,6 +1475,9 @@ spec:
                       type: object
                     type: array
                 type: object
+              manifest:
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
               models:
                 items:
                   properties:
@@ -1321,16 +1525,8 @@ spec:
                   INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
                   Important: Run "make" to regenerate code after modifying this file
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -1371,12 +1567,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -1435,6 +1626,9 @@ spec:
                       - type
                       type: object
                     type: array
+                    x-kubernetes-list-map-keys:
+                    - type
+                    x-kubernetes-list-type: map
                   containerStatuses:
                     description: |-
                       The list has one entry per container in the manifest.
@@ -1443,20 +1637,96 @@ spec:
                       description: ContainerStatus contains details for the current
                         status of this container.
                       properties:
+                        allocatedResources:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: |-
+                            AllocatedResources represents the compute resources allocated for this container by the
+                            node. Kubelet sets this value to Container.Resources.Requests upon successful pod admission
+                            and after successfully admitting desired pod resize.
+                          type: object
+                        allocatedResourcesStatus:
+                          description: |-
+                            AllocatedResourcesStatus represents the status of various resources
+                            allocated for this Pod.
+                          items:
+                            properties:
+                              name:
+                                description: Name of the resource. Must be unique
+                                  within the pod and match one of the resources from
+                                  the pod spec.
+                                type: string
+                              resources:
+                                description: |-
+                                  List of unique Resources health. Each element in the list contains an unique resource ID and resource health.
+                                  At a minimum, ResourceID must uniquely identify the Resource
+                                  allocated to the Pod on the Node for the lifetime of a Pod.
+                                  See ResourceID type for it's definition.
+                                items:
+                                  description: |-
+                                    ResourceHealth represents the health of a resource. It has the latest device health information.
+                                    This is a part of KEP https://kep.k8s.io/4680 and historical health changes are planned to be added in future iterations of a KEP.
+                                  properties:
+                                    health:
+                                      description: |-
+                                        Health of the resource.
+                                        can be one of:
+                                         - Healthy: operates as normal
+                                         - Unhealthy: reported unhealthy. We consider this a temporary health issue
+                                                      since we do not have a mechanism today to distinguish
+                                                      temporary and permanent issues.
+                                         - Unknown: The status cannot be determined.
+                                                    For example, Device Plugin got unregistered and hasn't been re-registered since.
+
+                                        In future we may want to introduce the PermanentlyUnhealthy Status.
+                                      type: string
+                                    resourceID:
+                                      description: ResourceID is the unique identifier
+                                        of the resource. See the ResourceID type for
+                                        more information.
+                                      type: string
+                                  required:
+                                  - resourceID
+                                  type: object
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                - resourceID
+                                x-kubernetes-list-type: map
+                            required:
+                            - name
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - name
+                          x-kubernetes-list-type: map
                         containerID:
-                          description: Container's ID in the format '<type>://<container_id>'.
+                          description: |-
+                            ContainerID is the ID of the container in the format '<type>://<container_id>'.
+                            Where type is a container runtime identifier, returned from Version call of CRI API
+                            (for example "containerd").
                           type: string
                         image:
                           description: |-
-                            The image the container is running.
+                            Image is the name of container image that the container is running.
+                            The container image may not match the image used in the PodSpec,
+                            as it may have been resolved by the runtime.
                             More info: https://kubernetes.io/docs/concepts/containers/images.
                           type: string
                         imageID:
-                          description: ImageID of the container's image.
+                          description: |-
+                            ImageID is the image ID of the container's image. The image ID may not
+                            match the image ID of the image used in the PodSpec, as it may have been
+                            resolved by the runtime.
                           type: string
                         lastState:
-                          description: Details about the container's last termination
-                            condition.
+                          description: |-
+                            LastTerminationState holds the last termination state of the container to
+                            help debug container crashes and restarts. This field is not
+                            populated if the container is still running and RestartCount is 0.
                           properties:
                             running:
                               description: Details about a running container
@@ -1518,27 +1788,104 @@ spec:
                           type: object
                         name:
                           description: |-
-                            This must be a DNS_LABEL. Each container in a pod must have a unique name.
+                            Name is a DNS_LABEL representing the unique name of the container.
+                            Each container in a pod must have a unique name across all container types.
                             Cannot be updated.
                           type: string
                         ready:
-                          description: Specifies whether the container has passed
-                            its readiness probe.
+                          description: |-
+                            Ready specifies whether the container is currently passing its readiness check.
+                            The value will change as readiness probes keep executing. If no readiness
+                            probes are specified, this field defaults to true once the container is
+                            fully started (see Started field).
+
+                            The value is typically used to determine whether a container is ready to
+                            accept traffic.
                           type: boolean
+                        resources:
+                          description: |-
+                            Resources represents the compute resource requests and limits that have been successfully
+                            enacted on the running container after it has been started or has been successfully resized.
+                          properties:
+                            claims:
+                              description: |-
+                                Claims lists the names of resources, defined in spec.resourceClaims,
+                                that are used by this container.
+
+                                This is an alpha field and requires enabling the
+                                DynamicResourceAllocation feature gate.
+
+                                This field is immutable. It can only be set for containers.
+                              items:
+                                description: ResourceClaim references one entry in
+                                  PodSpec.ResourceClaims.
+                                properties:
+                                  name:
+                                    description: |-
+                                      Name must match the name of one entry in pod.spec.resourceClaims of
+                                      the Pod where this field is used. It makes that resource available
+                                      inside a container.
+                                    type: string
+                                  request:
+                                    description: |-
+                                      Request is the name chosen for a request in the referenced claim.
+                                      If empty, everything from the claim is made available, otherwise
+                                      only the result of this request.
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                              type: array
+                              x-kubernetes-list-map-keys:
+                              - name
+                              x-kubernetes-list-type: map
+                            limits:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Limits describes the maximum amount of compute resources allowed.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                            requests:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Requests describes the minimum amount of compute resources required.
+                                If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                                otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                          type: object
                         restartCount:
-                          description: The number of times the container has been
-                            restarted.
+                          description: |-
+                            RestartCount holds the number of times the container has been restarted.
+                            Kubelet makes an effort to always increment the value, but there
+                            are cases when the state may be lost due to node restarts and then the value
+                            may be reset to 0. The value is never negative.
                           format: int32
                           type: integer
                         started:
                           description: |-
-                            Specifies whether the container has passed its startup probe.
-                            Initialized as false, becomes true after startupProbe is considered successful.
-                            Resets to false when the container is restarted, or if kubelet loses state temporarily.
-                            Is always true when no startupProbe is defined.
+                            Started indicates whether the container has finished its postStart lifecycle hook
+                            and passed its startup probe.
+                            Initialized as false, becomes true after startupProbe is considered
+                            successful. Resets to false when the container is restarted, or if kubelet
+                            loses state temporarily. In both cases, startup probes will run again.
+                            Is always true when no startupProbe is defined and container is running and
+                            has passed the postStart lifecycle hook. The null value must be treated the
+                            same as false.
                           type: boolean
                         state:
-                          description: Details about the container's current condition.
+                          description: State holds details about the container's current
+                            condition.
                           properties:
                             running:
                               description: Details about a running container
@@ -1598,6 +1945,71 @@ spec:
                                   type: string
                               type: object
                           type: object
+                        user:
+                          description: User represents user identity information initially
+                            attached to the first process of the container
+                          properties:
+                            linux:
+                              description: |-
+                                Linux holds user identity information initially attached to the first process of the containers in Linux.
+                                Note that the actual running identity can be changed if the process has enough privilege to do so.
+                              properties:
+                                gid:
+                                  description: GID is the primary gid initially attached
+                                    to the first process in the container
+                                  format: int64
+                                  type: integer
+                                supplementalGroups:
+                                  description: SupplementalGroups are the supplemental
+                                    groups initially attached to the first process
+                                    in the container
+                                  items:
+                                    format: int64
+                                    type: integer
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                                uid:
+                                  description: UID is the primary uid initially attached
+                                    to the first process in the container
+                                  format: int64
+                                  type: integer
+                              required:
+                              - gid
+                              - uid
+                              type: object
+                          type: object
+                        volumeMounts:
+                          description: Status of volume mounts.
+                          items:
+                            description: VolumeMountStatus shows status of volume
+                              mounts.
+                            properties:
+                              mountPath:
+                                description: MountPath corresponds to the original
+                                  VolumeMount.
+                                type: string
+                              name:
+                                description: Name corresponds to the name of the original
+                                  VolumeMount.
+                                type: string
+                              readOnly:
+                                description: ReadOnly corresponds to the original
+                                  VolumeMount.
+                                type: boolean
+                              recursiveReadOnly:
+                                description: |-
+                                  RecursiveReadOnly must be set to Disabled, Enabled, or unspecified (for non-readonly mounts).
+                                  An IfPossible value in the original VolumeMount must be translated to Disabled or Enabled,
+                                  depending on the mount result.
+                                type: string
+                            required:
+                            - mountPath
+                            - name
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - mountPath
+                          x-kubernetes-list-type: map
                       required:
                       - image
                       - imageID
@@ -1606,6 +2018,7 @@ spec:
                       - restartCount
                       type: object
                     type: array
+                    x-kubernetes-list-type: atomic
                   ephemeralContainerStatuses:
                     description: Status for any ephemeral containers that have run
                       in this pod.
@@ -1613,20 +2026,96 @@ spec:
                       description: ContainerStatus contains details for the current
                         status of this container.
                       properties:
+                        allocatedResources:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: |-
+                            AllocatedResources represents the compute resources allocated for this container by the
+                            node. Kubelet sets this value to Container.Resources.Requests upon successful pod admission
+                            and after successfully admitting desired pod resize.
+                          type: object
+                        allocatedResourcesStatus:
+                          description: |-
+                            AllocatedResourcesStatus represents the status of various resources
+                            allocated for this Pod.
+                          items:
+                            properties:
+                              name:
+                                description: Name of the resource. Must be unique
+                                  within the pod and match one of the resources from
+                                  the pod spec.
+                                type: string
+                              resources:
+                                description: |-
+                                  List of unique Resources health. Each element in the list contains an unique resource ID and resource health.
+                                  At a minimum, ResourceID must uniquely identify the Resource
+                                  allocated to the Pod on the Node for the lifetime of a Pod.
+                                  See ResourceID type for it's definition.
+                                items:
+                                  description: |-
+                                    ResourceHealth represents the health of a resource. It has the latest device health information.
+                                    This is a part of KEP https://kep.k8s.io/4680 and historical health changes are planned to be added in future iterations of a KEP.
+                                  properties:
+                                    health:
+                                      description: |-
+                                        Health of the resource.
+                                        can be one of:
+                                         - Healthy: operates as normal
+                                         - Unhealthy: reported unhealthy. We consider this a temporary health issue
+                                                      since we do not have a mechanism today to distinguish
+                                                      temporary and permanent issues.
+                                         - Unknown: The status cannot be determined.
+                                                    For example, Device Plugin got unregistered and hasn't been re-registered since.
+
+                                        In future we may want to introduce the PermanentlyUnhealthy Status.
+                                      type: string
+                                    resourceID:
+                                      description: ResourceID is the unique identifier
+                                        of the resource. See the ResourceID type for
+                                        more information.
+                                      type: string
+                                  required:
+                                  - resourceID
+                                  type: object
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                - resourceID
+                                x-kubernetes-list-type: map
+                            required:
+                            - name
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - name
+                          x-kubernetes-list-type: map
                         containerID:
-                          description: Container's ID in the format '<type>://<container_id>'.
+                          description: |-
+                            ContainerID is the ID of the container in the format '<type>://<container_id>'.
+                            Where type is a container runtime identifier, returned from Version call of CRI API
+                            (for example "containerd").
                           type: string
                         image:
                           description: |-
-                            The image the container is running.
+                            Image is the name of container image that the container is running.
+                            The container image may not match the image used in the PodSpec,
+                            as it may have been resolved by the runtime.
                             More info: https://kubernetes.io/docs/concepts/containers/images.
                           type: string
                         imageID:
-                          description: ImageID of the container's image.
+                          description: |-
+                            ImageID is the image ID of the container's image. The image ID may not
+                            match the image ID of the image used in the PodSpec, as it may have been
+                            resolved by the runtime.
                           type: string
                         lastState:
-                          description: Details about the container's last termination
-                            condition.
+                          description: |-
+                            LastTerminationState holds the last termination state of the container to
+                            help debug container crashes and restarts. This field is not
+                            populated if the container is still running and RestartCount is 0.
                           properties:
                             running:
                               description: Details about a running container
@@ -1688,27 +2177,104 @@ spec:
                           type: object
                         name:
                           description: |-
-                            This must be a DNS_LABEL. Each container in a pod must have a unique name.
+                            Name is a DNS_LABEL representing the unique name of the container.
+                            Each container in a pod must have a unique name across all container types.
                             Cannot be updated.
                           type: string
                         ready:
-                          description: Specifies whether the container has passed
-                            its readiness probe.
+                          description: |-
+                            Ready specifies whether the container is currently passing its readiness check.
+                            The value will change as readiness probes keep executing. If no readiness
+                            probes are specified, this field defaults to true once the container is
+                            fully started (see Started field).
+
+                            The value is typically used to determine whether a container is ready to
+                            accept traffic.
                           type: boolean
+                        resources:
+                          description: |-
+                            Resources represents the compute resource requests and limits that have been successfully
+                            enacted on the running container after it has been started or has been successfully resized.
+                          properties:
+                            claims:
+                              description: |-
+                                Claims lists the names of resources, defined in spec.resourceClaims,
+                                that are used by this container.
+
+                                This is an alpha field and requires enabling the
+                                DynamicResourceAllocation feature gate.
+
+                                This field is immutable. It can only be set for containers.
+                              items:
+                                description: ResourceClaim references one entry in
+                                  PodSpec.ResourceClaims.
+                                properties:
+                                  name:
+                                    description: |-
+                                      Name must match the name of one entry in pod.spec.resourceClaims of
+                                      the Pod where this field is used. It makes that resource available
+                                      inside a container.
+                                    type: string
+                                  request:
+                                    description: |-
+                                      Request is the name chosen for a request in the referenced claim.
+                                      If empty, everything from the claim is made available, otherwise
+                                      only the result of this request.
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                              type: array
+                              x-kubernetes-list-map-keys:
+                              - name
+                              x-kubernetes-list-type: map
+                            limits:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Limits describes the maximum amount of compute resources allowed.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                            requests:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Requests describes the minimum amount of compute resources required.
+                                If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                                otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                          type: object
                         restartCount:
-                          description: The number of times the container has been
-                            restarted.
+                          description: |-
+                            RestartCount holds the number of times the container has been restarted.
+                            Kubelet makes an effort to always increment the value, but there
+                            are cases when the state may be lost due to node restarts and then the value
+                            may be reset to 0. The value is never negative.
                           format: int32
                           type: integer
                         started:
                           description: |-
-                            Specifies whether the container has passed its startup probe.
-                            Initialized as false, becomes true after startupProbe is considered successful.
-                            Resets to false when the container is restarted, or if kubelet loses state temporarily.
-                            Is always true when no startupProbe is defined.
+                            Started indicates whether the container has finished its postStart lifecycle hook
+                            and passed its startup probe.
+                            Initialized as false, becomes true after startupProbe is considered
+                            successful. Resets to false when the container is restarted, or if kubelet
+                            loses state temporarily. In both cases, startup probes will run again.
+                            Is always true when no startupProbe is defined and container is running and
+                            has passed the postStart lifecycle hook. The null value must be treated the
+                            same as false.
                           type: boolean
                         state:
-                          description: Details about the container's current condition.
+                          description: State holds details about the container's current
+                            condition.
                           properties:
                             running:
                               description: Details about a running container
@@ -1768,6 +2334,71 @@ spec:
                                   type: string
                               type: object
                           type: object
+                        user:
+                          description: User represents user identity information initially
+                            attached to the first process of the container
+                          properties:
+                            linux:
+                              description: |-
+                                Linux holds user identity information initially attached to the first process of the containers in Linux.
+                                Note that the actual running identity can be changed if the process has enough privilege to do so.
+                              properties:
+                                gid:
+                                  description: GID is the primary gid initially attached
+                                    to the first process in the container
+                                  format: int64
+                                  type: integer
+                                supplementalGroups:
+                                  description: SupplementalGroups are the supplemental
+                                    groups initially attached to the first process
+                                    in the container
+                                  items:
+                                    format: int64
+                                    type: integer
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                                uid:
+                                  description: UID is the primary uid initially attached
+                                    to the first process in the container
+                                  format: int64
+                                  type: integer
+                              required:
+                              - gid
+                              - uid
+                              type: object
+                          type: object
+                        volumeMounts:
+                          description: Status of volume mounts.
+                          items:
+                            description: VolumeMountStatus shows status of volume
+                              mounts.
+                            properties:
+                              mountPath:
+                                description: MountPath corresponds to the original
+                                  VolumeMount.
+                                type: string
+                              name:
+                                description: Name corresponds to the name of the original
+                                  VolumeMount.
+                                type: string
+                              readOnly:
+                                description: ReadOnly corresponds to the original
+                                  VolumeMount.
+                                type: boolean
+                              recursiveReadOnly:
+                                description: |-
+                                  RecursiveReadOnly must be set to Disabled, Enabled, or unspecified (for non-readonly mounts).
+                                  An IfPossible value in the original VolumeMount must be translated to Disabled or Enabled,
+                                  depending on the mount result.
+                                type: string
+                            required:
+                            - mountPath
+                            - name
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - mountPath
+                          x-kubernetes-list-type: map
                       required:
                       - image
                       - imageID
@@ -1776,10 +2407,31 @@ spec:
                       - restartCount
                       type: object
                     type: array
+                    x-kubernetes-list-type: atomic
                   hostIP:
-                    description: IP address of the host to which the pod is assigned.
-                      Empty if not yet scheduled.
+                    description: |-
+                      hostIP holds the IP address of the host to which the pod is assigned. Empty if the pod has not started yet.
+                      A pod can be assigned to a node that has a problem in kubelet which in turns mean that HostIP will
+                      not be updated even if there is a node is assigned to pod
                     type: string
+                  hostIPs:
+                    description: |-
+                      hostIPs holds the IP addresses allocated to the host. If this field is specified, the first entry must
+                      match the hostIP field. This list is empty if the pod has not started yet.
+                      A pod can be assigned to a node that has a problem in kubelet which in turns means that HostIPs will
+                      not be updated even if there is a node is assigned to this pod.
+                    items:
+                      description: HostIP represents a single IP address allocated
+                        to the host.
+                      properties:
+                        ip:
+                          description: IP is the IP address assigned to the host
+                          type: string
+                      required:
+                      - ip
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
                   initContainerStatuses:
                     description: |-
                       The list has one entry per init container in the manifest. The most recent successful
@@ -1790,20 +2442,96 @@ spec:
                       description: ContainerStatus contains details for the current
                         status of this container.
                       properties:
+                        allocatedResources:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: |-
+                            AllocatedResources represents the compute resources allocated for this container by the
+                            node. Kubelet sets this value to Container.Resources.Requests upon successful pod admission
+                            and after successfully admitting desired pod resize.
+                          type: object
+                        allocatedResourcesStatus:
+                          description: |-
+                            AllocatedResourcesStatus represents the status of various resources
+                            allocated for this Pod.
+                          items:
+                            properties:
+                              name:
+                                description: Name of the resource. Must be unique
+                                  within the pod and match one of the resources from
+                                  the pod spec.
+                                type: string
+                              resources:
+                                description: |-
+                                  List of unique Resources health. Each element in the list contains an unique resource ID and resource health.
+                                  At a minimum, ResourceID must uniquely identify the Resource
+                                  allocated to the Pod on the Node for the lifetime of a Pod.
+                                  See ResourceID type for it's definition.
+                                items:
+                                  description: |-
+                                    ResourceHealth represents the health of a resource. It has the latest device health information.
+                                    This is a part of KEP https://kep.k8s.io/4680 and historical health changes are planned to be added in future iterations of a KEP.
+                                  properties:
+                                    health:
+                                      description: |-
+                                        Health of the resource.
+                                        can be one of:
+                                         - Healthy: operates as normal
+                                         - Unhealthy: reported unhealthy. We consider this a temporary health issue
+                                                      since we do not have a mechanism today to distinguish
+                                                      temporary and permanent issues.
+                                         - Unknown: The status cannot be determined.
+                                                    For example, Device Plugin got unregistered and hasn't been re-registered since.
+
+                                        In future we may want to introduce the PermanentlyUnhealthy Status.
+                                      type: string
+                                    resourceID:
+                                      description: ResourceID is the unique identifier
+                                        of the resource. See the ResourceID type for
+                                        more information.
+                                      type: string
+                                  required:
+                                  - resourceID
+                                  type: object
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                - resourceID
+                                x-kubernetes-list-type: map
+                            required:
+                            - name
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - name
+                          x-kubernetes-list-type: map
                         containerID:
-                          description: Container's ID in the format '<type>://<container_id>'.
+                          description: |-
+                            ContainerID is the ID of the container in the format '<type>://<container_id>'.
+                            Where type is a container runtime identifier, returned from Version call of CRI API
+                            (for example "containerd").
                           type: string
                         image:
                           description: |-
-                            The image the container is running.
+                            Image is the name of container image that the container is running.
+                            The container image may not match the image used in the PodSpec,
+                            as it may have been resolved by the runtime.
                             More info: https://kubernetes.io/docs/concepts/containers/images.
                           type: string
                         imageID:
-                          description: ImageID of the container's image.
+                          description: |-
+                            ImageID is the image ID of the container's image. The image ID may not
+                            match the image ID of the image used in the PodSpec, as it may have been
+                            resolved by the runtime.
                           type: string
                         lastState:
-                          description: Details about the container's last termination
-                            condition.
+                          description: |-
+                            LastTerminationState holds the last termination state of the container to
+                            help debug container crashes and restarts. This field is not
+                            populated if the container is still running and RestartCount is 0.
                           properties:
                             running:
                               description: Details about a running container
@@ -1865,27 +2593,104 @@ spec:
                           type: object
                         name:
                           description: |-
-                            This must be a DNS_LABEL. Each container in a pod must have a unique name.
+                            Name is a DNS_LABEL representing the unique name of the container.
+                            Each container in a pod must have a unique name across all container types.
                             Cannot be updated.
                           type: string
                         ready:
-                          description: Specifies whether the container has passed
-                            its readiness probe.
+                          description: |-
+                            Ready specifies whether the container is currently passing its readiness check.
+                            The value will change as readiness probes keep executing. If no readiness
+                            probes are specified, this field defaults to true once the container is
+                            fully started (see Started field).
+
+                            The value is typically used to determine whether a container is ready to
+                            accept traffic.
                           type: boolean
+                        resources:
+                          description: |-
+                            Resources represents the compute resource requests and limits that have been successfully
+                            enacted on the running container after it has been started or has been successfully resized.
+                          properties:
+                            claims:
+                              description: |-
+                                Claims lists the names of resources, defined in spec.resourceClaims,
+                                that are used by this container.
+
+                                This is an alpha field and requires enabling the
+                                DynamicResourceAllocation feature gate.
+
+                                This field is immutable. It can only be set for containers.
+                              items:
+                                description: ResourceClaim references one entry in
+                                  PodSpec.ResourceClaims.
+                                properties:
+                                  name:
+                                    description: |-
+                                      Name must match the name of one entry in pod.spec.resourceClaims of
+                                      the Pod where this field is used. It makes that resource available
+                                      inside a container.
+                                    type: string
+                                  request:
+                                    description: |-
+                                      Request is the name chosen for a request in the referenced claim.
+                                      If empty, everything from the claim is made available, otherwise
+                                      only the result of this request.
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                              type: array
+                              x-kubernetes-list-map-keys:
+                              - name
+                              x-kubernetes-list-type: map
+                            limits:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Limits describes the maximum amount of compute resources allowed.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                            requests:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Requests describes the minimum amount of compute resources required.
+                                If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                                otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                          type: object
                         restartCount:
-                          description: The number of times the container has been
-                            restarted.
+                          description: |-
+                            RestartCount holds the number of times the container has been restarted.
+                            Kubelet makes an effort to always increment the value, but there
+                            are cases when the state may be lost due to node restarts and then the value
+                            may be reset to 0. The value is never negative.
                           format: int32
                           type: integer
                         started:
                           description: |-
-                            Specifies whether the container has passed its startup probe.
-                            Initialized as false, becomes true after startupProbe is considered successful.
-                            Resets to false when the container is restarted, or if kubelet loses state temporarily.
-                            Is always true when no startupProbe is defined.
+                            Started indicates whether the container has finished its postStart lifecycle hook
+                            and passed its startup probe.
+                            Initialized as false, becomes true after startupProbe is considered
+                            successful. Resets to false when the container is restarted, or if kubelet
+                            loses state temporarily. In both cases, startup probes will run again.
+                            Is always true when no startupProbe is defined and container is running and
+                            has passed the postStart lifecycle hook. The null value must be treated the
+                            same as false.
                           type: boolean
                         state:
-                          description: Details about the container's current condition.
+                          description: State holds details about the container's current
+                            condition.
                           properties:
                             running:
                               description: Details about a running container
@@ -1945,6 +2750,71 @@ spec:
                                   type: string
                               type: object
                           type: object
+                        user:
+                          description: User represents user identity information initially
+                            attached to the first process of the container
+                          properties:
+                            linux:
+                              description: |-
+                                Linux holds user identity information initially attached to the first process of the containers in Linux.
+                                Note that the actual running identity can be changed if the process has enough privilege to do so.
+                              properties:
+                                gid:
+                                  description: GID is the primary gid initially attached
+                                    to the first process in the container
+                                  format: int64
+                                  type: integer
+                                supplementalGroups:
+                                  description: SupplementalGroups are the supplemental
+                                    groups initially attached to the first process
+                                    in the container
+                                  items:
+                                    format: int64
+                                    type: integer
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                                uid:
+                                  description: UID is the primary uid initially attached
+                                    to the first process in the container
+                                  format: int64
+                                  type: integer
+                              required:
+                              - gid
+                              - uid
+                              type: object
+                          type: object
+                        volumeMounts:
+                          description: Status of volume mounts.
+                          items:
+                            description: VolumeMountStatus shows status of volume
+                              mounts.
+                            properties:
+                              mountPath:
+                                description: MountPath corresponds to the original
+                                  VolumeMount.
+                                type: string
+                              name:
+                                description: Name corresponds to the name of the original
+                                  VolumeMount.
+                                type: string
+                              readOnly:
+                                description: ReadOnly corresponds to the original
+                                  VolumeMount.
+                                type: boolean
+                              recursiveReadOnly:
+                                description: |-
+                                  RecursiveReadOnly must be set to Disabled, Enabled, or unspecified (for non-readonly mounts).
+                                  An IfPossible value in the original VolumeMount must be translated to Disabled or Enabled,
+                                  depending on the mount result.
+                                type: string
+                            required:
+                            - mountPath
+                            - name
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - mountPath
+                          x-kubernetes-list-type: map
                       required:
                       - image
                       - imageID
@@ -1953,6 +2823,7 @@ spec:
                       - restartCount
                       type: object
                     type: array
+                    x-kubernetes-list-type: atomic
                   message:
                     description: A human readable message indicating details about
                       why the pod is in this condition.
@@ -1974,7 +2845,6 @@ spec:
                       arrays contain more detail about the pod's status.
                       There are five possible phase values:
 
-
                       Pending: The pod has been accepted by the Kubernetes system, but one or more of the
                       container images has not been created. This includes time before being scheduled as
                       well as time spent downloading images over the network, which could take a while.
@@ -1987,12 +2857,11 @@ spec:
                       Unknown: For some reason the state of the pod could not be obtained, typically due to an
                       error in communicating with the host of the pod.
 
-
                       More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-phase
                     type: string
                   podIP:
                     description: |-
-                      IP address allocated to the pod. Routable at least within the cluster.
+                      podIP address allocated to the pod. Routable at least within the cluster.
                       Empty if not yet allocated.
                     type: string
                   podIPs:
@@ -2001,27 +2870,64 @@ spec:
                       match the podIP field. Pods may be allocated at most 1 value for each of IPv4 and IPv6. This list
                       is empty if no IPs have been allocated yet.
                     items:
-                      description: "IP address information for entries in the (plural)
-                        PodIPs field.\nEach entry includes:\n\n\n\tIP: An IP address
-                        allocated to the pod. Routable at least within the cluster."
+                      description: PodIP represents a single IP address allocated
+                        to the pod.
                       properties:
                         ip:
-                          description: ip is an IP address (IPv4 or IPv6) assigned
-                            to the pod
+                          description: IP is the IP address assigned to the pod
                           type: string
+                      required:
+                      - ip
                       type: object
                     type: array
+                    x-kubernetes-list-map-keys:
+                    - ip
+                    x-kubernetes-list-type: map
                   qosClass:
                     description: |-
                       The Quality of Service (QOS) classification assigned to the pod based on resource requirements
                       See PodQOSClass type for available QOS classes
-                      More info: https://git.k8s.io/community/contributors/design-proposals/node/resource-qos.md
+                      More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-qos/#quality-of-service-classes
                     type: string
                   reason:
                     description: |-
                       A brief CamelCase message indicating details about why the pod is in this state.
                       e.g. 'Evicted'
                     type: string
+                  resize:
+                    description: |-
+                      Status of resources resize desired for pod's containers.
+                      It is empty if no resources resize is pending.
+                      Any changes to container resources will automatically set this to "Proposed"
+                    type: string
+                  resourceClaimStatuses:
+                    description: Status of resource claims.
+                    items:
+                      description: |-
+                        PodResourceClaimStatus is stored in the PodStatus for each PodResourceClaim
+                        which references a ResourceClaimTemplate. It stores the generated name for
+                        the corresponding ResourceClaim.
+                      properties:
+                        name:
+                          description: |-
+                            Name uniquely identifies this resource claim inside the pod.
+                            This must match the name of an entry in pod.spec.resourceClaims,
+                            which implies that the string must be a DNS_LABEL.
+                          type: string
+                        resourceClaimName:
+                          description: |-
+                            ResourceClaimName is the name of the ResourceClaim that was
+                            generated for the Pod in the namespace of the Pod. If this is
+                            unset, then generating a ResourceClaim was not necessary. The
+                            pod.spec.resourceClaims entry can be ignored in this case.
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
                   startTime:
                     description: |-
                       RFC 3339 date and time at which the object was acknowledged by the Kubelet.
