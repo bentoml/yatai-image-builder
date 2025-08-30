@@ -51,7 +51,9 @@ type ExtraPodSpec struct {
 }
 
 type BentoManifest struct {
-	ExtraPorts []corev1.ContainerPort `json:"extraPorts,omitempty"`
+	ExtraPorts     []corev1.ContainerPort `json:"extraPorts,omitempty"`
+	LivezEndpont   string                 `json:"livezEndpoint,omitempty"`
+	ReadyzEndpoint string                 `json:"readyzEndpoint,omitempty"`
 }
 
 // BentoRequestSpec defines the desired state of BentoRequest

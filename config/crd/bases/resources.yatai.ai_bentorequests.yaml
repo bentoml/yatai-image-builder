@@ -1515,6 +1515,10 @@ spec:
                       - containerPort
                       type: object
                     type: array
+                  livezEndpoint:
+                    type: string
+                  readyzEndpoint:
+                    type: string
                 type: object
               models:
                 items:

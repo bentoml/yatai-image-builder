@@ -32,10 +32,14 @@ spec:
         description: Bento is the Schema for the bentoes API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
@@ -51,10 +55,12 @@ spec:
                 type: string
               imagePullSecrets:
                 items:
-                  description: LocalObjectReference contains enough information to let you locate the referenced object inside the same namespace.
+                  description: LocalObjectReference contains enough information to
+                    let you locate the referenced object inside the same namespace.
                   properties:
                     name:
-                      description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names TODO: Add other useful fields. apiVersion, kind, uid?'
+                      description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        TODO: Add other useful fields. apiVersion, kind, uid?'
                       type: string
                   type: object
                   x-kubernetes-map-type: atomic
@@ -103,7 +109,9 @@ spec:
             description: BentoStatus defines the observed state of Bento
             properties:
               ready:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state of cluster Important: Run "make" to regenerate code after modifying this file'
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file'
                 type: boolean
             required:
             - ready
@@ -219,7 +227,8 @@ spec:
                       type: object
                       x-kubernetes-map-type: atomic
                     prefix:
-                      description: An optional identifier to prepend to each key in the ConfigMap. Must be a C_IDENTIFIER.
+                      description: An optional identifier to prepend to each key in
+                        the ConfigMap. Must be a C_IDENTIFIER.
                       type: string
                     secretRef:
                       description: The Secret to select from
@@ -310,7 +319,8 @@ spec:
                 type: object
               imageBuilderExtraContainerEnv:
                 items:
-                  description: EnvVar represents an environment variable present in a Container.
+                  description: EnvVar represents an environment variable present in
+                    a Container.
                   properties:
                     name:
                       description: Name of the environment variable. Must be a C_IDENTIFIER.
@@ -328,7 +338,8 @@ spec:
                         Defaults to "".
                       type: string
                     valueFrom:
-                      description: Source for the environment variable's value. Cannot be used if value is not empty.
+                      description: Source for the environment variable's value. Cannot
+                        be used if value is not empty.
                       properties:
                         configMapKeyRef:
                           description: Selects a key of a ConfigMap.
@@ -346,7 +357,8 @@ spec:
                                 More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                               type: string
                             optional:
-                              description: Specify whether the ConfigMap or its key must be defined
+                              description: Specify whether the ConfigMap or its key
+                                must be defined
                               type: boolean
                           required:
                           - key
@@ -358,10 +370,12 @@ spec:
                             spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
                           properties:
                             apiVersion:
-                              description: Version of the schema the FieldPath is written in terms of, defaults to "v1".
+                              description: Version of the schema the FieldPath is
+                                written in terms of, defaults to "v1".
                               type: string
                             fieldPath:
-                              description: Path of the field to select in the specified API version.
+                              description: Path of the field to select in the specified
+                                API version.
                               type: string
                           required:
                           - fieldPath
@@ -373,13 +387,15 @@ spec:
                             (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
                           properties:
                             containerName:
-                              description: 'Container name: required for volumes, optional for env vars'
+                              description: 'Container name: required for volumes,
+                                optional for env vars'
                               type: string
                             divisor:
                               anyOf:
                               - type: integer
                               - type: string
-                              description: Specifies the output format of the exposed resources, defaults to "1"
+                              description: Specifies the output format of the exposed
+                                resources, defaults to "1"
                               pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                               x-kubernetes-int-or-string: true
                             resource:
@@ -393,7 +409,8 @@ spec:
                           description: Selects a key of a secret in the pod's namespace
                           properties:
                             key:
-                              description: The key of the secret to select from.  Must be a valid secret key.
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
                               type: string
                             name:
                               default: ""
@@ -405,7 +422,8 @@ spec:
                                 More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                               type: string
                             optional:
-                              description: Specify whether the Secret or its key must be defined
+                              description: Specify whether the Secret or its key must
+                                be defined
                               type: boolean
                           required:
                           - key
@@ -433,7 +451,8 @@ spec:
                     description: Affinity is a group of affinity scheduling rules.
                     properties:
                       nodeAffinity:
-                        description: Describes node affinity scheduling rules for the pod.
+                        description: Describes node affinity scheduling rules for
+                          the pod.
                         properties:
                           preferredDuringSchedulingIgnoredDuringExecution:
                             description: |-
@@ -452,17 +471,20 @@ spec:
                                 (i.e. it's a no-op). A null preferred scheduling term matches no objects (i.e. is also a no-op).
                               properties:
                                 preference:
-                                  description: A node selector term, associated with the corresponding weight.
+                                  description: A node selector term, associated with
+                                    the corresponding weight.
                                   properties:
                                     matchExpressions:
-                                      description: A list of node selector requirements by node's labels.
+                                      description: A list of node selector requirements
+                                        by node's labels.
                                       items:
                                         description: |-
                                           A node selector requirement is a selector that contains values, a key, and an operator
                                           that relates the key and values.
                                         properties:
                                           key:
-                                            description: The label key that the selector applies to.
+                                            description: The label key that the selector
+                                              applies to.
                                             type: string
                                           operator:
                                             description: |-
@@ -487,14 +509,16 @@ spec:
                                       type: array
                                       x-kubernetes-list-type: atomic
                                     matchFields:
-                                      description: A list of node selector requirements by node's fields.
+                                      description: A list of node selector requirements
+                                        by node's fields.
                                       items:
                                         description: |-
                                           A node selector requirement is a selector that contains values, a key, and an operator
                                           that relates the key and values.
                                         properties:
                                           key:
-                                            description: The label key that the selector applies to.
+                                            description: The label key that the selector
+                                              applies to.
                                             type: string
                                           operator:
                                             description: |-
@@ -521,7 +545,8 @@ spec:
                                   type: object
                                   x-kubernetes-map-type: atomic
                                 weight:
-                                  description: Weight associated with matching the corresponding nodeSelectorTerm, in the range 1-100.
+                                  description: Weight associated with matching the
+                                    corresponding nodeSelectorTerm, in the range 1-100.
                                   format: int32
                                   type: integer
                               required:
@@ -539,7 +564,8 @@ spec:
                               may or may not try to eventually evict the pod from its node.
                             properties:
                               nodeSelectorTerms:
-                                description: Required. A list of node selector terms. The terms are ORed.
+                                description: Required. A list of node selector terms.
+                                  The terms are ORed.
                                 items:
                                   description: |-
                                     A null or empty node selector term matches no objects. The requirements of
@@ -547,14 +573,16 @@ spec:
                                     The TopologySelectorTerm type implements a subset of the NodeSelectorTerm.
                                   properties:
                                     matchExpressions:
-                                      description: A list of node selector requirements by node's labels.
+                                      description: A list of node selector requirements
+                                        by node's labels.
                                       items:
                                         description: |-
                                           A node selector requirement is a selector that contains values, a key, and an operator
                                           that relates the key and values.
                                         properties:
                                           key:
-                                            description: The label key that the selector applies to.
+                                            description: The label key that the selector
+                                              applies to.
                                             type: string
                                           operator:
                                             description: |-
@@ -579,14 +607,16 @@ spec:
                                       type: array
                                       x-kubernetes-list-type: atomic
                                     matchFields:
-                                      description: A list of node selector requirements by node's fields.
+                                      description: A list of node selector requirements
+                                        by node's fields.
                                       items:
                                         description: |-
                                           A node selector requirement is a selector that contains values, a key, and an operator
                                           that relates the key and values.
                                         properties:
                                           key:
-                                            description: The label key that the selector applies to.
+                                            description: The label key that the selector
+                                              applies to.
                                             type: string
                                           operator:
                                             description: |-
@@ -620,7 +650,9 @@ spec:
                             x-kubernetes-map-type: atomic
                         type: object
                       podAffinity:
-                        description: Describes pod affinity scheduling rules (e.g. co-locate this pod in the same node, zone, etc. as some other pod(s)).
+                        description: Describes pod affinity scheduling rules (e.g.
+                          co-locate this pod in the same node, zone, etc. as some
+                          other pod(s)).
                         properties:
                           preferredDuringSchedulingIgnoredDuringExecution:
                             description: |-
@@ -634,10 +666,13 @@ spec:
                               "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
                               node(s) with the highest sum are the most preferred.
                             items:
-                              description: The weights of all of the matched WeightedPodAffinityTerm fields are added per-node to find the most preferred node(s)
+                              description: The weights of all of the matched WeightedPodAffinityTerm
+                                fields are added per-node to find the most preferred
+                                node(s)
                               properties:
                                 podAffinityTerm:
-                                  description: Required. A pod affinity term, associated with the corresponding weight.
+                                  description: Required. A pod affinity term, associated
+                                    with the corresponding weight.
                                   properties:
                                     labelSelector:
                                       description: |-
@@ -645,14 +680,17 @@ spec:
                                         If it's null, this PodAffinityTerm matches with no Pods.
                                       properties:
                                         matchExpressions:
-                                          description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                                          description: matchExpressions is a list
+                                            of label selector requirements. The requirements
+                                            are ANDed.
                                           items:
                                             description: |-
                                               A label selector requirement is a selector that contains values, a key, and an operator that
                                               relates the key and values.
                                             properties:
                                               key:
-                                                description: key is the label key that the selector applies to.
+                                                description: key is the label key
+                                                  that the selector applies to.
                                                 type: string
                                               operator:
                                                 description: |-
@@ -724,14 +762,17 @@ spec:
                                         An empty selector ({}) matches all namespaces.
                                       properties:
                                         matchExpressions:
-                                          description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                                          description: matchExpressions is a list
+                                            of label selector requirements. The requirements
+                                            are ANDed.
                                           items:
                                             description: |-
                                               A label selector requirement is a selector that contains values, a key, and an operator that
                                               relates the key and values.
                                             properties:
                                               key:
-                                                description: key is the label key that the selector applies to.
+                                                description: key is the label key
+                                                  that the selector applies to.
                                                 type: string
                                               operator:
                                                 description: |-
@@ -821,14 +862,17 @@ spec:
                                     If it's null, this PodAffinityTerm matches with no Pods.
                                   properties:
                                     matchExpressions:
-                                      description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                                      description: matchExpressions is a list of label
+                                        selector requirements. The requirements are
+                                        ANDed.
                                       items:
                                         description: |-
                                           A label selector requirement is a selector that contains values, a key, and an operator that
                                           relates the key and values.
                                         properties:
                                           key:
-                                            description: key is the label key that the selector applies to.
+                                            description: key is the label key that
+                                              the selector applies to.
                                             type: string
                                           operator:
                                             description: |-
@@ -900,14 +944,17 @@ spec:
                                     An empty selector ({}) matches all namespaces.
                                   properties:
                                     matchExpressions:
-                                      description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                                      description: matchExpressions is a list of label
+                                        selector requirements. The requirements are
+                                        ANDed.
                                       items:
                                         description: |-
                                           A label selector requirement is a selector that contains values, a key, and an operator that
                                           relates the key and values.
                                         properties:
                                           key:
-                                            description: key is the label key that the selector applies to.
+                                            description: key is the label key that
+                                              the selector applies to.
                                             type: string
                                           operator:
                                             description: |-
@@ -965,7 +1012,9 @@ spec:
                             x-kubernetes-list-type: atomic
                         type: object
                       podAntiAffinity:
-                        description: Describes pod anti-affinity scheduling rules (e.g. avoid putting this pod in the same node, zone, etc. as some other pod(s)).
+                        description: Describes pod anti-affinity scheduling rules
+                          (e.g. avoid putting this pod in the same node, zone, etc.
+                          as some other pod(s)).
                         properties:
                           preferredDuringSchedulingIgnoredDuringExecution:
                             description: |-
@@ -979,10 +1028,13 @@ spec:
                               "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
                               node(s) with the highest sum are the most preferred.
                             items:
-                              description: The weights of all of the matched WeightedPodAffinityTerm fields are added per-node to find the most preferred node(s)
+                              description: The weights of all of the matched WeightedPodAffinityTerm
+                                fields are added per-node to find the most preferred
+                                node(s)
                               properties:
                                 podAffinityTerm:
-                                  description: Required. A pod affinity term, associated with the corresponding weight.
+                                  description: Required. A pod affinity term, associated
+                                    with the corresponding weight.
                                   properties:
                                     labelSelector:
                                       description: |-
@@ -990,14 +1042,17 @@ spec:
                                         If it's null, this PodAffinityTerm matches with no Pods.
                                       properties:
                                         matchExpressions:
-                                          description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                                          description: matchExpressions is a list
+                                            of label selector requirements. The requirements
+                                            are ANDed.
                                           items:
                                             description: |-
                                               A label selector requirement is a selector that contains values, a key, and an operator that
                                               relates the key and values.
                                             properties:
                                               key:
-                                                description: key is the label key that the selector applies to.
+                                                description: key is the label key
+                                                  that the selector applies to.
                                                 type: string
                                               operator:
                                                 description: |-
@@ -1069,14 +1124,17 @@ spec:
                                         An empty selector ({}) matches all namespaces.
                                       properties:
                                         matchExpressions:
-                                          description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                                          description: matchExpressions is a list
+                                            of label selector requirements. The requirements
+                                            are ANDed.
                                           items:
                                             description: |-
                                               A label selector requirement is a selector that contains values, a key, and an operator that
                                               relates the key and values.
                                             properties:
                                               key:
-                                                description: key is the label key that the selector applies to.
+                                                description: key is the label key
+                                                  that the selector applies to.
                                                 type: string
                                               operator:
                                                 description: |-
@@ -1166,14 +1224,17 @@ spec:
                                     If it's null, this PodAffinityTerm matches with no Pods.
                                   properties:
                                     matchExpressions:
-                                      description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                                      description: matchExpressions is a list of label
+                                        selector requirements. The requirements are
+                                        ANDed.
                                       items:
                                         description: |-
                                           A label selector requirement is a selector that contains values, a key, and an operator that
                                           relates the key and values.
                                         properties:
                                           key:
-                                            description: key is the label key that the selector applies to.
+                                            description: key is the label key that
+                                              the selector applies to.
                                             type: string
                                           operator:
                                             description: |-
@@ -1245,14 +1306,17 @@ spec:
                                     An empty selector ({}) matches all namespaces.
                                   properties:
                                     matchExpressions:
-                                      description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                                      description: matchExpressions is a list of label
+                                        selector requirements. The requirements are
+                                        ANDed.
                                       items:
                                         description: |-
                                           A label selector requirement is a selector that contains values, a key, and an operator that
                                           relates the key and values.
                                         properties:
                                           key:
-                                            description: key is the label key that the selector applies to.
+                                            description: key is the label key that
+                                              the selector applies to.
                                             type: string
                                           operator:
                                             description: |-
@@ -1360,7 +1424,8 @@ spec:
                     type: array
                   topologySpreadConstraints:
                     items:
-                      description: TopologySpreadConstraint specifies how to spread matching pods among the given topology.
+                      description: TopologySpreadConstraint specifies how to spread
+                        matching pods among the given topology.
                       properties:
                         labelSelector:
                           description: |-
@@ -1369,14 +1434,16 @@ spec:
                             in their corresponding topology domain.
                           properties:
                             matchExpressions:
-                              description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                              description: matchExpressions is a list of label selector
+                                requirements. The requirements are ANDed.
                               items:
                                 description: |-
                                   A label selector requirement is a selector that contains values, a key, and an operator that
                                   relates the key and values.
                                 properties:
                                   key:
-                                    description: key is the label key that the selector applies to.
+                                    description: key is the label key that the selector
+                                      applies to.
                                     type: string
                                   operator:
                                     description: |-
@@ -1535,7 +1602,8 @@ spec:
                 properties:
                   extraPorts:
                     items:
-                      description: ContainerPort represents a network port in a single container.
+                      description: ContainerPort represents a network port in a single
+                        container.
                       properties:
                         containerPort:
                           description: |-
@@ -1570,6 +1638,10 @@ spec:
                       - containerPort
                       type: object
                     type: array
+                  livezEndpoint:
+                    type: string
+                  readyzEndpoint:
+                    type: string
                 type: object
               models:
                 items:
@@ -1618,7 +1690,8 @@ spec:
                   INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
                   Important: Run "make" to regenerate code after modifying this file
                 items:
-                  description: Condition contains details for one aspect of the current state of this API Resource.
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -1682,21 +1755,25 @@ spec:
                       Current service state of pod.
                       More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-conditions
                     items:
-                      description: PodCondition contains details for the current condition of this pod.
+                      description: PodCondition contains details for the current condition
+                        of this pod.
                       properties:
                         lastProbeTime:
                           description: Last time we probed the condition.
                           format: date-time
                           type: string
                         lastTransitionTime:
-                          description: Last time the condition transitioned from one status to another.
+                          description: Last time the condition transitioned from one
+                            status to another.
                           format: date-time
                           type: string
                         message:
-                          description: Human-readable message indicating details about last transition.
+                          description: Human-readable message indicating details about
+                            last transition.
                           type: string
                         reason:
-                          description: Unique, one-word, CamelCase reason for the condition's last transition.
+                          description: Unique, one-word, CamelCase reason for the
+                            condition's last transition.
                           type: string
                         status:
                           description: |-
@@ -1722,7 +1799,8 @@ spec:
                       The list has one entry per container in the manifest.
                       More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-and-container-status
                     items:
-                      description: ContainerStatus contains details for the current status of this container.
+                      description: ContainerStatus contains details for the current
+                        status of this container.
                       properties:
                         allocatedResources:
                           additionalProperties:
@@ -1743,7 +1821,9 @@ spec:
                           items:
                             properties:
                               name:
-                                description: Name of the resource. Must be unique within the pod and match one of the resources from the pod spec.
+                                description: Name of the resource. Must be unique
+                                  within the pod and match one of the resources from
+                                  the pod spec.
                                 type: string
                               resources:
                                 description: |-
@@ -1770,7 +1850,9 @@ spec:
                                         In future we may want to introduce the PermanentlyUnhealthy Status.
                                       type: string
                                     resourceID:
-                                      description: ResourceID is the unique identifier of the resource. See the ResourceID type for more information.
+                                      description: ResourceID is the unique identifier
+                                        of the resource. See the ResourceID type for
+                                        more information.
                                       type: string
                                   required:
                                   - resourceID
@@ -1815,7 +1897,8 @@ spec:
                               description: Details about a running container
                               properties:
                                 startedAt:
-                                  description: Time at which the container was last (re-)started
+                                  description: Time at which the container was last
+                                    (re-)started
                                   format: date-time
                                   type: string
                               type: object
@@ -1826,7 +1909,8 @@ spec:
                                   description: Container's ID in the format '<type>://<container_id>'
                                   type: string
                                 exitCode:
-                                  description: Exit status from the last termination of the container
+                                  description: Exit status from the last termination
+                                    of the container
                                   format: int32
                                   type: integer
                                 finishedAt:
@@ -1834,17 +1918,21 @@ spec:
                                   format: date-time
                                   type: string
                                 message:
-                                  description: Message regarding the last termination of the container
+                                  description: Message regarding the last termination
+                                    of the container
                                   type: string
                                 reason:
-                                  description: (brief) reason from the last termination of the container
+                                  description: (brief) reason from the last termination
+                                    of the container
                                   type: string
                                 signal:
-                                  description: Signal from the last termination of the container
+                                  description: Signal from the last termination of
+                                    the container
                                   format: int32
                                   type: integer
                                 startedAt:
-                                  description: Time at which previous execution of the container started
+                                  description: Time at which previous execution of
+                                    the container started
                                   format: date-time
                                   type: string
                               required:
@@ -1854,10 +1942,12 @@ spec:
                               description: Details about a waiting container
                               properties:
                                 message:
-                                  description: Message regarding why the container is not yet running.
+                                  description: Message regarding why the container
+                                    is not yet running.
                                   type: string
                                 reason:
-                                  description: (brief) reason the container is not yet running.
+                                  description: (brief) reason the container is not
+                                    yet running.
                                   type: string
                               type: object
                           type: object
@@ -1892,7 +1982,8 @@ spec:
 
                                 This field is immutable. It can only be set for containers.
                               items:
-                                description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                                description: ResourceClaim references one entry in
+                                  PodSpec.ResourceClaims.
                                 properties:
                                   name:
                                     description: |-
@@ -1958,13 +2049,15 @@ spec:
                             same as false.
                           type: boolean
                         state:
-                          description: State holds details about the container's current condition.
+                          description: State holds details about the container's current
+                            condition.
                           properties:
                             running:
                               description: Details about a running container
                               properties:
                                 startedAt:
-                                  description: Time at which the container was last (re-)started
+                                  description: Time at which the container was last
+                                    (re-)started
                                   format: date-time
                                   type: string
                               type: object
@@ -1975,7 +2068,8 @@ spec:
                                   description: Container's ID in the format '<type>://<container_id>'
                                   type: string
                                 exitCode:
-                                  description: Exit status from the last termination of the container
+                                  description: Exit status from the last termination
+                                    of the container
                                   format: int32
                                   type: integer
                                 finishedAt:
@@ -1983,17 +2077,21 @@ spec:
                                   format: date-time
                                   type: string
                                 message:
-                                  description: Message regarding the last termination of the container
+                                  description: Message regarding the last termination
+                                    of the container
                                   type: string
                                 reason:
-                                  description: (brief) reason from the last termination of the container
+                                  description: (brief) reason from the last termination
+                                    of the container
                                   type: string
                                 signal:
-                                  description: Signal from the last termination of the container
+                                  description: Signal from the last termination of
+                                    the container
                                   format: int32
                                   type: integer
                                 startedAt:
-                                  description: Time at which previous execution of the container started
+                                  description: Time at which previous execution of
+                                    the container started
                                   format: date-time
                                   type: string
                               required:
@@ -2003,15 +2101,18 @@ spec:
                               description: Details about a waiting container
                               properties:
                                 message:
-                                  description: Message regarding why the container is not yet running.
+                                  description: Message regarding why the container
+                                    is not yet running.
                                   type: string
                                 reason:
-                                  description: (brief) reason the container is not yet running.
+                                  description: (brief) reason the container is not
+                                    yet running.
                                   type: string
                               type: object
                           type: object
                         user:
-                          description: User represents user identity information initially attached to the first process of the container
+                          description: User represents user identity information initially
+                            attached to the first process of the container
                           properties:
                             linux:
                               description: |-
@@ -2019,18 +2120,22 @@ spec:
                                 Note that the actual running identity can be changed if the process has enough privilege to do so.
                               properties:
                                 gid:
-                                  description: GID is the primary gid initially attached to the first process in the container
+                                  description: GID is the primary gid initially attached
+                                    to the first process in the container
                                   format: int64
                                   type: integer
                                 supplementalGroups:
-                                  description: SupplementalGroups are the supplemental groups initially attached to the first process in the container
+                                  description: SupplementalGroups are the supplemental
+                                    groups initially attached to the first process
+                                    in the container
                                   items:
                                     format: int64
                                     type: integer
                                   type: array
                                   x-kubernetes-list-type: atomic
                                 uid:
-                                  description: UID is the primary uid initially attached to the first process in the container
+                                  description: UID is the primary uid initially attached
+                                    to the first process in the container
                                   format: int64
                                   type: integer
                               required:
@@ -2041,16 +2146,20 @@ spec:
                         volumeMounts:
                           description: Status of volume mounts.
                           items:
-                            description: VolumeMountStatus shows status of volume mounts.
+                            description: VolumeMountStatus shows status of volume
+                              mounts.
                             properties:
                               mountPath:
-                                description: MountPath corresponds to the original VolumeMount.
+                                description: MountPath corresponds to the original
+                                  VolumeMount.
                                 type: string
                               name:
-                                description: Name corresponds to the name of the original VolumeMount.
+                                description: Name corresponds to the name of the original
+                                  VolumeMount.
                                 type: string
                               readOnly:
-                                description: ReadOnly corresponds to the original VolumeMount.
+                                description: ReadOnly corresponds to the original
+                                  VolumeMount.
                                 type: boolean
                               recursiveReadOnly:
                                 description: |-
@@ -2076,9 +2185,11 @@ spec:
                     type: array
                     x-kubernetes-list-type: atomic
                   ephemeralContainerStatuses:
-                    description: Status for any ephemeral containers that have run in this pod.
+                    description: Status for any ephemeral containers that have run
+                      in this pod.
                     items:
-                      description: ContainerStatus contains details for the current status of this container.
+                      description: ContainerStatus contains details for the current
+                        status of this container.
                       properties:
                         allocatedResources:
                           additionalProperties:
@@ -2099,7 +2210,9 @@ spec:
                           items:
                             properties:
                               name:
-                                description: Name of the resource. Must be unique within the pod and match one of the resources from the pod spec.
+                                description: Name of the resource. Must be unique
+                                  within the pod and match one of the resources from
+                                  the pod spec.
                                 type: string
                               resources:
                                 description: |-
@@ -2126,7 +2239,9 @@ spec:
                                         In future we may want to introduce the PermanentlyUnhealthy Status.
                                       type: string
                                     resourceID:
-                                      description: ResourceID is the unique identifier of the resource. See the ResourceID type for more information.
+                                      description: ResourceID is the unique identifier
+                                        of the resource. See the ResourceID type for
+                                        more information.
                                       type: string
                                   required:
                                   - resourceID
@@ -2171,7 +2286,8 @@ spec:
                               description: Details about a running container
                               properties:
                                 startedAt:
-                                  description: Time at which the container was last (re-)started
+                                  description: Time at which the container was last
+                                    (re-)started
                                   format: date-time
                                   type: string
                               type: object
@@ -2182,7 +2298,8 @@ spec:
                                   description: Container's ID in the format '<type>://<container_id>'
                                   type: string
                                 exitCode:
-                                  description: Exit status from the last termination of the container
+                                  description: Exit status from the last termination
+                                    of the container
                                   format: int32
                                   type: integer
                                 finishedAt:
@@ -2190,17 +2307,21 @@ spec:
                                   format: date-time
                                   type: string
                                 message:
-                                  description: Message regarding the last termination of the container
+                                  description: Message regarding the last termination
+                                    of the container
                                   type: string
                                 reason:
-                                  description: (brief) reason from the last termination of the container
+                                  description: (brief) reason from the last termination
+                                    of the container
                                   type: string
                                 signal:
-                                  description: Signal from the last termination of the container
+                                  description: Signal from the last termination of
+                                    the container
                                   format: int32
                                   type: integer
                                 startedAt:
-                                  description: Time at which previous execution of the container started
+                                  description: Time at which previous execution of
+                                    the container started
                                   format: date-time
                                   type: string
                               required:
@@ -2210,10 +2331,12 @@ spec:
                               description: Details about a waiting container
                               properties:
                                 message:
-                                  description: Message regarding why the container is not yet running.
+                                  description: Message regarding why the container
+                                    is not yet running.
                                   type: string
                                 reason:
-                                  description: (brief) reason the container is not yet running.
+                                  description: (brief) reason the container is not
+                                    yet running.
                                   type: string
                               type: object
                           type: object
@@ -2248,7 +2371,8 @@ spec:
 
                                 This field is immutable. It can only be set for containers.
                               items:
-                                description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                                description: ResourceClaim references one entry in
+                                  PodSpec.ResourceClaims.
                                 properties:
                                   name:
                                     description: |-
@@ -2314,13 +2438,15 @@ spec:
                             same as false.
                           type: boolean
                         state:
-                          description: State holds details about the container's current condition.
+                          description: State holds details about the container's current
+                            condition.
                           properties:
                             running:
                               description: Details about a running container
                               properties:
                                 startedAt:
-                                  description: Time at which the container was last (re-)started
+                                  description: Time at which the container was last
+                                    (re-)started
                                   format: date-time
                                   type: string
                               type: object
@@ -2331,7 +2457,8 @@ spec:
                                   description: Container's ID in the format '<type>://<container_id>'
                                   type: string
                                 exitCode:
-                                  description: Exit status from the last termination of the container
+                                  description: Exit status from the last termination
+                                    of the container
                                   format: int32
                                   type: integer
                                 finishedAt:
@@ -2339,17 +2466,21 @@ spec:
                                   format: date-time
                                   type: string
                                 message:
-                                  description: Message regarding the last termination of the container
+                                  description: Message regarding the last termination
+                                    of the container
                                   type: string
                                 reason:
-                                  description: (brief) reason from the last termination of the container
+                                  description: (brief) reason from the last termination
+                                    of the container
                                   type: string
                                 signal:
-                                  description: Signal from the last termination of the container
+                                  description: Signal from the last termination of
+                                    the container
                                   format: int32
                                   type: integer
                                 startedAt:
-                                  description: Time at which previous execution of the container started
+                                  description: Time at which previous execution of
+                                    the container started
                                   format: date-time
                                   type: string
                               required:
@@ -2359,15 +2490,18 @@ spec:
                               description: Details about a waiting container
                               properties:
                                 message:
-                                  description: Message regarding why the container is not yet running.
+                                  description: Message regarding why the container
+                                    is not yet running.
                                   type: string
                                 reason:
-                                  description: (brief) reason the container is not yet running.
+                                  description: (brief) reason the container is not
+                                    yet running.
                                   type: string
                               type: object
                           type: object
                         user:
-                          description: User represents user identity information initially attached to the first process of the container
+                          description: User represents user identity information initially
+                            attached to the first process of the container
                           properties:
                             linux:
                               description: |-
@@ -2375,18 +2509,22 @@ spec:
                                 Note that the actual running identity can be changed if the process has enough privilege to do so.
                               properties:
                                 gid:
-                                  description: GID is the primary gid initially attached to the first process in the container
+                                  description: GID is the primary gid initially attached
+                                    to the first process in the container
                                   format: int64
                                   type: integer
                                 supplementalGroups:
-                                  description: SupplementalGroups are the supplemental groups initially attached to the first process in the container
+                                  description: SupplementalGroups are the supplemental
+                                    groups initially attached to the first process
+                                    in the container
                                   items:
                                     format: int64
                                     type: integer
                                   type: array
                                   x-kubernetes-list-type: atomic
                                 uid:
-                                  description: UID is the primary uid initially attached to the first process in the container
+                                  description: UID is the primary uid initially attached
+                                    to the first process in the container
                                   format: int64
                                   type: integer
                               required:
@@ -2397,16 +2535,20 @@ spec:
                         volumeMounts:
                           description: Status of volume mounts.
                           items:
-                            description: VolumeMountStatus shows status of volume mounts.
+                            description: VolumeMountStatus shows status of volume
+                              mounts.
                             properties:
                               mountPath:
-                                description: MountPath corresponds to the original VolumeMount.
+                                description: MountPath corresponds to the original
+                                  VolumeMount.
                                 type: string
                               name:
-                                description: Name corresponds to the name of the original VolumeMount.
+                                description: Name corresponds to the name of the original
+                                  VolumeMount.
                                 type: string
                               readOnly:
-                                description: ReadOnly corresponds to the original VolumeMount.
+                                description: ReadOnly corresponds to the original
+                                  VolumeMount.
                                 type: boolean
                               recursiveReadOnly:
                                 description: |-
@@ -2444,7 +2586,8 @@ spec:
                       A pod can be assigned to a node that has a problem in kubelet which in turns means that HostIPs will
                       not be updated even if there is a node is assigned to this pod.
                     items:
-                      description: HostIP represents a single IP address allocated to the host.
+                      description: HostIP represents a single IP address allocated
+                        to the host.
                       properties:
                         ip:
                           description: IP is the IP address assigned to the host
@@ -2461,7 +2604,8 @@ spec:
                       startTime set.
                       More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-and-container-status
                     items:
-                      description: ContainerStatus contains details for the current status of this container.
+                      description: ContainerStatus contains details for the current
+                        status of this container.
                       properties:
                         allocatedResources:
                           additionalProperties:
@@ -2482,7 +2626,9 @@ spec:
                           items:
                             properties:
                               name:
-                                description: Name of the resource. Must be unique within the pod and match one of the resources from the pod spec.
+                                description: Name of the resource. Must be unique
+                                  within the pod and match one of the resources from
+                                  the pod spec.
                                 type: string
                               resources:
                                 description: |-
@@ -2509,7 +2655,9 @@ spec:
                                         In future we may want to introduce the PermanentlyUnhealthy Status.
                                       type: string
                                     resourceID:
-                                      description: ResourceID is the unique identifier of the resource. See the ResourceID type for more information.
+                                      description: ResourceID is the unique identifier
+                                        of the resource. See the ResourceID type for
+                                        more information.
                                       type: string
                                   required:
                                   - resourceID
@@ -2554,7 +2702,8 @@ spec:
                               description: Details about a running container
                               properties:
                                 startedAt:
-                                  description: Time at which the container was last (re-)started
+                                  description: Time at which the container was last
+                                    (re-)started
                                   format: date-time
                                   type: string
                               type: object
@@ -2565,7 +2714,8 @@ spec:
                                   description: Container's ID in the format '<type>://<container_id>'
                                   type: string
                                 exitCode:
-                                  description: Exit status from the last termination of the container
+                                  description: Exit status from the last termination
+                                    of the container
                                   format: int32
                                   type: integer
                                 finishedAt:
@@ -2573,17 +2723,21 @@ spec:
                                   format: date-time
                                   type: string
                                 message:
-                                  description: Message regarding the last termination of the container
+                                  description: Message regarding the last termination
+                                    of the container
                                   type: string
                                 reason:
-                                  description: (brief) reason from the last termination of the container
+                                  description: (brief) reason from the last termination
+                                    of the container
                                   type: string
                                 signal:
-                                  description: Signal from the last termination of the container
+                                  description: Signal from the last termination of
+                                    the container
                                   format: int32
                                   type: integer
                                 startedAt:
-                                  description: Time at which previous execution of the container started
+                                  description: Time at which previous execution of
+                                    the container started
                                   format: date-time
                                   type: string
                               required:
@@ -2593,10 +2747,12 @@ spec:
                               description: Details about a waiting container
                               properties:
                                 message:
-                                  description: Message regarding why the container is not yet running.
+                                  description: Message regarding why the container
+                                    is not yet running.
                                   type: string
                                 reason:
-                                  description: (brief) reason the container is not yet running.
+                                  description: (brief) reason the container is not
+                                    yet running.
                                   type: string
                               type: object
                           type: object
@@ -2631,7 +2787,8 @@ spec:
 
                                 This field is immutable. It can only be set for containers.
                               items:
-                                description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                                description: ResourceClaim references one entry in
+                                  PodSpec.ResourceClaims.
                                 properties:
                                   name:
                                     description: |-
@@ -2697,13 +2854,15 @@ spec:
                             same as false.
                           type: boolean
                         state:
-                          description: State holds details about the container's current condition.
+                          description: State holds details about the container's current
+                            condition.
                           properties:
                             running:
                               description: Details about a running container
                               properties:
                                 startedAt:
-                                  description: Time at which the container was last (re-)started
+                                  description: Time at which the container was last
+                                    (re-)started
                                   format: date-time
                                   type: string
                               type: object
@@ -2714,7 +2873,8 @@ spec:
                                   description: Container's ID in the format '<type>://<container_id>'
                                   type: string
                                 exitCode:
-                                  description: Exit status from the last termination of the container
+                                  description: Exit status from the last termination
+                                    of the container
                                   format: int32
                                   type: integer
                                 finishedAt:
@@ -2722,17 +2882,21 @@ spec:
                                   format: date-time
                                   type: string
                                 message:
-                                  description: Message regarding the last termination of the container
+                                  description: Message regarding the last termination
+                                    of the container
                                   type: string
                                 reason:
-                                  description: (brief) reason from the last termination of the container
+                                  description: (brief) reason from the last termination
+                                    of the container
                                   type: string
                                 signal:
-                                  description: Signal from the last termination of the container
+                                  description: Signal from the last termination of
+                                    the container
                                   format: int32
                                   type: integer
                                 startedAt:
-                                  description: Time at which previous execution of the container started
+                                  description: Time at which previous execution of
+                                    the container started
                                   format: date-time
                                   type: string
                               required:
@@ -2742,15 +2906,18 @@ spec:
                               description: Details about a waiting container
                               properties:
                                 message:
-                                  description: Message regarding why the container is not yet running.
+                                  description: Message regarding why the container
+                                    is not yet running.
                                   type: string
                                 reason:
-                                  description: (brief) reason the container is not yet running.
+                                  description: (brief) reason the container is not
+                                    yet running.
                                   type: string
                               type: object
                           type: object
                         user:
-                          description: User represents user identity information initially attached to the first process of the container
+                          description: User represents user identity information initially
+                            attached to the first process of the container
                           properties:
                             linux:
                               description: |-
@@ -2758,18 +2925,22 @@ spec:
                                 Note that the actual running identity can be changed if the process has enough privilege to do so.
                               properties:
                                 gid:
-                                  description: GID is the primary gid initially attached to the first process in the container
+                                  description: GID is the primary gid initially attached
+                                    to the first process in the container
                                   format: int64
                                   type: integer
                                 supplementalGroups:
-                                  description: SupplementalGroups are the supplemental groups initially attached to the first process in the container
+                                  description: SupplementalGroups are the supplemental
+                                    groups initially attached to the first process
+                                    in the container
                                   items:
                                     format: int64
                                     type: integer
                                   type: array
                                   x-kubernetes-list-type: atomic
                                 uid:
-                                  description: UID is the primary uid initially attached to the first process in the container
+                                  description: UID is the primary uid initially attached
+                                    to the first process in the container
                                   format: int64
                                   type: integer
                               required:
@@ -2780,16 +2951,20 @@ spec:
                         volumeMounts:
                           description: Status of volume mounts.
                           items:
-                            description: VolumeMountStatus shows status of volume mounts.
+                            description: VolumeMountStatus shows status of volume
+                              mounts.
                             properties:
                               mountPath:
-                                description: MountPath corresponds to the original VolumeMount.
+                                description: MountPath corresponds to the original
+                                  VolumeMount.
                                 type: string
                               name:
-                                description: Name corresponds to the name of the original VolumeMount.
+                                description: Name corresponds to the name of the original
+                                  VolumeMount.
                                 type: string
                               readOnly:
-                                description: ReadOnly corresponds to the original VolumeMount.
+                                description: ReadOnly corresponds to the original
+                                  VolumeMount.
                                 type: boolean
                               recursiveReadOnly:
                                 description: |-
@@ -2815,7 +2990,8 @@ spec:
                     type: array
                     x-kubernetes-list-type: atomic
                   message:
-                    description: A human readable message indicating details about why the pod is in this condition.
+                    description: A human readable message indicating details about
+                      why the pod is in this condition.
                     type: string
                   nominatedNodeName:
                     description: |-
@@ -2859,7 +3035,8 @@ spec:
                       match the podIP field. Pods may be allocated at most 1 value for each of IPv4 and IPv6. This list
                       is empty if no IPs have been allocated yet.
                     items:
-                      description: PodIP represents a single IP address allocated to the pod.
+                      description: PodIP represents a single IP address allocated
+                        to the pod.
                       properties:
                         ip:
                           description: IP is the IP address assigned to the pod
