@@ -52,7 +52,7 @@ type ExtraPodSpec struct {
 
 type BentoManifest struct {
 	ExtraPorts     []corev1.ContainerPort `json:"extraPorts,omitempty"`
-	LivezEndpont   string                 `json:"livezEndpoint,omitempty"`
+	LivezEndpoint  string                 `json:"livezEndpoint,omitempty"`
 	ReadyzEndpoint string                 `json:"readyzEndpoint,omitempty"`
 }
 
