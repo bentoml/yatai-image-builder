@@ -1,79 +1,94 @@
+version: "2"
 run:
-  # timeout for analysis, e.g. 30s, 5m, default is 1m
-  timeout: 5m
-
-  # include test files or not, default is true
   tests: true
-
-  # default is true. Enables skipping of directories:
-  #   vendor$, third_party$, testdata$, examples$, Godeps$, builtin$
-
-issues:
-  skip-dirs-use-default: true
-
-  # make issues output unique by line, default is true
-  uniq-by-line: true
-
 output:
-  # colored-line-number|line-number|json|tab|checkstyle|code-climate, default is "colored-line-number"
   formats:
-    - format: json
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+    json:
       path: stderr
-    - format: checkstyle
+    checkstyle:
       path: report.xml
-    - format: colored-line-number
-
-  # print lines of code with issue, default is true
-  print-issued-lines: true
-
-  # print linter name in the end of issue text, default is true
-  print-linter-name: true
-
-
-linters-settings:
-  goimports:
-    local-prefixes: github.com/bentoml
-  govet:
-    settings:
-      printf:
-        funcs:
-          - (github.com/sirupsen/logrus).Infof
-          - (github.com/sirupsen/logrus).Warnf
-          - (github.com/sirupsen/logrus).Debugf
-          - (github.com/sirupsen/logrus).Errorf
-          - (github.com/sirupsen/logrus).Fatalf
-  maligned:
-    suggest-new: true
-  misspell:
-    locale: US
-
 linters:
-  disable-all: false
-  presets:
-    - bugs
-    - unused
-    - performance
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - contextcheck
+    - dogsled
+    - durationcheck
+    - errchkjson
+    - errorlint
+    - exhaustive
+    - fatcontext
+    - gocheckcompilerdirectives
+    - gochecksumtype
+    - goconst
+    - gocritic
+    - gosec
+    - gosmopolitan
+    - loggercheck
+    - makezero
+    - misspell
+    - musttag
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - noctx
+    - perfsprint
+    - prealloc
+    - protogetter
+    - reassign
+    - recvcheck
+    - spancheck
+    - staticcheck
+    - tagliatelle
+    - testifylint
+    - unconvert
+    - unparam
+    - whitespace
+    - wrapcheck
+    - zerologlint
   disable:
     - rowserrcheck
     - sqlclosecheck
+  settings:
+    govet:
+      settings:
+        printf:
+          funcs:
+            - (github.com/sirupsen/logrus).Infof
+            - (github.com/sirupsen/logrus).Warnf
+            - (github.com/sirupsen/logrus).Debugf
+            - (github.com/sirupsen/logrus).Errorf
+            - (github.com/sirupsen/logrus).Fatalf
+    misspell:
+      locale: US
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
   enable:
-    - tagliatelle
-    - stylecheck
-    - wrapcheck
-    - nilnil
-    - unused
-    - bodyclose
-    - ineffassign
-    - typecheck
     - gofmt
-    - unconvert
-    - staticcheck
-    - govet
-    - gosimple
-    - unparam
-    - gocritic
-    - goconst
     - goimports
-    - dogsled
-    - whitespace
-    - misspell
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/bentoml
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

@@ -82,7 +82,7 @@ func HashFile(filePath string) (string, error) {
 	hasher := blake3.New()
 
 	// Add file mode (permissions)
-	_, _ = hasher.Write([]byte(fmt.Sprintf("%d", stat.Mode())))
+	_, _ = hasher.Write([]byte(fmt.Sprintf("%d", stat.Mode()))) //nolint: staticcheck
 
 	if _, err := io.Copy(hasher, file); err != nil {
 		return "", errors.Wrap(err, "failed to copy file")

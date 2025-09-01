@@ -1836,7 +1836,7 @@ type GenerateModelSeederJobOption struct {
 
 func (r *BentoRequestReconciler) generateModelSeederJob(ctx context.Context, opt GenerateModelSeederJobOption) (job *batchv1.Job, err error) {
 	// nolint: gosimple
-	podTemplateSpec, err := r.generateModelSeederPodTemplateSpec(ctx, GenerateModelSeederPodTemplateSpecOption{
+	podTemplateSpec, err := r.generateModelSeederPodTemplateSpec(ctx, GenerateModelSeederPodTemplateSpecOption{ //nolint: staticcheck
 		BentoRequest: opt.BentoRequest,
 		Model:        opt.Model,
 	})
@@ -2258,7 +2258,7 @@ type GenerateImageBuilderJobOption struct {
 
 func (r *BentoRequestReconciler) generateImageBuilderJob(ctx context.Context, opt GenerateImageBuilderJobOption) (job *batchv1.Job, err error) {
 	// nolint: gosimple
-	podTemplateSpec, err := r.generateImageBuilderPodTemplateSpec(ctx, GenerateImageBuilderPodTemplateSpecOption{
+	podTemplateSpec, err := r.generateImageBuilderPodTemplateSpec(ctx, GenerateImageBuilderPodTemplateSpecOption{ // nolint:staticcheck
 		ImageInfo:    opt.ImageInfo,
 		BentoRequest: opt.BentoRequest,
 	})
@@ -3007,7 +3007,7 @@ echo "Done"
 
 	var builderContainerSecurityContext *corev1.SecurityContext
 
-	if buildEngine == BentoImageBuildEngineBuildkit {
+	if buildEngine == BentoImageBuildEngineBuildkit { // nolint:staticcheck
 		builderContainerSecurityContext = &corev1.SecurityContext{
 			Privileged: ptr.To(true),
 		}

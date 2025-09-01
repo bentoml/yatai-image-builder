@@ -9,7 +9,7 @@ import (
 	"strings"
 	"syscall"
 
-	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive,stylecheck
+	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive,stylecheck,staticcheck
 )
 
 // Run executes the provided command within this context
