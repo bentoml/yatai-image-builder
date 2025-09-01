@@ -51,14 +51,16 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: '1.22' # The Go version to download (if necessary) and use.
+          go-version: '1.23' # The Go version to download (if necessary) and use.
 
       - uses: actions/checkout@v3
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v7.0.0
         with:
-          version: 'v1.61.0'
+          version: 'v2.0.1'
+          args: --timeout=10m
+          only-new-issues: true
 
   helmchartslint:
     runs-on: ubuntu-latest
