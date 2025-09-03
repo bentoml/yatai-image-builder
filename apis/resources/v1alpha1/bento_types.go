@@ -43,9 +43,10 @@ type BentoModel struct {
 
 type BentoRunner struct {
 	// +kubebuilder:validation:Required
-	Name         string   `json:"name"`
-	RunnableType string   `json:"runnableType,omitempty"`
-	ModelTags    []string `json:"modelTags,omitempty"`
+	Name         string         `json:"name"`
+	RunnableType string         `json:"runnableType,omitempty"`
+	ModelTags    []string       `json:"modelTags,omitempty"`
+	Manifest     *BentoManifest `json:"manifest,omitempty"`
 }
 
 // BentoSpec defines the desired state of Bento
