@@ -4,13 +4,13 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: bentos.resources.yatai.ai
+  name: bentoes.resources.yatai.ai
 spec:
   group: resources.yatai.ai
   names:
     kind: Bento
     listKind: BentoList
-    plural: bentos
+    plural: bentoes
     singular: bento
   scope: Namespaced
   versions:
@@ -29,7 +29,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Bento is the Schema for the bentoes API
+        description: Bento is the Schema for the bento API
         properties:
           apiVersion:
             description: |-

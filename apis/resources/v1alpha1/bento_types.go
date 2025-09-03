@@ -80,8 +80,9 @@ type BentoStatus struct {
 //+kubebuilder:printcolumn:name="Tag",type="string",JSONPath=".spec.tag",description="Tag"
 //+kubebuilder:printcolumn:name="Image",type="string",JSONPath=".spec.image",description="Image"
 //+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:resource:path=bentoes,scope=Namespaced
 
-// Bento is the Schema for the bentoes API
+// Bento is the Schema for the bento API
 type Bento struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
