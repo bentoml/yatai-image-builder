@@ -73,6 +73,10 @@ type BentoRequestSpec struct {
 	// +kubebuilder:validation:Optional
 	Image string `json:"image,omitempty"`
 
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=1
+	ImageSpec uint `json:"imageSpec,omitempty"`
+
 	ImageBuildTimeout *time.Duration `json:"imageBuildTimeout,omitempty"`
 
 	// +kubebuilder:validation:Optional
