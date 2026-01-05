@@ -1850,10 +1850,6 @@ func (r *BentoRequestReconciler) generateModelSeederJob(ctx context.Context, opt
 		return
 	}
 	kubeAnnotations[KubeAnnotationBentoRequestHash] = hashStr
-	var activeDeadlineSeconds *int64
-	if opt.BentoRequest.Spec.ImageBuildTimeout != nil {
-		activeDeadlineSeconds = ptr.To(int64(opt.BentoRequest.Spec.ImageBuildTimeout.Seconds()))
-	}
 	job = &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        r.getModelSeederJobName(),
@@ -1877,9 +1873,11 @@ func (r *BentoRequestReconciler) generateModelSeederJob(ctx context.Context, opt
 					},
 				},
 			},
-			Template:              *podTemplateSpec,
-			ActiveDeadlineSeconds: activeDeadlineSeconds,
+			Template: *podTemplateSpec,
 		},
+	}
+	if opt.BentoRequest.Spec.ImageBuildTimeout != nil {
+		job.Spec.ActiveDeadlineSeconds = ptr.To(int64(opt.BentoRequest.Spec.ImageBuildTimeout.Seconds()))
 	}
 	err = ctrl.SetControllerReference(opt.BentoRequest, job, r.Scheme)
 	if err != nil {
@@ -2276,10 +2274,6 @@ func (r *BentoRequestReconciler) generateImageBuilderJob(ctx context.Context, op
 		return
 	}
 	kubeAnnotations[KubeAnnotationBentoRequestHash] = hashStr
-	var activeDeadlineSeconds *int64
-	if opt.BentoRequest.Spec.ImageBuildTimeout != nil {
-		activeDeadlineSeconds = ptr.To(int64(opt.BentoRequest.Spec.ImageBuildTimeout.Seconds()))
-	}
 	job = &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        r.getImageBuilderJobName(),
@@ -2302,9 +2296,11 @@ func (r *BentoRequestReconciler) generateImageBuilderJob(ctx context.Context, op
 					},
 				},
 			},
-			Template:              *podTemplateSpec,
-			ActiveDeadlineSeconds: activeDeadlineSeconds,
+			Template: *podTemplateSpec,
 		},
+	}
+	if opt.BentoRequest.Spec.ImageBuildTimeout != nil {
+		job.Spec.ActiveDeadlineSeconds = ptr.To(int64(opt.BentoRequest.Spec.ImageBuildTimeout.Seconds()))
 	}
 	err = ctrl.SetControllerReference(opt.BentoRequest, job, r.Scheme)
 	if err != nil {
