@@ -1874,9 +1874,11 @@ func (r *BentoRequestReconciler) generateModelSeederJob(ctx context.Context, opt
 					},
 				},
 			},
-			Template:              *podTemplateSpec,
-			ActiveDeadlineSeconds: ptr.To(int64(opt.BentoRequest.Spec.ImageBuildTimeout.Seconds())),
+			Template: *podTemplateSpec,
 		},
+	}
+	if opt.BentoRequest.Spec.ImageBuildTimeout != nil {
+		job.Spec.ActiveDeadlineSeconds = ptr.To(int64(opt.BentoRequest.Spec.ImageBuildTimeout.Seconds()))
 	}
 	err = ctrl.SetControllerReference(opt.BentoRequest, job, r.Scheme)
 	if err != nil {
@@ -2295,9 +2297,11 @@ func (r *BentoRequestReconciler) generateImageBuilderJob(ctx context.Context, op
 					},
 				},
 			},
-			Template:              *podTemplateSpec,
-			ActiveDeadlineSeconds: ptr.To(int64(opt.BentoRequest.Spec.ImageBuildTimeout.Seconds())),
+			Template: *podTemplateSpec,
 		},
+	}
+	if opt.BentoRequest.Spec.ImageBuildTimeout != nil {
+		job.Spec.ActiveDeadlineSeconds = ptr.To(int64(opt.BentoRequest.Spec.ImageBuildTimeout.Seconds()))
 	}
 	err = ctrl.SetControllerReference(opt.BentoRequest, job, r.Scheme)
 	if err != nil {
