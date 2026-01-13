@@ -36,7 +36,6 @@ spec:
           args:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=:8080
-            - --leader-elect
             - --skip-check={{ .Values.internal.skipCheck }}
             - --watch-namespaces={{ .Values.global.deploymentNamespaces | join "," }}
             - --watch-all-namespaces={{ .Values.global.monitorAllNamespaces }}
