@@ -3116,6 +3116,35 @@ echo "Done"
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Secret %s is not found in namespace %s", buildArgsSecretName, configNamespace)
 	}
 
+	var containerResources corev1.ResourceRequirements
+	if globalDefaultImageBuilderContainerResources != nil {
+		containerResources = *globalDefaultImageBuilderContainerResources
+	}
+
+	if opt.BentoRequest.Spec.ImageBuilderContainerResources != nil {
+		containerResources = *opt.BentoRequest.Spec.ImageBuilderContainerResources
+	}
+
+	// Check if containerResources contains GPU and add --use-gpu=true flag
+	hasGPU := false
+	for resourceName := range containerResources.Limits {
+		if strings.Contains(string(resourceName), "gpu") {
+			hasGPU = true
+			break
+		}
+	}
+	if !hasGPU {
+		for resourceName := range containerResources.Requests {
+			if strings.Contains(string(resourceName), "gpu") {
+				hasGPU = true
+				break
+			}
+		}
+	}
+	if hasGPU {
+		args = append(args, "--use-gpu=true")
+	}
+
 	cmd := shquot.POSIXShell(append(command, args...))
 
 	type ModelSpec struct {
@@ -3207,14 +3236,7 @@ echo "Done"
 		TTY:             true,
 		Stdin:           true,
 		SecurityContext: builderContainerSecurityContext,
-	}
-
-	if globalDefaultImageBuilderContainerResources != nil {
-		container.Resources = *globalDefaultImageBuilderContainerResources
-	}
-
-	if opt.BentoRequest.Spec.ImageBuilderContainerResources != nil {
-		container.Resources = *opt.BentoRequest.Spec.ImageBuilderContainerResources
+		Resources:       containerResources,
 	}
 
 	containers = append(containers, container)
