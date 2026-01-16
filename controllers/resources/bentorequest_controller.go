@@ -3153,7 +3153,7 @@ echo "Done"
 	}
 
 	if imageStoredInS3 {
-		builderImage = "quay.io/bentoml/bento-image-builder:0.1.13"
+		builderImage = "quay.io/bentoml/bento-image-builder:0.1.14"
 		extraFlags := ""
 		for _, buildArg := range buildArgs {
 			quotedBuildArg := unix.SingleQuote.Quote(buildArg)
