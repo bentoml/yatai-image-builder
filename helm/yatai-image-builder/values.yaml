@@ -138,6 +138,8 @@ global:
   yataiSystemNamespace: yatai-system
   yataiSystemServiceAccountName: yatai
 
+  modelEagerDownload: false
+
 internal:
   disableYataiComponentRegistration: true
   skipCheck: false
