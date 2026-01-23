@@ -1502,6 +1502,10 @@ func GetContainerImageS3EnableStargz() bool {
 	return os.Getenv("CONTAINER_IMAGE_S3_ENABLE_STARGZ") == trueStr
 }
 
+func GetContainerImageModelEagerDownload() bool {
+	return os.Getenv("CONTAINER_IMAGE_MODEL_EAGER_DOWNLOAD") == trueStr
+}
+
 func GetContainerImageS3AccessKeyID() string {
 	return os.Getenv("CONTAINER_IMAGE_S3_ACCESS_KEY_ID")
 }
@@ -2347,6 +2351,7 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 	containerImageS3EndpointURL := GetContainerImageS3EndpointURL()
 	containerImageS3Bucket := GetContainerImageS3Bucket()
 	containerImageS3EnableStargz := GetContainerImageS3EnableStargz()
+	containerImageModelEagerDownload := GetContainerImageModelEagerDownload()
 	containerImageS3AccessKeyID := GetContainerImageS3AccessKeyID()
 	containerImageS3SecretAccessKey := GetContainerImageS3SecretAccessKey()
 	imageStoredInS3 := isImageStoredInS3(opt.BentoRequest)
@@ -3164,6 +3169,9 @@ echo "Done"
 		}
 		if containerImageS3EnableStargz {
 			extraFlags += " --enable-stargz"
+		}
+		if containerImageModelEagerDownload {
+			extraFlags += " --model-eager-download"
 		}
 		models := make([]ModelSpec, 0, len(opt.BentoRequest.Spec.Models))
 		for _, model := range opt.BentoRequest.Spec.Models {
