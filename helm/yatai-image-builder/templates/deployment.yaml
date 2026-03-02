@@ -31,6 +31,25 @@ spec:
       serviceAccountName: {{ include "yatai-image-builder.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.global.caCertSecret }}
+      initContainers:
+        - name: ca-bundle-init
+          image: quay.io/bentoml/busybox:1.33
+          command: ["sh", "-c"]
+          args:
+            - |
+              cp /etc/ssl/certs/ca-certificates.crt /combined-ca/ca-bundle.crt 2>/dev/null || \
+              cp /etc/pki/tls/certs/ca-bundle.crt /combined-ca/ca-bundle.crt 2>/dev/null || \
+              cp /etc/ssl/cert.pem /combined-ca/ca-bundle.crt 2>/dev/null || \
+              touch /combined-ca/ca-bundle.crt
+              cat /ca-cert/{{ .Values.global.caCertSecretKey | default "ca.crt" }} >> /combined-ca/ca-bundle.crt
+          volumeMounts:
+            - name: private-ca-cert
+              mountPath: /ca-cert
+              readOnly: true
+            - name: combined-ca
+              mountPath: /combined-ca
+      {{- end }}
       containers:
         - name: manager
           args:
@@ -55,6 +74,10 @@ spec:
             {{- end }}
             - name: JUICEFS_STORAGE_CLASS_NAME
               value: {{ .Values.internal.juicefsStorageClassName }}
+            {{- if .Values.global.caCertSecret }}
+            - name: SSL_CERT_FILE
+              value: /combined-ca/ca-bundle.crt
+            {{- end }}
           envFrom:
             - secretRef:
                 name: {{ include "yatai-image-builder.envname" . }}
@@ -100,6 +123,11 @@ spec:
           - mountPath: /tmp/k8s-webhook-server/serving-certs
             name: cert
             readOnly: true
+          {{- if .Values.global.caCertSecret }}
+          - name: combined-ca
+            mountPath: /combined-ca
+            readOnly: true
+          {{- end }}
 
       {{- with .Values.nodeSelector }}
       nodeSelector:
@@ -118,3 +146,10 @@ spec:
         secret:
           defaultMode: 420
           secretName: {{ include "yatai-image-builder.fullname" . }}-webhook-server-cert
+      {{- if .Values.global.caCertSecret }}
+      - name: private-ca-cert
+        secret:
+          secretName: {{ .Values.global.caCertSecret }}
+      - name: combined-ca
+        emptyDir: {}
+      {{- end }}
