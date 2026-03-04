@@ -3219,6 +3219,87 @@ echo "Done"
 		}
 	}
 
+	// Inject CA certificate into builder pod if configured
+	caCertSecretName := os.Getenv("CA_CERT_SECRET")
+	caCertSecretKeyName := os.Getenv("CA_CERT_SECRET_KEY")
+	if caCertSecretKeyName == "" {
+		caCertSecretKeyName = "ca.crt"
+	}
+	if caCertSecretName != "" {
+		// Ensure the CA cert secret exists in the BentoRequest namespace
+		caCertSecretObj := &corev1.Secret{}
+		caCertSecretErr := r.Get(ctx, types.NamespacedName{Name: caCertSecretName, Namespace: opt.BentoRequest.Namespace}, caCertSecretObj)
+		if k8serrors.IsNotFound(caCertSecretErr) {
+			// Copy the CA cert secret from the operator namespace to the BentoRequest namespace
+			sourceCACertSecret := &corev1.Secret{}
+			caCertSecretErr = r.Get(ctx, types.NamespacedName{Name: caCertSecretName, Namespace: configNamespace}, sourceCACertSecret)
+			if caCertSecretErr == nil {
+				caCertSecretErr = r.Create(ctx, &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      caCertSecretName,
+						Namespace: opt.BentoRequest.Namespace,
+					},
+					Data: sourceCACertSecret.Data,
+				})
+				if caCertSecretErr != nil && !k8serrors.IsAlreadyExists(caCertSecretErr) {
+					logrus.Warnf("failed to copy CA cert secret to namespace %s: %v", opt.BentoRequest.Namespace, caCertSecretErr)
+				}
+			}
+		}
+
+		volumes = append(volumes,
+			corev1.Volume{
+				Name: "private-ca-cert",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: caCertSecretName,
+					},
+				},
+			},
+			corev1.Volume{
+				Name: "combined-ca",
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{},
+				},
+			},
+		)
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "combined-ca",
+			MountPath: "/combined-ca",
+			ReadOnly:  true,
+		})
+		builderContainerEnvs = append(builderContainerEnvs, corev1.EnvVar{
+			Name:  "SSL_CERT_FILE",
+			Value: "/combined-ca/ca-bundle.crt",
+		})
+		initContainers = append(initContainers, corev1.Container{
+			Name:    "ca-bundle-init",
+			Image:   "quay.io/bentoml/busybox:1.33",
+			Command: []string{"sh", "-c"},
+			Args: []string{
+				fmt.Sprintf(
+					"cp /etc/ssl/certs/ca-certificates.crt /combined-ca/ca-bundle.crt 2>/dev/null || "+
+						"cp /etc/pki/tls/certs/ca-bundle.crt /combined-ca/ca-bundle.crt 2>/dev/null || "+
+						"cp /etc/ssl/cert.pem /combined-ca/ca-bundle.crt 2>/dev/null || "+
+						"touch /combined-ca/ca-bundle.crt; "+
+						"cat /ca-cert/%s >> /combined-ca/ca-bundle.crt",
+					caCertSecretKeyName,
+				),
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "private-ca-cert",
+					MountPath: "/ca-cert",
+					ReadOnly:  true,
+				},
+				{
+					Name:      "combined-ca",
+					MountPath: "/combined-ca",
+				},
+			},
+		})
+	}
+
 	builderContainerArgs := []string{
 		"-c",
 		fmt.Sprintf("%s && exit 0 || exit %d", cmd, BuilderJobFailedExitCode),
