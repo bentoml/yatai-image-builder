@@ -3230,9 +3230,10 @@ echo "Done"
 		caCertSecretReady := false
 		caCertSecretObj := &corev1.Secret{}
 		caCertSecretErr := r.Get(ctx, types.NamespacedName{Name: caCertSecretName, Namespace: opt.BentoRequest.Namespace}, caCertSecretObj)
-		if caCertSecretErr == nil {
+		switch {
+		case caCertSecretErr == nil:
 			caCertSecretReady = true
-		} else if k8serrors.IsNotFound(caCertSecretErr) {
+		case k8serrors.IsNotFound(caCertSecretErr):
 			// Copy the CA cert secret from the operator namespace to the BentoRequest namespace
 			sourceCACertSecret := &corev1.Secret{}
 			caCertSecretErr = r.Get(ctx, types.NamespacedName{Name: caCertSecretName, Namespace: configNamespace}, sourceCACertSecret)
@@ -3252,7 +3253,7 @@ echo "Done"
 			} else {
 				logrus.Warnf("CA_CERT_SECRET is set to %q but secret not found in namespace %s: %v", caCertSecretName, configNamespace, caCertSecretErr)
 			}
-		} else {
+		default:
 			logrus.Warnf("failed to check CA cert secret in namespace %s: %v", opt.BentoRequest.Namespace, caCertSecretErr)
 		}
 
