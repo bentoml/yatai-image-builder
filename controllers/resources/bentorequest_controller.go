@@ -2407,6 +2407,13 @@ func (r *BentoRequestReconciler) generateImageBuilderPodTemplateSpec(ctx context
 		})
 	}
 
+	// Add CA cert volumes early so they are available to downloader init containers
+	caCertSecretName := os.Getenv("CA_CERT_SECRET")
+	caCertSecretKeyName := os.Getenv("CA_CERT_SECRET_KEY")
+	if caCertSecretKeyName == "" {
+		caCertSecretKeyName = "ca.crt"
+	}
+
 	var bento *schemasv1.BentoFullSchema
 	yataiAPITokenSecretName := ""
 	bentoDownloadURL := opt.BentoRequest.Spec.DownloadURL
@@ -3220,11 +3227,6 @@ echo "Done"
 	}
 
 	// Inject CA certificate into builder pod if configured
-	caCertSecretName := os.Getenv("CA_CERT_SECRET")
-	caCertSecretKeyName := os.Getenv("CA_CERT_SECRET_KEY")
-	if caCertSecretKeyName == "" {
-		caCertSecretKeyName = "ca.crt"
-	}
 	if caCertSecretName != "" {
 		// Ensure the CA cert secret exists in the BentoRequest namespace
 		caCertSecretReady := false
@@ -3283,7 +3285,8 @@ echo "Done"
 				Name:  "SSL_CERT_FILE",
 				Value: "/combined-ca/ca-bundle.crt",
 			})
-			initContainers = append(initContainers, corev1.Container{
+			// Prepend ca-bundle-init so it runs before bento-downloader and model-downloader
+			initContainers = append([]corev1.Container{{
 				Name:    "ca-bundle-init",
 				Image:   "quay.io/bentoml/busybox:1.33",
 				Command: []string{"sh", "-c"},
@@ -3308,7 +3311,25 @@ echo "Done"
 						MountPath: "/combined-ca",
 					},
 				},
-			})
+			}}, initContainers...)
+
+			// Inject SSL_CERT_FILE env and combined-ca volume mount into all
+			// downloader init containers so they can trust the private CA
+			// when downloading bentos/models from S3.
+			for i := range initContainers {
+				if initContainers[i].Name == "ca-bundle-init" {
+					continue
+				}
+				initContainers[i].Env = append(initContainers[i].Env, corev1.EnvVar{
+					Name:  "SSL_CERT_FILE",
+					Value: "/combined-ca/ca-bundle.crt",
+				})
+				initContainers[i].VolumeMounts = append(initContainers[i].VolumeMounts, corev1.VolumeMount{
+					Name:      "combined-ca",
+					MountPath: "/combined-ca",
+					ReadOnly:  true,
+				})
+			}
 		}
 	}
 
