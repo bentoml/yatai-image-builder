@@ -17,3 +17,18 @@ data:
       {{- .Values.builder.tolerations | toYaml | nindent 6 }}
     affinity:
       {{- .Values.builder.affinity | toYaml | nindent 6 }}
+  {{- if or .Values.proxy.httpProxy .Values.proxy.httpsProxy .Values.proxy.noProxy }}
+  extra_container_env: |
+    {{- if .Values.proxy.httpProxy }}
+    - name: HTTP_PROXY
+      value: {{ .Values.proxy.httpProxy | quote }}
+    {{- end }}
+    {{- if .Values.proxy.httpsProxy }}
+    - name: HTTPS_PROXY
+      value: {{ .Values.proxy.httpsProxy | quote }}
+    {{- end }}
+    {{- if .Values.proxy.noProxy }}
+    - name: NO_PROXY
+      value: {{ .Values.proxy.noProxy | quote }}
+    {{- end }}
+  {{- end }}

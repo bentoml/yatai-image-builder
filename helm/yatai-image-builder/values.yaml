@@ -101,6 +101,11 @@ kaniko:
   cacheRepo: ''
   snapshotMode: '' # options: full, redo, time
 
+proxy:
+  httpProxy: ''
+  httpsProxy: ''
+  noProxy: ''
+
 builder:
   requests: {}
   limits: {}
