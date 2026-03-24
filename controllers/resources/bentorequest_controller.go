@@ -2198,6 +2198,7 @@ echo "Done"
 	}
 
 	var globalExtraPodSpec *resourcesv1alpha1.ExtraPodSpec
+	var globalExtraContainerEnv []corev1.EnvVar
 
 	configNamespace, err := commonconfig.GetYataiImageBuilderNamespace(ctx, func(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
 		secret := &corev1.Secret{}
@@ -2234,6 +2235,15 @@ echo "Done"
 				return
 			}
 		}
+
+		globalExtraContainerEnv = []corev1.EnvVar{}
+		if val, ok := configCm.Data["extra_container_env"]; ok {
+			err = yaml.Unmarshal([]byte(val), &globalExtraContainerEnv)
+			if err != nil {
+				err = errors.Wrapf(err, "failed to yaml unmarshal extra_container_env, please check the configmap %s in namespace %s", configCmName, configNamespace)
+				return
+			}
+		}
 	} else {
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateModelSeederPod", "Configmap %s is not found in namespace %s", configCmName, configNamespace)
 	}
@@ -2246,6 +2256,21 @@ echo "Done"
 		pod.Spec.Tolerations = globalExtraPodSpec.Tolerations
 		pod.Spec.TopologySpreadConstraints = globalExtraPodSpec.TopologySpreadConstraints
 		pod.Spec.ServiceAccountName = globalExtraPodSpec.ServiceAccountName
+	}
+
+	for i, c := range pod.Spec.InitContainers {
+		env := c.Env
+		if globalExtraContainerEnv != nil {
+			env = append(env, globalExtraContainerEnv...)
+		}
+		pod.Spec.InitContainers[i].Env = env
+	}
+	for i, c := range pod.Spec.Containers {
+		env := c.Env
+		if globalExtraContainerEnv != nil {
+			env = append(env, globalExtraContainerEnv...)
+		}
+		pod.Spec.Containers[i].Env = env
 	}
 
 	injectPodAffinity(&pod.Spec, opt.BentoRequest)
@@ -2873,6 +2898,24 @@ echo "Done"
 	if err != nil {
 		err = errors.Wrap(err, "get build args")
 		return
+	}
+
+	// Auto-inject proxy env vars from extra_container_env as Docker build args
+	if globalExtraContainerEnv != nil {
+		proxyEnvNames := map[string]bool{
+			"HTTP_PROXY": true, "HTTPS_PROXY": true, "NO_PROXY": true,
+			"http_proxy": true, "https_proxy": true, "no_proxy": true,
+		}
+		existingBuildArgKeys := make(map[string]bool)
+		for _, ba := range buildArgs {
+			key, _, _ := strings.Cut(ba, "=")
+			existingBuildArgKeys[key] = true
+		}
+		for _, envVar := range globalExtraContainerEnv {
+			if proxyEnvNames[envVar.Name] && !existingBuildArgKeys[envVar.Name] && envVar.ValueFrom == nil {
+				buildArgs = append(buildArgs, envVar.Name+"="+envVar.Value)
+			}
+		}
 	}
 
 	dockerFilePath := "/workspace/buildcontext/env/docker/Dockerfile"
