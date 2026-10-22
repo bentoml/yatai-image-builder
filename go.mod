@@ -1,8 +1,6 @@
 module github.com/bentoml/yatai-image-builder
 
-go 1.24.0
-
-toolchain go1.24.8
+go 1.26.10
 
 require (
 	emperror.dev/errors v0.8.1
