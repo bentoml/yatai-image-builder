@@ -72,7 +72,7 @@ jobs:
         if: steps.check-tag.outputs.match != 'true'
         env:
           VERSION: ${{ steps.tag.outputs.tag }}
-          API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
+          API_TOKEN_GITHUB: ${{ secrets.HELM_CHARTS_TOKEN }}
         run: make release
 
       - name: Package, Index and Publish yatai-image-builder-crds to devel repo
@@ -80,7 +80,7 @@ jobs:
         if: steps.check-tag.outputs.match == 'true'
         env:
           VERSION: ${{ steps.tag.outputs.tag }}
-          API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
+          API_TOKEN_GITHUB: ${{ secrets.HELM_CHARTS_TOKEN }}
         run: make release-devel
 
       - name: Package, Index and Publish yatai-image-builder to public repo
@@ -88,7 +88,7 @@ jobs:
         if: steps.check-tag.outputs.match != 'true'
         env:
           VERSION: ${{ steps.tag.outputs.tag }}
-          API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
+          API_TOKEN_GITHUB: ${{ secrets.HELM_CHARTS_TOKEN }}
         run: make release
 
       - name: Package, Index and Publish yatai-image-builder to devel repo
@@ -96,5 +96,5 @@ jobs:
         if: steps.check-tag.outputs.match == 'true'
         env:
           VERSION: ${{ steps.tag.outputs.tag }}
-          API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
+          API_TOKEN_GITHUB: ${{ secrets.HELM_CHARTS_TOKEN }}
         run: make release-devel
