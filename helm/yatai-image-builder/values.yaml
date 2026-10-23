@@ -81,7 +81,7 @@ dockerRegistry:
   awsECRRegion: ap-northeast-3
 
 internalImages:
-  bentoDownloader: quay.io/bentoml/bento-downloader:0.0.5
+  bentoDownloader: quay.io/bentoml/bento-downloader:0.0.6
   kaniko: quay.io/bentoml/kaniko:debug
   buildkit: quay.io/bentoml/buildkit:master
   buildkitRootless: quay.io/bentoml/buildkit:master-rootless
