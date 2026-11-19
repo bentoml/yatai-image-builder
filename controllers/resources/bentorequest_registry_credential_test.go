@@ -18,7 +18,7 @@ func TestSharedRegistryCredentialTenantBoundary(t *testing.T) {
 	secret, err := (*BentoRequestReconciler)(nil).makeSureDockerConfigJSONSecret(
 		context.Background(), "org-customer--gcp-us-central-1", &commonconfig.DockerRegistryConfig{Username: "_json_key"},
 	)
-	if err != nil || secret != nil {
+	if err != errTenantRegistryCredentialDisabled || secret != nil {
 		t.Fatalf("tenant registry Secret writer ran: secret=%v err=%v", secret, err)
 	}
 }

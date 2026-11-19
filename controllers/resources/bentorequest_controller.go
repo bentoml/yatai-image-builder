@@ -1182,9 +1182,11 @@ func getBentoImageBuildEngine() BentoImageBuildEngine {
 	return BentoImageBuildEngine(engine)
 }
 
+var errTenantRegistryCredentialDisabled = errors.New("default registry credential disabled in tenant namespace")
+
 func (r *BentoRequestReconciler) makeSureDockerConfigJSONSecret(ctx context.Context, namespace string, dockerRegistryConf *commonconfig.DockerRegistryConfig) (dockerConfigJSONSecret *corev1.Secret, err error) {
 	if !shouldCopyDefaultRegistryCredential(namespace) {
-		return nil, nil
+		return nil, errTenantRegistryCredentialDisabled
 	}
 	if dockerRegistryConf.Username == "" {
 		return
