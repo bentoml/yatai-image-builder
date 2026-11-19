@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	commonconfig "github.com/bentoml/yatai-common/config"
@@ -18,7 +19,7 @@ func TestSharedRegistryCredentialTenantBoundary(t *testing.T) {
 	secret, err := (*BentoRequestReconciler)(nil).makeSureDockerConfigJSONSecret(
 		context.Background(), "org-customer--gcp-us-central-1", &commonconfig.DockerRegistryConfig{Username: "_json_key"},
 	)
-	if err != errTenantRegistryCredentialDisabled || secret != nil {
+	if !errors.Is(err, errTenantRegistryCredentialDisabled) || secret != nil {
 		t.Fatalf("tenant registry Secret writer ran: secret=%v err=%v", secret, err)
 	}
 }
