@@ -1183,6 +1183,9 @@ func getBentoImageBuildEngine() BentoImageBuildEngine {
 }
 
 func (r *BentoRequestReconciler) makeSureDockerConfigJSONSecret(ctx context.Context, namespace string, dockerRegistryConf *commonconfig.DockerRegistryConfig) (dockerConfigJSONSecret *corev1.Secret, err error) {
+	if !shouldCopyDefaultRegistryCredential(namespace) {
+		return nil, nil
+	}
 	if dockerRegistryConf.Username == "" {
 		return
 	}
@@ -1639,6 +1642,9 @@ func (r *BentoRequestReconciler) getImageInfo(ctx context.Context, opt GetImageI
 			return
 		}
 		imageInfo.DockerRegistryInsecure = !dockerRegistryConf.Secure
+		if !shouldCopyDefaultRegistryCredential(opt.BentoRequest.Namespace) {
+			return
+		}
 		var dockerConfigSecret *corev1.Secret
 		r.Recorder.Eventf(opt.BentoRequest, corev1.EventTypeNormal, "GenerateImageBuilderPod", "Making sure docker config secret %s in namespace %s", commonconsts.KubeSecretNameRegcred, opt.BentoRequest.Namespace)
 		dockerConfigSecret, err = r.makeSureDockerConfigJSONSecret(ctx, opt.BentoRequest.Namespace, dockerRegistryConf)
@@ -1652,6 +1658,10 @@ func (r *BentoRequestReconciler) getImageInfo(ctx context.Context, opt GetImageI
 		}
 	}
 	return
+}
+
+func shouldCopyDefaultRegistryCredential(namespace string) bool {
+	return os.Getenv("DISABLE_TENANT_DEFAULT_REGISTRY_CREDENTIAL") != "true" || !strings.HasPrefix(namespace, "org-")
 }
 
 func (r *BentoRequestReconciler) getBento(ctx context.Context, bentoRequest *resourcesv1alpha1.BentoRequest) (bento *schemasv1.BentoFullSchema, err error) {
