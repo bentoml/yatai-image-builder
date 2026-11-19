@@ -145,6 +145,8 @@ global:
 
 internal:
   disableYataiComponentRegistration: true
+  # During a registry push freeze, keep the shared push key out of tenant namespaces.
+  disableTenantDefaultRegistryCredential: false
   skipCheck: false
   juicefsStorageClassName: juicefs-sc
 

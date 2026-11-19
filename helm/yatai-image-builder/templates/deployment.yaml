@@ -65,6 +65,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: DISABLE_TENANT_DEFAULT_REGISTRY_CREDENTIAL
+              value: {{ .Values.internal.disableTenantDefaultRegistryCredential | quote }}
             {{- if .Values.dockerRegistry.passwordExistingSecretName }}
             - name: DOCKER_REGISTRY_PASSWORD
               valueFrom:
